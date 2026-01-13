@@ -224,28 +224,41 @@ const SpotPriceService = {
   lastPrices: { gold: 2685.50, silver: 30.25, platinum: 985.00, palladium: 945.00 },
   lastUpdate: null,
   
-  // Fetch live spot prices from Metals.live (free, no API key)
+  // Fetch live spot prices from multiple sources
   async fetchFromMetalsLive() {
     try {
-      const response = await fetch('https://api.metals.live/v1/spot');
-      if (!response.ok) throw new Error('Metals.live API error');
+      // Try metals.dev API (free, CORS-friendly)
+      const response = await fetch('https://api.metals.dev/v1/latest?api_key=demo&currency=USD&unit=toz');
+      if (!response.ok) throw new Error('API error');
       const data = await response.json();
       
-      // Parse response - returns array of objects
-      const prices = {};
-      data.forEach(item => {
-        if (item.gold) prices.gold = item.gold;
-        if (item.silver) prices.silver = item.silver;
-        if (item.platinum) prices.platinum = item.platinum;
-        if (item.palladium) prices.palladium = item.palladium;
-      });
-      
-      this.lastPrices = { ...this.lastPrices, ...prices };
-      this.lastUpdate = new Date();
-      return this.lastPrices;
+      if (data.metals) {
+        this.lastPrices = {
+          gold: data.metals.gold || this.lastPrices.gold,
+          silver: data.metals.silver || this.lastPrices.silver,
+          platinum: data.metals.platinum || this.lastPrices.platinum,
+          palladium: data.metals.palladium || this.lastPrices.palladium
+        };
+        this.lastUpdate = new Date();
+        return this.lastPrices;
+      }
+      throw new Error('Invalid response');
     } catch (error) {
-      console.error('Metals.live fetch failed:', error);
-      return null;
+      console.log('Primary API failed, trying backup...');
+      // Fallback: try gold-api.com demo
+      try {
+        const resp = await fetch('https://www.goldapi.io/api/XAU/USD');
+        if (resp.ok) {
+          const gold = await resp.json();
+          if (gold.price) {
+            this.lastPrices.gold = gold.price;
+            this.lastUpdate = new Date();
+          }
+        }
+      } catch (e) {
+        console.log('Backup API also failed');
+      }
+      return this.lastPrices;
     }
   },
   
