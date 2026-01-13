@@ -224,40 +224,34 @@ const SpotPriceService = {
   lastPrices: { gold: 2685.50, silver: 30.25, platinum: 985.00, palladium: 945.00 },
   lastUpdate: null,
   
-  // Fetch live spot prices from multiple sources
+  // Fetch live spot prices
   async fetchFromMetalsLive() {
     try {
-      // Try metals.dev API (free, CORS-friendly)
-      const response = await fetch('https://api.metals.dev/v1/latest?api_key=demo&currency=USD&unit=toz');
-      if (!response.ok) throw new Error('API error');
-      const data = await response.json();
-      
-      if (data.metals) {
-        this.lastPrices = {
-          gold: data.metals.gold || this.lastPrices.gold,
-          silver: data.metals.silver || this.lastPrices.silver,
-          platinum: data.metals.platinum || this.lastPrices.platinum,
-          palladium: data.metals.palladium || this.lastPrices.palladium
-        };
-        this.lastUpdate = new Date();
-        return this.lastPrices;
-      }
-      throw new Error('Invalid response');
-    } catch (error) {
-      console.log('Primary API failed, trying backup...');
-      // Fallback: try gold-api.com demo
-      try {
-        const resp = await fetch('https://www.goldapi.io/api/XAU/USD');
-        if (resp.ok) {
-          const gold = await resp.json();
-          if (gold.price) {
-            this.lastPrices.gold = gold.price;
-            this.lastUpdate = new Date();
+      // Use frankfurter API for gold price approximation via XAU currency
+      // This gives us gold price reliably
+      const response = await fetch('https://api.frankfurter.app/latest?from=XAU&to=USD');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.rates?.USD) {
+          // XAU is price per troy oz, but frankfurter returns how many USD per 1 XAU
+          this.lastPrices.gold = data.rates.USD;
+          this.lastUpdate = new Date();
+          
+          // Estimate silver at typical gold:silver ratio (~85:1)
+          // This is approximate but better than nothing
+          const silverEstimate = this.lastPrices.gold / 85;
+          // Only update silver if it seems reasonable (within 50% of default)
+          if (silverEstimate > 20 && silverEstimate < 50) {
+            this.lastPrices.silver = Math.round(silverEstimate * 100) / 100;
           }
+          
+          console.log('Spot prices updated:', this.lastPrices);
+          return this.lastPrices;
         }
-      } catch (e) {
-        console.log('Backup API also failed');
       }
+      throw new Error('API failed');
+    } catch (error) {
+      console.log('Spot price fetch failed, using defaults:', error.message);
       return this.lastPrices;
     }
   },
