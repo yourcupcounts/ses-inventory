@@ -227,29 +227,24 @@ const SpotPriceService = {
   // Fetch live spot prices
   async fetchFromMetalsLive() {
     try {
-      // Use frankfurter API for gold price approximation via XAU currency
-      // This gives us gold price reliably
-      const response = await fetch('https://api.frankfurter.app/latest?from=XAU&to=USD');
-      if (response.ok) {
-        const data = await response.json();
-        if (data.rates?.USD) {
-          // XAU is price per troy oz, but frankfurter returns how many USD per 1 XAU
-          this.lastPrices.gold = data.rates.USD;
-          this.lastUpdate = new Date();
-          
-          // Estimate silver at typical gold:silver ratio (~85:1)
-          // This is approximate but better than nothing
-          const silverEstimate = this.lastPrices.gold / 85;
-          // Only update silver if it seems reasonable (within 50% of default)
-          if (silverEstimate > 20 && silverEstimate < 50) {
-            this.lastPrices.silver = Math.round(silverEstimate * 100) / 100;
-          }
-          
-          console.log('Spot prices updated:', this.lastPrices);
-          return this.lastPrices;
-        }
+      // Use corsproxy.io to bypass CORS
+      const response = await fetch('https://corsproxy.io/?' + encodeURIComponent('https://api.metals.live/v1/spot'));
+      if (!response.ok) throw new Error('API error');
+      const data = await response.json();
+      
+      // Parse response - returns array of objects
+      if (Array.isArray(data)) {
+        data.forEach(item => {
+          if (item.gold) this.lastPrices.gold = item.gold;
+          if (item.silver) this.lastPrices.silver = item.silver;
+          if (item.platinum) this.lastPrices.platinum = item.platinum;
+          if (item.palladium) this.lastPrices.palladium = item.palladium;
+        });
+        this.lastUpdate = new Date();
+        console.log('Spot prices updated:', this.lastPrices);
+        return this.lastPrices;
       }
-      throw new Error('API failed');
+      throw new Error('Invalid response format');
     } catch (error) {
       console.log('Spot price fetch failed, using defaults:', error.message);
       return this.lastPrices;
