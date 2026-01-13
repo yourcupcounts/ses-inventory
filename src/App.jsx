@@ -40,6 +40,11 @@ const CONFIG = {
 };
 
 // ============ FIREBASE SERVICE ============
+// Import Firebase at top level
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, doc, getDocs, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { getStorage, ref, uploadString, getDownloadURL, deleteObject } from 'firebase/storage';
+
 const FirebaseService = {
   db: null,
   storage: null,
@@ -54,11 +59,6 @@ const FirebaseService = {
     }
     
     try {
-      // Dynamic import Firebase SDK
-      const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js');
-      const { getFirestore, collection, doc, getDocs, setDoc, deleteDoc, onSnapshot } = await import('https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js');
-      const { getStorage, ref, uploadString, getDownloadURL, deleteObject } = await import('https://www.gstatic.com/firebasejs/10.7.0/firebase-storage.js');
-      
       const app = initializeApp(CONFIG.firebase);
       this.db = getFirestore(app);
       this.storage = getStorage(app);
