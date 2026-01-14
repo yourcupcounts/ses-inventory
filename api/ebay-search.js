@@ -5,49 +5,6 @@ const EBAY_CONFIG = {
   certId: "PRD-b467ee899249-ec3d-43db-89b3-cd88",
 };
 
-let cachedToken = null;
-let tokenExpiry = null;
-
-async function getAccessToken() {
-  // Return cached token if still valid
-  if (cachedToken && tokenExpiry && new Date() < tokenExpiry) {
-    return cachedToken;
-  }
-
-  const credentials = Buffer.from(`${EBAY_CONFIG.appId}:${EBAY_CONFIG.certId}`).toString('base64');
-  
-  const response = await fetch('https://api.ebay.com/identity/v1/oauth2/token', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Authorization': `Basic ${credentials}`
-    },
-    body: 'grant_type=client_credentials&scope=https://api.ebay.com/oauth/api_scope'
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Token request failed: ${error}`);
-  }
-
-  const data = await response.json();
-  cachedToken = data.access_token;
-  tokenExpiry = new Date(Date.now() + (data.expires_in * 1000) - 60000);
-  
-  return cachedToken;
-}
-
-// Shorten eBay URL to just the item ID portion
-function shortenEbayUrl(url) {
-  if (!url) return null;
-  // Extract item ID from URL like https://www.ebay.com/itm/123456789
-  const match = url.match(/\/itm\/(\d+)/);
-  if (match) {
-    return `ebay.com/itm/${match[1]}`;
-  }
-  return url;
-}
-
 // Format date to readable string
 function formatDate(dateString) {
   if (!dateString) return null;
@@ -57,6 +14,16 @@ function formatDate(dateString) {
   } catch {
     return null;
   }
+}
+
+// Shorten eBay URL
+function shortenUrl(url) {
+  if (!url) return null;
+  const match = url.match(/\/itm\/([^?]+)/);
+  if (match) {
+    return `ebay.com/itm/${match[1]}`;
+  }
+  return url;
 }
 
 export default async function handler(req, res) {
@@ -70,70 +37,97 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { query, limit = 10 } = req.query;
+    const { query, limit = 15 } = req.query;
 
     if (!query) {
       return res.status(400).json({ error: 'Query parameter required' });
     }
 
-    const token = await getAccessToken();
-
+    // Use eBay Finding API - findCompletedItems for sold listings
+    const findingApiUrl = 'https://svcs.ebay.com/services/search/FindingService/v1';
+    
     const params = new URLSearchParams({
-      q: query,
-      filter: 'buyingOptions:{FIXED_PRICE|AUCTION},priceCurrency:USD',
-      sort: 'price',
-      limit: limit.toString()
+      'OPERATION-NAME': 'findCompletedItems',
+      'SERVICE-VERSION': '1.0.0',
+      'SECURITY-APPNAME': EBAY_CONFIG.appId,
+      'RESPONSE-DATA-FORMAT': 'JSON',
+      'REST-PAYLOAD': '',
+      'keywords': query,
+      'paginationInput.entriesPerPage': Math.min(parseInt(limit), 100).toString(),
+      'sortOrder': 'EndTimeSoonest',
+      // Filter for sold items only (not unsold completed)
+      'itemFilter(0).name': 'SoldItemsOnly',
+      'itemFilter(0).value': 'true',
+      // US only
+      'itemFilter(1).name': 'LocatedIn',
+      'itemFilter(1).value': 'US',
     });
 
-    const response = await fetch(
-      `https://api.ebay.com/buy/browse/v1/item_summary/search?${params}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
-          'Content-Type': 'application/json'
-        }
+    const response = await fetch(`${findingApiUrl}?${params}`, {
+      headers: {
+        'Content-Type': 'application/json'
       }
-    );
+    });
 
     if (!response.ok) {
       const error = await response.text();
-      throw new Error(`eBay search failed: ${error}`);
+      throw new Error(`eBay Finding API failed: ${error}`);
     }
 
     const data = await response.json();
     
-    // Parse results
-    if (!data.itemSummaries || data.itemSummaries.length === 0) {
-      return res.status(200).json({ items: [], avgPrice: 0, lowPrice: 0, highPrice: 0, count: 0 });
+    // Parse Finding API response
+    const searchResult = data?.findCompletedItemsResponse?.[0]?.searchResult?.[0];
+    const items = searchResult?.item || [];
+    const totalCount = parseInt(searchResult?.['@count'] || '0');
+
+    if (items.length === 0) {
+      return res.status(200).json({ 
+        items: [], 
+        avgPrice: 0, 
+        lowPrice: 0, 
+        highPrice: 0, 
+        count: 0,
+        note: 'No sold listings found'
+      });
     }
 
-    const prices = data.itemSummaries
-      .map(item => parseFloat(item.price?.value || 0))
-      .filter(price => price > 0);
+    // Extract prices from sold items
+    const parsedItems = items.map(item => {
+      const price = parseFloat(item.sellingStatus?.[0]?.currentPrice?.[0]?.['__value__'] || 0);
+      const endTime = item.listingInfo?.[0]?.endTime?.[0];
+      const itemUrl = item.viewItemURL?.[0];
+      const imageUrl = item.galleryURL?.[0];
+      const title = item.title?.[0];
+      const listingType = item.listingInfo?.[0]?.listingType?.[0];
+      const itemId = item.itemId?.[0];
+      
+      return {
+        title,
+        price,
+        soldDate: formatDate(endTime),
+        itemUrl,
+        shortUrl: shortenUrl(itemUrl),
+        imageUrl,
+        listingType: listingType === 'Auction' ? 'Auction' : 'BIN',
+        itemId,
+        condition: item.condition?.[0]?.conditionDisplayName?.[0] || 'Used',
+        status: 'Sold'
+      };
+    }).filter(item => item.price > 0);
 
+    const prices = parsedItems.map(item => item.price);
     const avgPrice = prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 0;
     const lowPrice = prices.length > 0 ? Math.min(...prices) : 0;
     const highPrice = prices.length > 0 ? Math.max(...prices) : 0;
 
     const result = {
-      items: data.itemSummaries.map(item => ({
-        title: item.title,
-        price: parseFloat(item.price?.value || 0),
-        condition: item.condition,
-        imageUrl: item.image?.imageUrl,
-        itemUrl: item.itemWebUrl,
-        shortUrl: shortenEbayUrl(item.itemWebUrl),
-        itemId: item.itemId,
-        soldDate: formatDate(item.itemEndDate),
-        listingType: item.buyingOptions?.includes('AUCTION') ? 'Auction' : 'BIN',
-        seller: item.seller?.username,
-        location: item.itemLocation?.postalCode || item.itemLocation?.country
-      })),
+      items: parsedItems.slice(0, parseInt(limit)),
       avgPrice: Math.round(avgPrice * 100) / 100,
       lowPrice: Math.round(lowPrice * 100) / 100,
       highPrice: Math.round(highPrice * 100) / 100,
-      count: prices.length
+      count: parsedItems.length,
+      note: 'Recent completed/sold listings'
     };
 
     return res.status(200).json(result);
