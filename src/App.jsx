@@ -2901,24 +2901,33 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
     reader.onload = async (event) => {
       const base64 = event.target.result.split(',')[1];
       
+      console.log('Photo captured, captureStep:', captureStep, 'frontPhoto exists:', !!frontPhoto);
+      
       // Two-photo flow for coins
       if (captureStep === 'front') {
+        console.log('Setting front photo, switching to back step');
         setFrontPhoto(base64);
         setCaptureStep('back');
         // Reset the input so the same file can be selected again
-        e.target.value = '';
+        if (e.target) e.target.value = '';
         return;
       }
       
-      if (captureStep === 'back') {
+      if (captureStep === 'back' && frontPhoto) {
+        console.log('Got back photo, analyzing both...');
+        const savedFrontPhoto = frontPhoto; // Save before async operation
         setBackPhoto(base64);
         setCaptureStep('idle');
+        setFrontPhoto(null); // Clear early
+        setBackPhoto(null);
+        
         // Now analyze both photos together
         setAnalyzing(true);
         setApiError(null);
         
         try {
-          const analysis = await analyzePhotoPair(frontPhoto, base64);
+          const analysis = await analyzePhotoPair(savedFrontPhoto, base64);
+          console.log('Analysis result:', analysis);
           
           if (analysis.apiError) {
             setApiError(analysis.apiError);
@@ -2928,34 +2937,54 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
           if (analysis.notPreciousMetal) {
             setEvaluatingItem({
               id: `eval-${Date.now()}`,
-              photo: frontPhoto, // Use front as main photo
+              photo: savedFrontPhoto,
               photoBack: base64,
               description: analysis.description,
               notPreciousMetal: true,
               notes: analysis.notes
             });
-            setFrontPhoto(null);
-            setBackPhoto(null);
             setAnalyzing(false);
             return;
           }
           
           if (analysis.coinKey && coinReference[analysis.coinKey]) {
             const valuation = calculateCoinValue(analysis.coinKey, analysis.grade, 1);
+            console.log('Coin identified:', analysis.coinKey, 'Valuation:', valuation);
             setEvaluatingItem({
               ...analysis,
               ...valuation,
               id: `eval-${Date.now()}`,
-              photo: frontPhoto,
+              photo: savedFrontPhoto,
               photoBack: base64
             });
-          } else {
-            // Unknown item - show manual entry
+          } else if (analysis.isPreciousMetal !== false && (analysis.metal || analysis.type)) {
+            // Coin identified but not in our reference - show with basic info
+            console.log('PM item identified but not in reference:', analysis);
             setEvaluatingItem({
               id: `eval-${Date.now()}`,
-              photo: frontPhoto,
+              photo: savedFrontPhoto,
               photoBack: base64,
-              description: analysis.description || 'Unknown Item',
+              description: analysis.type || analysis.description || 'Precious Metal Item',
+              coinKey: analysis.coinKey,
+              grade: analysis.grade || 'vf',
+              year: analysis.year,
+              mint: analysis.mintMark,
+              metal: analysis.metal,
+              purity: analysis.purity,
+              confidence: analysis.confidence,
+              notes: analysis.notes,
+              needsManualEntry: true, // Let them look up eBay prices
+              apiError: analysis.coinKey ? `Coin "${analysis.coinKey}" not in reference database` : null
+            });
+            setShowManualEntry(true);
+          } else {
+            // Unknown item - show manual entry
+            console.log('Unknown item, showing manual entry');
+            setEvaluatingItem({
+              id: `eval-${Date.now()}`,
+              photo: savedFrontPhoto,
+              photoBack: base64,
+              description: analysis.description || analysis.type || 'Unknown Item',
               needsManualEntry: true,
               metal: analysis.metal,
               purity: analysis.purity,
@@ -2965,20 +2994,22 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
             setShowManualEntry(true);
           }
           
-          setFrontPhoto(null);
-          setBackPhoto(null);
           setAnalyzing(false);
         } catch (error) {
           console.error('Analysis error:', error);
-          setApiError('Failed to analyze images');
+          setApiError('Failed to analyze images: ' + error.message);
           setAnalyzing(false);
+          setCaptureStep('idle');
         }
         return;
       }
       
-      // Single photo mode (original behavior) - for quick adds
+      // Single photo mode (original behavior) - for quick adds or when not in two-photo flow
+      console.log('Single photo mode');
       setApiError(null);
+      setAnalyzing(true);
       const analysis = await analyzePhoto(base64);
+      setAnalyzing(false);
       
       if (analysis.apiError) {
         setApiError(analysis.apiError);
@@ -4039,6 +4070,158 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                       </div>
                     </div>
                   </details>
+                </div>
+              )}
+              
+              {/* Manual Entry Needed - Coin identified but not in reference */}
+              {evaluatingItem.needsManualEntry && !evaluatingItem.notPreciousMetal && (
+                <div className="p-4">
+                  <div className="flex items-center justify-center mb-4">
+                    <div className="bg-blue-900 text-blue-200 px-4 py-2 rounded-lg flex items-center gap-2">
+                      <Search size={20} />
+                      <span className="font-medium">Manual Lookup Required</span>
+                    </div>
+                  </div>
+                  
+                  <div className="text-center mb-4">
+                    <h3 className="text-white font-bold text-lg mb-2">{evaluatingItem.description}</h3>
+                    {evaluatingItem.year && (
+                      <p className="text-gray-400 text-sm">
+                        {evaluatingItem.year}{evaluatingItem.mint ? `-${evaluatingItem.mint}` : ''}
+                        {evaluatingItem.grade && ` • Grade: ${evaluatingItem.grade.toUpperCase()}`}
+                      </p>
+                    )}
+                    {evaluatingItem.metal && (
+                      <p className="text-gray-400 text-sm">
+                        {evaluatingItem.metal} {evaluatingItem.purity && `(${evaluatingItem.purity})`}
+                      </p>
+                    )}
+                    {evaluatingItem.notes && (
+                      <p className="text-gray-500 text-xs mt-2">{evaluatingItem.notes}</p>
+                    )}
+                    {evaluatingItem.apiError && (
+                      <p className="text-amber-400 text-xs mt-2">{evaluatingItem.apiError}</p>
+                    )}
+                  </div>
+                  
+                  {/* eBay Search */}
+                  {evaluatingItem.ebayResults ? (
+                    <div className="bg-blue-900 rounded-lg p-3 mb-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-blue-200 text-sm font-medium">eBay Prices ({evaluatingItem.ebayResults.count || 0})</span>
+                        <button
+                          onClick={() => {
+                            const query = evaluatingItem.ebaySearchQuery || evaluatingItem.description;
+                            const ebayUrl = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&_sacat=11116&LH_Sold=1&LH_Complete=1`;
+                            window.open(ebayUrl, '_blank');
+                          }}
+                          className="text-green-400 text-xs underline"
+                        >
+                          View Sold on eBay
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div>
+                          <div className="text-gray-400 text-xs">Low</div>
+                          <div className="text-white font-medium">${evaluatingItem.ebayResults.lowPrice || 0}</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-400 text-xs">Avg</div>
+                          <div className="text-green-400 font-bold">${evaluatingItem.ebayResults.avgPrice || 0}</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-400 text-xs">High</div>
+                          <div className="text-white font-medium">${evaluatingItem.ebayResults.highPrice || 0}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 mb-4">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={evaluatingItem.ebaySearchQuery || evaluatingItem.description || ''}
+                          onChange={(e) => setEvaluatingItem({ ...evaluatingItem, ebaySearchQuery: e.target.value })}
+                          className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm"
+                          placeholder="eBay search query..."
+                          onKeyDown={async (e) => {
+                            if (e.key === 'Enter' && e.target.value.trim()) {
+                              setEvaluatingItem({ ...evaluatingItem, ebayLoading: true });
+                              const results = await EbayPricingService.searchSoldListings(e.target.value);
+                              setEvaluatingItem({ ...evaluatingItem, ebayResults: results, ebayLoading: false, ebaySearchQuery: e.target.value });
+                            }
+                          }}
+                        />
+                        <button
+                          onClick={async () => {
+                            const query = evaluatingItem.ebaySearchQuery || evaluatingItem.description || '';
+                            if (query.trim()) {
+                              setEvaluatingItem({ ...evaluatingItem, ebayLoading: true });
+                              const results = await EbayPricingService.searchSoldListings(query);
+                              setEvaluatingItem({ ...evaluatingItem, ebayResults: results, ebayLoading: false, ebaySearchQuery: query });
+                            }
+                          }}
+                          disabled={evaluatingItem.ebayLoading}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-lg"
+                        >
+                          {evaluatingItem.ebayLoading ? <Loader size={18} className="animate-spin" /> : <Search size={18} />}
+                        </button>
+                      </div>
+                      <p className="text-gray-500 text-xs text-center">Search eBay to get pricing</p>
+                    </div>
+                  )}
+                  
+                  {/* Manual Buy Price Entry */}
+                  <div className="bg-gray-700 rounded-lg p-3 mb-4">
+                    <label className="text-gray-400 text-sm block mb-2">Your Buy Price:</label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-400">$</span>
+                      <input
+                        type="number"
+                        value={evaluatingItem.manualBuyPrice || ''}
+                        onChange={(e) => setEvaluatingItem({ ...evaluatingItem, manualBuyPrice: e.target.value })}
+                        className="flex-1 bg-gray-600 border border-gray-500 rounded px-3 py-2 text-white"
+                        placeholder={evaluatingItem.ebayResults ? `Suggested: $${Math.round((evaluatingItem.ebayResults.avgPrice || 0) * 0.5)}-${Math.round((evaluatingItem.ebayResults.avgPrice || 0) * 0.7)}` : 'Enter your buy price'}
+                      />
+                    </div>
+                    {evaluatingItem.ebayResults && (
+                      <p className="text-gray-500 text-xs mt-1">Typical buy: 50-70% of eBay average for coins</p>
+                    )}
+                  </div>
+                  
+                  {/* Actions */}
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setEvaluatingItem(null)}
+                      className="flex-1 bg-gray-600 text-white py-3 rounded-lg font-medium"
+                    >
+                      Pass
+                    </button>
+                    {evaluatingItem.manualBuyPrice && (
+                      <button
+                        onClick={() => {
+                          addToOffer({
+                            id: `eval-${Date.now()}`,
+                            description: evaluatingItem.description,
+                            photo: evaluatingItem.photo,
+                            photoBack: evaluatingItem.photoBack,
+                            buyPrice: parseFloat(evaluatingItem.manualBuyPrice) || 0,
+                            meltValue: 0,
+                            marketValue: evaluatingItem.ebayResults?.avgPrice || 0,
+                            category: evaluatingItem.metal === 'Gold' ? 'Coins - Gold' : 'Coins - Silver',
+                            metalType: evaluatingItem.metal || 'Unknown',
+                            grade: evaluatingItem.grade,
+                            year: evaluatingItem.year,
+                            mint: evaluatingItem.mint,
+                            notes: evaluatingItem.notes
+                          });
+                        }}
+                        className="flex-1 bg-teal-600 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2"
+                      >
+                        <Plus size={20} /> Add ${evaluatingItem.manualBuyPrice}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
               
