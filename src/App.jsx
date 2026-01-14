@@ -225,22 +225,19 @@ const SpotPriceService = {
   lastPrices: { gold: 2685.50, silver: 30.25, platinum: 985.00, palladium: 945.00 },
   lastUpdate: null,
   
-  // Fetch live spot prices from our own serverless API
+  // Fetch live spot prices from goldprice.org (free, CORS-friendly)
   async fetchFromMetalsLive() {
     try {
-      // Try allorigins proxy (reliable CORS proxy)
-      const response = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent('https://api.metals.live/v1/spot'));
+      const response = await fetch('https://data-asg.goldprice.org/dbXRates/USD');
       if (!response.ok) throw new Error('API error');
       const data = await response.json();
       
-      // Parse response - returns array of objects
-      if (Array.isArray(data)) {
-        data.forEach(item => {
-          if (item.gold) this.lastPrices.gold = item.gold;
-          if (item.silver) this.lastPrices.silver = item.silver;
-          if (item.platinum) this.lastPrices.platinum = item.platinum;
-          if (item.palladium) this.lastPrices.palladium = item.palladium;
-        });
+      // Parse response - xauPrice is gold, xagPrice is silver
+      if (data.items && data.items[0]) {
+        const item = data.items[0];
+        if (item.xauPrice) this.lastPrices.gold = item.xauPrice;
+        if (item.xagPrice) this.lastPrices.silver = item.xagPrice;
+        // Platinum and palladium not available from this API, keep defaults or last known
         this.lastUpdate = new Date();
         console.log('Spot prices updated:', this.lastPrices);
         return this.lastPrices;
