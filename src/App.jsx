@@ -7486,16 +7486,117 @@ function AddItemView({ onSave, onCancel, calculateMelt, clients }) {
   const [form, setForm] = useState({ 
     description: '', category: 'Silver - Sterling', metalType: 'Silver', purity: '925', 
     weightOz: '', source: '', clientId: '', purchasePrice: '', meltValue: '', notes: '', 
-    status: 'Available', dateAcquired: new Date().toISOString().split('T')[0]
+    status: 'Available', dateAcquired: new Date().toISOString().split('T')[0],
+    photo: null, photoBack: null
   });
   
+  // Photo refs
+  const frontCameraRef = useRef(null);
+  const frontGalleryRef = useRef(null);
+  const backCameraRef = useRef(null);
+  const backGalleryRef = useRef(null);
+  
   const holdStatus = getHoldStatus(form);
+  
+  const handlePhotoCapture = (side) => (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target.result.split(',')[1];
+      if (side === 'front') {
+        setForm({...form, photo: base64});
+      } else {
+        setForm({...form, photoBack: base64});
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
   
   return (
     <div className="min-h-screen bg-amber-50">
       <div className="bg-amber-700 text-white p-4 flex justify-between"><h1 className="text-xl font-bold">Add Item</h1><button onClick={onCancel}><X size={24} /></button></div>
       <div className="p-4">
         <div className="bg-white rounded-lg shadow p-4 space-y-4">
+          
+          {/* Photo Section */}
+          <div>
+            <label className="block text-sm font-medium mb-2">Photos</label>
+            <div className="grid grid-cols-2 gap-3">
+              {/* Front Photo */}
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Front</div>
+                {form.photo ? (
+                  <div className="relative">
+                    <img src={`data:image/jpeg;base64,${form.photo}`} className="w-full h-24 object-cover rounded-lg" />
+                    <button 
+                      onClick={() => setForm({...form, photo: null})}
+                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => frontCameraRef.current?.click()}
+                      className="flex-1 border-2 border-dashed border-gray-300 rounded-lg p-3 flex flex-col items-center text-gray-400 hover:border-teal-400 hover:text-teal-500"
+                    >
+                      <Camera size={20} />
+                      <span className="text-xs">Camera</span>
+                    </button>
+                    <button 
+                      onClick={() => frontGalleryRef.current?.click()}
+                      className="flex-1 border-2 border-dashed border-gray-300 rounded-lg p-3 flex flex-col items-center text-gray-400 hover:border-teal-400 hover:text-teal-500"
+                    >
+                      <Upload size={20} />
+                      <span className="text-xs">Gallery</span>
+                    </button>
+                  </div>
+                )}
+                <input type="file" accept="image/*" capture="environment" ref={frontCameraRef} onChange={handlePhotoCapture('front')} className="hidden" />
+                <input type="file" accept="image/*" ref={frontGalleryRef} onChange={handlePhotoCapture('front')} className="hidden" />
+              </div>
+              
+              {/* Back Photo */}
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Back</div>
+                {form.photoBack ? (
+                  <div className="relative">
+                    <img src={`data:image/jpeg;base64,${form.photoBack}`} className="w-full h-24 object-cover rounded-lg" />
+                    <button 
+                      onClick={() => setForm({...form, photoBack: null})}
+                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => backCameraRef.current?.click()}
+                      className="flex-1 border-2 border-dashed border-gray-300 rounded-lg p-3 flex flex-col items-center text-gray-400 hover:border-teal-400 hover:text-teal-500"
+                    >
+                      <Camera size={20} />
+                      <span className="text-xs">Camera</span>
+                    </button>
+                    <button 
+                      onClick={() => backGalleryRef.current?.click()}
+                      className="flex-1 border-2 border-dashed border-gray-300 rounded-lg p-3 flex flex-col items-center text-gray-400 hover:border-teal-400 hover:text-teal-500"
+                    >
+                      <Upload size={20} />
+                      <span className="text-xs">Gallery</span>
+                    </button>
+                  </div>
+                )}
+                <input type="file" accept="image/*" capture="environment" ref={backCameraRef} onChange={handlePhotoCapture('back')} className="hidden" />
+                <input type="file" accept="image/*" ref={backGalleryRef} onChange={handlePhotoCapture('back')} className="hidden" />
+              </div>
+            </div>
+          </div>
+          
           <div><label className="block text-sm font-medium mb-1">Description *</label><input type="text" value={form.description} onChange={(e) => setForm({...form, description: e.target.value})} className="w-full border rounded p-2" /></div>
           
           <div>
