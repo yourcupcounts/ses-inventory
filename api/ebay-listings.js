@@ -20,7 +20,7 @@ export default async function handler(req, res) {
   const accessToken = authHeader.replace('Bearer ', '');
   
   try {
-    // First get user info to get the username for Browse API
+    // Get user info
     let username = null;
     const userResponse = await fetch(
       'https://apiz.ebay.com/commerce/identity/v1/user/',
@@ -37,9 +37,9 @@ export default async function handler(req, res) {
       username = userData.username;
     }
     
-    // Use the Sell Inventory API to get offers (listings created via API)
+    // Use the Sell Inventory API to get inventory items
     const inventoryResponse = await fetch(
-      'https://api.ebay.com/sell/inventory/v1/inventory_item?limit=100',
+      'https://api.ebay.com/sell/inventory/v1/inventory_item?limit=200',
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -62,7 +62,7 @@ export default async function handler(req, res) {
     
     // Get active offers from Inventory API
     const offersResponse = await fetch(
-      'https://api.ebay.com/sell/inventory/v1/offer?limit=100',
+      'https://api.ebay.com/sell/inventory/v1/offer?limit=200',
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -76,51 +76,77 @@ export default async function handler(req, res) {
       offersData = await offersResponse.json();
     }
     
-    // *** KEY: Use Browse API to get ALL active listings ***
-    // This includes listings created on eBay website, app, or any method
-    let browseListings = [];
-    let browseError = null;
+    // Try Marketing API to get promoted listings (shows all active listings)
+    let marketingListings = [];
+    let marketingError = null;
     
-    if (username) {
-      try {
-        // Search for all active listings by this seller
-        const browseResponse = await fetch(
-          `https://api.ebay.com/buy/browse/v1/item_summary/search?q=*&filter=sellers:{${encodeURIComponent(username)}}&limit=200`,
-          {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-              'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
+    try {
+      // Get all listing IDs from Marketing API
+      const marketingResponse = await fetch(
+        'https://api.ebay.com/sell/marketing/v1/ad_campaign?limit=50',
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      if (marketingResponse.ok) {
+        const marketingData = await marketingResponse.json();
+        // Extract listing IDs from campaigns
+        for (const campaign of (marketingData.campaigns || [])) {
+          if (campaign.campaignStatus === 'RUNNING') {
+            // Get ads in this campaign
+            const adsResponse = await fetch(
+              `https://api.ebay.com/sell/marketing/v1/ad_campaign/${campaign.campaignId}/ad?limit=200`,
+              {
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`,
+                  'Content-Type': 'application/json'
+                }
+              }
+            );
+            if (adsResponse.ok) {
+              const adsData = await adsResponse.json();
+              for (const ad of (adsData.ads || [])) {
+                marketingListings.push({
+                  listingId: ad.listingId,
+                  status: ad.adStatus,
+                  campaignId: campaign.campaignId
+                });
+              }
             }
           }
-        );
-        
-        if (browseResponse.ok) {
-          const browseData = await browseResponse.json();
-          browseListings = (browseData.itemSummaries || []).map(item => ({
-            type: 'browse',
-            itemId: item.itemId,
-            legacyItemId: item.legacyItemId,
-            title: item.title,
-            price: item.price?.value,
-            currency: item.price?.currency,
-            condition: item.condition,
-            conditionId: item.conditionId,
-            imageUrl: item.image?.imageUrl,
-            thumbnailImages: item.thumbnailImages?.map(t => t.imageUrl),
-            itemWebUrl: item.itemWebUrl,
-            seller: item.seller?.username,
-            buyingOptions: item.buyingOptions,
-            itemGroupType: item.itemGroupType,
-            categories: item.categories?.map(c => ({ id: c.categoryId, name: c.categoryName }))
-          }));
-        } else {
-          const errData = await browseResponse.json().catch(() => ({}));
-          browseError = { status: browseResponse.status, ...errData };
         }
-      } catch (browseErr) {
-        browseError = { message: browseErr.message };
       }
+    } catch (mErr) {
+      marketingError = mErr.message;
+    }
+    
+    // Try Analytics API traffic report to find active listings
+    let analyticsListings = [];
+    try {
+      const analyticsResponse = await fetch(
+        'https://api.ebay.com/sell/analytics/v1/traffic_report?dimension=LISTING&metric=LISTING_VIEWS_TOTAL',
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
+          }
+        }
+      );
+      
+      if (analyticsResponse.ok) {
+        const analyticsData = await analyticsResponse.json();
+        analyticsListings = (analyticsData.dimensionMetrics || []).map(dm => ({
+          listingId: dm.dimension?.dimensionValue,
+          views: dm.metrics?.find(m => m.metricKey === 'LISTING_VIEWS_TOTAL')?.value
+        })).filter(l => l.listingId);
+      }
+    } catch (aErr) {
+      console.log('Analytics error:', aErr.message);
     }
     
     // Get fulfillment orders
@@ -141,64 +167,63 @@ export default async function handler(req, res) {
     
     // Combine all sources into a unified listings array
     const listings = [];
-    const seenItemIds = new Set();
+    const seenIds = new Set();
     
-    // Add browse listings first (most comprehensive)
-    for (const item of browseListings) {
-      if (!seenItemIds.has(item.itemId)) {
-        seenItemIds.add(item.itemId);
-        listings.push({
-          ...item,
-          status: 'ACTIVE',
-          source: 'browse'
-        });
-      }
-    }
-    
-    // Add offers from Inventory API
+    // Add offers from Inventory API (these are API-created listings)
     if (offersData.offers && offersData.offers.length > 0) {
       for (const offer of offersData.offers) {
-        // Check if we already have this listing from browse
-        const existingListing = listings.find(l => 
-          l.legacyItemId === offer.listingId || 
-          l.itemId === offer.listingId
-        );
-        
-        if (existingListing) {
-          // Enhance with offer data
-          existingListing.sku = offer.sku;
-          existingListing.offerId = offer.offerId;
-          existingListing.format = offer.format;
-          existingListing.inventoryPrice = offer.pricingSummary?.price?.value;
-          existingListing.quantity = offer.availableQuantity;
-        } else if (!seenItemIds.has(offer.listingId)) {
-          // Add as new listing
-          seenItemIds.add(offer.listingId);
+        if (offer.listingId && !seenIds.has(offer.listingId)) {
+          seenIds.add(offer.listingId);
+          
+          // Find matching inventory item
+          const invItem = inventoryData.inventoryItems?.find(i => i.sku === offer.sku);
+          
           listings.push({
-            type: 'offer',
-            sku: offer.sku,
+            type: 'inventory_api',
+            itemId: offer.listingId,
             listingId: offer.listingId,
+            sku: offer.sku,
             offerId: offer.offerId,
+            title: invItem?.product?.title || offer.sku,
             status: offer.status,
             format: offer.format,
             price: offer.pricingSummary?.price?.value,
             currency: offer.pricingSummary?.price?.currency,
             quantity: offer.availableQuantity,
-            source: 'inventory_api'
+            imageUrl: invItem?.product?.imageUrls?.[0],
+            condition: invItem?.condition
           });
         }
       }
     }
     
-    // Enhance listings with inventory item details
-    if (inventoryData.inventoryItems) {
-      for (const item of inventoryData.inventoryItems) {
-        const existingListing = listings.find(l => l.sku === item.sku);
-        if (existingListing) {
-          existingListing.inventoryTitle = item.product?.title;
-          existingListing.inventoryDescription = item.product?.description;
-          existingListing.inventoryImageUrls = item.product?.imageUrls;
-        }
+    // Add listings from analytics (these are all listings with any views)
+    for (const item of analyticsListings) {
+      if (item.listingId && !seenIds.has(item.listingId)) {
+        seenIds.add(item.listingId);
+        listings.push({
+          type: 'analytics',
+          itemId: item.listingId,
+          listingId: item.listingId,
+          title: `Listing ${item.listingId}`,
+          status: 'ACTIVE',
+          views: item.views
+        });
+      }
+    }
+    
+    // Add listings from marketing campaigns
+    for (const item of marketingListings) {
+      if (item.listingId && !seenIds.has(item.listingId)) {
+        seenIds.add(item.listingId);
+        listings.push({
+          type: 'marketing',
+          itemId: item.listingId,
+          listingId: item.listingId,
+          title: `Listing ${item.listingId}`,
+          status: 'ACTIVE',
+          promoted: true
+        });
       }
     }
     
@@ -209,32 +234,57 @@ export default async function handler(req, res) {
       items: order.lineItems?.map(li => ({
         title: li.title,
         sku: li.sku,
+        legacyItemId: li.legacyItemId,
         quantity: li.quantity,
         price: li.lineItemCost?.value
       }))
     })) || [];
+    
+    // Extract sold items from orders to show what's been listed
+    const soldItems = [];
+    for (const order of (fulfillmentData.orders || [])) {
+      for (const li of (order.lineItems || [])) {
+        if (li.legacyItemId && !seenIds.has(li.legacyItemId)) {
+          seenIds.add(li.legacyItemId);
+          soldItems.push({
+            type: 'sold',
+            itemId: li.legacyItemId,
+            listingId: li.legacyItemId,
+            title: li.title,
+            status: 'SOLD',
+            price: li.lineItemCost?.value,
+            soldDate: order.creationDate
+          });
+        }
+      }
+    }
     
     res.status(200).json({
       success: true,
       username,
       totalListings: listings.length,
       listings,
+      soldItems,
       recentOrders,
       raw: {
-        browseCount: browseListings.length,
         inventoryCount: inventoryData.inventoryItems?.length || 0,
         offersCount: offersData.offers?.length || 0,
+        analyticsCount: analyticsListings.length,
+        marketingCount: marketingListings.length,
         ordersCount: fulfillmentData.orders?.length || 0
       },
       errors: {
-        browse: browseError
+        marketing: marketingError
       },
       apiStatus: {
         user: userResponse.status,
         inventory: inventoryResponse.status,
         offers: offersResponse.status,
         fulfillment: fulfillmentResponse.status
-      }
+      },
+      note: listings.length === 0 ? 
+        'No listings found via Inventory API. Listings created on eBay website may not appear here. Check your eBay Developer account for API access to Trading API.' : 
+        null
     });
     
   } catch (err) {
