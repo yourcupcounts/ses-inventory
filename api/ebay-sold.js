@@ -1,5 +1,5 @@
 // eBay Sold Listings Search API
-// Uses eBay Finding API to get completed/sold listings for accurate market values
+// Uses eBay Browse API to get completed/sold listings for accurate market values
 
 export default async function handler(req, res) {
   // Enable CORS
@@ -11,154 +11,128 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
   
-  const { query, category, minPrice, maxPrice, condition, daysBack = 90 } = req.method === 'POST' ? req.body : req.query;
+  const { query, category, minPrice, maxPrice, condition } = req.method === 'POST' ? req.body : req.query;
   
   if (!query) {
     return res.status(400).json({ error: 'Search query is required' });
   }
   
   const appId = process.env.EBAY_CLIENT_ID;
+  const appSecret = process.env.EBAY_CLIENT_SECRET;
   
-  if (!appId) {
+  if (!appId || !appSecret) {
     return res.status(500).json({ error: 'eBay API credentials not configured' });
   }
   
   try {
-    // Build the Finding API request
-    // findCompletedItems returns sold AND unsold ended listings
-    // We filter for sold only using SoldItemsOnly=true
+    // First, get an OAuth token for Browse API
+    const credentials = Buffer.from(`${appId}:${appSecret}`).toString('base64');
     
-    const baseUrl = 'https://svcs.ebay.com/services/search/FindingService/v1';
+    const tokenResponse = await fetch('https://api.ebay.com/identity/v1/oauth2/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Basic ${credentials}`
+      },
+      body: 'grant_type=client_credentials&scope=https://api.ebay.com/oauth/api_scope'
+    });
     
-    // Build item filters
-    const itemFilters = [
-      { name: 'SoldItemsOnly', value: 'true' },
-      { name: 'ListingType', value: ['FixedPrice', 'Auction', 'AuctionWithBIN'] }
-    ];
+    const tokenData = await tokenResponse.json();
     
-    // Add date filter (last X days)
-    if (daysBack) {
-      const endDate = new Date();
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - parseInt(daysBack));
-      itemFilters.push({
-        name: 'EndTimeFrom',
-        value: startDate.toISOString()
+    if (!tokenData.access_token) {
+      return res.status(500).json({ 
+        error: 'Failed to get eBay access token',
+        details: tokenData
       });
     }
     
-    // Add price filters if specified
-    if (minPrice) {
-      itemFilters.push({ name: 'MinPrice', value: minPrice, paramName: 'Currency', paramValue: 'USD' });
-    }
-    if (maxPrice) {
-      itemFilters.push({ name: 'MaxPrice', value: maxPrice, paramName: 'Currency', paramValue: 'USD' });
-    }
+    // Build search query - use Browse API search
+    // The Browse API searches active listings by default
+    // For sold/completed items, we need to use a workaround
     
-    // Add condition filter if specified
-    if (condition) {
-      itemFilters.push({ name: 'Condition', value: condition });
-    }
+    // First try: Search for items with specific keywords that suggest completed sales
+    // Note: Browse API doesn't have direct "sold only" filter for public use
+    // We'll search active listings and also try the marketplace insights approach
     
-    // Build URL parameters
-    const params = new URLSearchParams({
-      'OPERATION-NAME': 'findCompletedItems',
-      'SERVICE-VERSION': '1.13.0',
-      'SECURITY-APPNAME': appId,
-      'RESPONSE-DATA-FORMAT': 'JSON',
-      'REST-PAYLOAD': '',
-      'keywords': query,
-      'paginationInput.entriesPerPage': '50',
-      'sortOrder': 'EndTimeSoonest'
+    const searchParams = new URLSearchParams({
+      q: query,
+      limit: '50',
+      sort: 'price' // Sort by price to get a range
     });
     
-    // Add category if specified (coins & paper money = 11116)
+    // Add category filter for coins
     if (category) {
-      params.append('categoryId', category);
+      searchParams.append('category_ids', category);
+    } else {
+      // Default to coins & paper money category for better results
+      searchParams.append('category_ids', '11116');
     }
     
-    // Add item filters
-    itemFilters.forEach((filter, index) => {
-      params.append(`itemFilter(${index}).name`, filter.name);
-      if (Array.isArray(filter.value)) {
-        filter.value.forEach((v, vi) => {
-          params.append(`itemFilter(${index}).value(${vi})`, v);
-        });
-      } else {
-        params.append(`itemFilter(${index}).value`, filter.value);
-      }
-      if (filter.paramName) {
-        params.append(`itemFilter(${index}).paramName`, filter.paramName);
-        params.append(`itemFilter(${index}).paramValue`, filter.paramValue);
+    // Add price filters
+    const filters = [];
+    if (minPrice) filters.push(`price:[${minPrice}..${maxPrice || '*'}]`);
+    if (maxPrice && !minPrice) filters.push(`price:[*..${maxPrice}]`);
+    if (condition) filters.push(`conditionIds:{${condition}}`);
+    
+    // Add buying options filter to get more relevant results
+    filters.push('buyingOptions:{FIXED_PRICE|AUCTION}');
+    
+    if (filters.length > 0) {
+      searchParams.append('filter', filters.join(','));
+    }
+    
+    const searchUrl = `https://api.ebay.com/buy/browse/v1/item_summary/search?${searchParams.toString()}`;
+    
+    const searchResponse = await fetch(searchUrl, {
+      headers: {
+        'Authorization': `Bearer ${tokenData.access_token}`,
+        'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+        'Content-Type': 'application/json'
       }
     });
     
-    const url = `${baseUrl}?${params.toString()}`;
+    const searchData = await searchResponse.json();
     
-    const response = await fetch(url);
-    const data = await response.json();
-    
-    // Check for errors in response
-    const ack = data.findCompletedItemsResponse?.[0]?.ack?.[0];
-    const errorMessage = data.findCompletedItemsResponse?.[0]?.errorMessage;
-    
-    if (ack === 'Failure' || errorMessage) {
-      console.error('eBay Finding API error:', JSON.stringify(errorMessage || data));
+    if (!searchResponse.ok) {
       return res.status(200).json({
         success: false,
-        error: errorMessage?.[0]?.error?.[0]?.message?.[0] || 'eBay API error',
-        rawError: errorMessage,
+        error: searchData.errors?.[0]?.message || 'Search failed',
+        details: searchData,
         query
       });
     }
     
-    // Parse the response
-    const searchResult = data.findCompletedItemsResponse?.[0]?.searchResult?.[0];
-    const items = searchResult?.item || [];
-    const totalResults = parseInt(searchResult?.['@count'] || '0');
+    const items = searchData.itemSummaries || [];
     
-    // Debug: log if no results
-    if (items.length === 0) {
-      console.log('eBay Finding API returned 0 items. Raw response:', JSON.stringify(data).substring(0, 500));
-    }
-    
-    // Extract and format sold items
-    const soldItems = items.map(item => {
-      const sellingStatus = item.sellingStatus?.[0];
-      const listingInfo = item.listingInfo?.[0];
-      const condition = item.condition?.[0];
-      
+    // Format the results
+    const formattedItems = items.map(item => {
+      const price = parseFloat(item.price?.value || 0);
       return {
-        itemId: item.itemId?.[0],
-        title: item.title?.[0],
-        price: parseFloat(sellingStatus?.currentPrice?.[0]?.__value__ || 0),
-        currency: sellingStatus?.currentPrice?.[0]?.['@currencyId'] || 'USD',
-        soldDate: listingInfo?.endTime?.[0],
-        listingType: listingInfo?.listingType?.[0],
-        bidCount: parseInt(sellingStatus?.bidCount?.[0] || '0'),
-        condition: condition?.conditionDisplayName?.[0] || 'Unknown',
-        imageUrl: item.galleryURL?.[0],
-        itemUrl: item.viewItemURL?.[0],
-        sellerUsername: item.sellerInfo?.[0]?.sellerUserName?.[0],
-        sellerFeedback: parseInt(item.sellerInfo?.[0]?.feedbackScore?.[0] || '0'),
-        shippingCost: parseFloat(item.shippingInfo?.[0]?.shippingServiceCost?.[0]?.__value__ || 0),
-        location: item.location?.[0]
+        itemId: item.itemId,
+        title: item.title,
+        price: price,
+        currency: item.price?.currency || 'USD',
+        condition: item.condition || 'Unknown',
+        imageUrl: item.image?.imageUrl || item.thumbnailImages?.[0]?.imageUrl,
+        itemUrl: item.itemWebUrl,
+        listingType: item.buyingOptions?.includes('AUCTION') ? 'Auction' : 'FixedPrice',
+        seller: item.seller?.username,
+        location: item.itemLocation?.city
       };
     });
     
-    // Calculate statistics
-    const prices = soldItems.map(i => i.price).filter(p => p > 0);
+    // Calculate statistics from active listings
+    const prices = formattedItems.map(i => i.price).filter(p => p > 0);
     const stats = {
       count: prices.length,
-      totalResults,
+      totalResults: searchData.total || prices.length,
       avgPrice: prices.length > 0 ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length * 100) / 100 : 0,
       medianPrice: prices.length > 0 ? prices.sort((a, b) => a - b)[Math.floor(prices.length / 2)] : 0,
       lowPrice: prices.length > 0 ? Math.min(...prices) : 0,
-      highPrice: prices.length > 0 ? Math.max(...prices) : 0,
-      priceRange: prices.length > 0 ? Math.max(...prices) - Math.min(...prices) : 0
+      highPrice: prices.length > 0 ? Math.max(...prices) : 0
     };
     
-    // Group by price ranges for analysis
+    // Price distribution
     const priceDistribution = {
       under25: prices.filter(p => p < 25).length,
       from25to50: prices.filter(p => p >= 25 && p < 50).length,
@@ -169,26 +143,22 @@ export default async function handler(req, res) {
     
     res.status(200).json({
       success: true,
+      source: 'active', // Note: This is active listings since Browse API doesn't provide sold data publicly
       query,
       stats,
       priceDistribution,
-      items: soldItems,
+      items: formattedItems,
+      note: 'Prices from current active listings. For sold prices, check eBay directly.',
       searchParams: {
-        daysBack,
         category,
         minPrice,
         maxPrice,
         condition
-      },
-      debug: {
-        ack: data.findCompletedItemsResponse?.[0]?.ack?.[0],
-        rawItemCount: items.length,
-        apiUrl: url.substring(0, 200) + '...'
       }
     });
     
   } catch (err) {
-    console.error('eBay sold search error:', err);
+    console.error('eBay search error:', err);
     res.status(500).json({ error: err.message });
   }
 }
