@@ -8886,9 +8886,11 @@ function EbaySyncView({ onBack, onImportListings, inventory }) {
 
 // ============ MAIN APP ============
 export default function SESInventoryApp() {
-  const [inventory, setInventory] = useState(starterInventory);
-  const [clients, setClients] = useState(starterClients);
-  const [lots, setLots] = useState(starterLots); // Track lots
+  // Start with null to indicate "not yet loaded" vs "empty"
+  const [inventory, setInventory] = useState(null);
+  const [clients, setClients] = useState(null);
+  const [lots, setLots] = useState(null);
+  const [dataLoaded, setDataLoaded] = useState(false); // Track if initial load is complete
   const [view, setView] = useState('list');
   const [selectedItem, setSelectedItem] = useState(null);
   const [pendingListing, setPendingListing] = useState(null); // Store generated listing for eBay
@@ -8965,8 +8967,9 @@ export default function SESInventoryApp() {
   
   // Import eBay listings to inventory
   const handleImportEbayListings = (items) => {
-    let currentMax = inventory.length > 0 
-      ? Math.max(...inventory.map(i => parseInt(i.id.replace('SES-', '')) || 0))
+    const currentInventory = inventory || [];
+    let currentMax = currentInventory.length > 0 
+      ? Math.max(...currentInventory.map(i => parseInt(i.id.replace('SES-', '')) || 0))
       : 0;
     
     const newItems = items.map((item, index) => ({
@@ -8974,7 +8977,7 @@ export default function SESInventoryApp() {
       id: `SES-${String(currentMax + index + 1).padStart(3, '0')}`
     }));
     
-    setInventory([...inventory, ...newItems]);
+    setInventory([...currentInventory, ...newItems]);
     setView('list');
     alert(`Imported ${newItems.length} listing(s) from eBay`);
   };
@@ -9008,10 +9011,27 @@ export default function SESInventoryApp() {
           FirebaseService.loadClients(),
           FirebaseService.loadLots()
         ]);
-        if (fbInventory?.length) setInventory(fbInventory);
-        if (fbClients?.length) setClients(fbClients);
-        if (fbLots?.length) setLots(fbLots);
+        
+        // Use Firebase data if it exists, otherwise use starter data
+        setInventory(fbInventory?.length ? fbInventory : starterInventory);
+        setClients(fbClients?.length ? fbClients : starterClients);
+        setLots(fbLots?.length ? fbLots : starterLots);
+        
+        console.log('Loaded from Firebase:', {
+          inventory: fbInventory?.length || 0,
+          clients: fbClients?.length || 0,
+          lots: fbLots?.length || 0
+        });
+      } else {
+        // Firebase not available, use starter data
+        setInventory(starterInventory);
+        setClients(starterClients);
+        setLots(starterLots);
+        console.log('Firebase not available, using starter data');
       }
+      
+      // Mark initial load as complete - this enables auto-save
+      setDataLoaded(true);
       
       // Fetch live spot prices
       await refreshSpotPrices();
@@ -9024,24 +9044,24 @@ export default function SESInventoryApp() {
     return () => clearInterval(priceInterval);
   }, []);
   
-  // Auto-save to Firebase when data changes
+  // Auto-save to Firebase when data changes - ONLY after initial load completes
   useEffect(() => {
-    if (firebaseReady && inventory.length > 0) {
+    if (firebaseReady && dataLoaded && inventory !== null && inventory.length >= 0) {
       FirebaseService.saveInventory(inventory);
     }
-  }, [inventory, firebaseReady]);
+  }, [inventory, firebaseReady, dataLoaded]);
   
   useEffect(() => {
-    if (firebaseReady && clients.length > 0) {
+    if (firebaseReady && dataLoaded && clients !== null && clients.length >= 0) {
       FirebaseService.saveClients(clients);
     }
-  }, [clients, firebaseReady]);
+  }, [clients, firebaseReady, dataLoaded]);
   
   useEffect(() => {
-    if (firebaseReady && lots.length > 0) {
+    if (firebaseReady && dataLoaded && lots !== null && lots.length >= 0) {
       FirebaseService.saveLots(lots);
     }
-  }, [lots, firebaseReady]);
+  }, [lots, firebaseReady, dataLoaded]);
   
   // Refresh spot prices
   const refreshSpotPrices = async () => {
@@ -9055,25 +9075,25 @@ export default function SESInventoryApp() {
   };
 
   const stats = {
-    availableItems: inventory.filter(i => i.status === 'Available').length,
-    soldItems: inventory.filter(i => i.status === 'Sold').length,
-    totalMelt: inventory.filter(i => i.status === 'Available').reduce((sum, i) => sum + (i.meltValue || 0), 0),
-    totalProfit: inventory.filter(i => i.status === 'Sold').reduce((sum, i) => sum + ((i.salePrice || 0) - (i.purchasePrice || 0)), 0)
+    availableItems: (inventory || []).filter(i => i.status === 'Available').length,
+    soldItems: (inventory || []).filter(i => i.status === 'Sold').length,
+    totalMelt: (inventory || []).filter(i => i.status === 'Available').reduce((sum, i) => sum + (i.meltValue || 0), 0),
+    totalProfit: (inventory || []).filter(i => i.status === 'Sold').reduce((sum, i) => sum + ((i.salePrice || 0) - (i.purchasePrice || 0)), 0)
   };
   
   // Hold stats
-  const available = inventory.filter(i => i.status === 'Available');
+  const available = (inventory || []).filter(i => i.status === 'Available');
   const onHoldCount = available.filter(i => getHoldStatus(i).status === 'hold').length;
   const readyCount = available.filter(i => getHoldStatus(i).canSell).length;
 
-  const filteredInventory = inventory.filter(item => {
+  const filteredInventory = (inventory || []).filter(item => {
     const matchesSearch = item.description.toLowerCase().includes(searchTerm.toLowerCase()) || item.id.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = filter === 'all' || (filter === 'available' && item.status === 'Available') || (filter === 'sold' && item.status === 'Sold');
     return matchesSearch && matchesFilter;
   });
 
   const getNextId = (prefix) => {
-    const items = prefix === 'SES' ? inventory : prefix === 'LOT' ? lots : clients;
+    const items = prefix === 'SES' ? (inventory || []) : prefix === 'LOT' ? (lots || []) : (clients || []);
     const nums = items.map(i => parseInt(i.id.replace(`${prefix}-`, ''))).filter(n => !isNaN(n));
     return `${prefix}-${String(Math.max(...nums, 0) + 1).padStart(3, '0')}`;
   };
@@ -9285,6 +9305,20 @@ export default function SESInventoryApp() {
       itemIds.includes(item.id) ? { ...item, status: 'Available' } : item
     ));
   };
+
+  // Show loading screen while data is loading
+  if (!dataLoaded || inventory === null || clients === null) {
+    return (
+      <div className="min-h-screen bg-amber-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-amber-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <h2 className="text-xl font-bold text-amber-800">Stevens Estate Services</h2>
+          <p className="text-amber-600 mt-2">Loading your inventory...</p>
+          {firebaseReady && <p className="text-green-600 text-sm mt-2">✓ Connected to cloud</p>}
+        </div>
+      </div>
+    );
+  }
 
   // Client views
   if (view === 'clients') return <ClientListView clients={clients} onSelect={(c) => { setSelectedClient(c); setView('clientDetail'); }} onAdd={() => setView('clientAdd')} onBack={() => setView('list')} />;
