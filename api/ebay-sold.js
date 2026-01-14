@@ -98,10 +98,29 @@ export default async function handler(req, res) {
     const response = await fetch(url);
     const data = await response.json();
     
+    // Check for errors in response
+    const ack = data.findCompletedItemsResponse?.[0]?.ack?.[0];
+    const errorMessage = data.findCompletedItemsResponse?.[0]?.errorMessage;
+    
+    if (ack === 'Failure' || errorMessage) {
+      console.error('eBay Finding API error:', JSON.stringify(errorMessage || data));
+      return res.status(200).json({
+        success: false,
+        error: errorMessage?.[0]?.error?.[0]?.message?.[0] || 'eBay API error',
+        rawError: errorMessage,
+        query
+      });
+    }
+    
     // Parse the response
     const searchResult = data.findCompletedItemsResponse?.[0]?.searchResult?.[0];
     const items = searchResult?.item || [];
     const totalResults = parseInt(searchResult?.['@count'] || '0');
+    
+    // Debug: log if no results
+    if (items.length === 0) {
+      console.log('eBay Finding API returned 0 items. Raw response:', JSON.stringify(data).substring(0, 500));
+    }
     
     // Extract and format sold items
     const soldItems = items.map(item => {
@@ -160,6 +179,11 @@ export default async function handler(req, res) {
         minPrice,
         maxPrice,
         condition
+      },
+      debug: {
+        ack: data.findCompletedItemsResponse?.[0]?.ack?.[0],
+        rawItemCount: items.length,
+        apiUrl: url.substring(0, 200) + '...'
       }
     });
     
