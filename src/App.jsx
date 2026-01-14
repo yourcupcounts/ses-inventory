@@ -7543,22 +7543,30 @@ function AddItemView({ onSave, onCancel, calculateMelt, clients }) {
         type: 'text',
         text: `Analyze ${backBase64 ? 'these two images (front and back)' : 'this image'} and identify the precious metal item.
 
+CRITICAL - READ ALL TEXT IN THE IMAGE:
+1. Look for HANDWRITTEN text (prices, notes, grades)
+2. Look for PRINTED LABELS or STICKERS (price tags, inventory labels)
+3. Look for HOLDER/SLAB information (PCGS, NGC, ANACS grades, certification numbers)
+4. Look for 2x2 FLIP text (handwritten or typed descriptions)
+
 IMPORTANT: For coins, use BOTH sides to determine:
-- Year (usually on obverse/front)
-- Mint mark (location varies - could be on obverse or reverse)
-- Type identification (design elements on both sides)
+- Year (usually on obverse/front, or written on holder/flip)
+- Mint mark (on coin OR written on holder/flip)
+- Grade (ESPECIALLY if written on holder, slab, or flip - e.g., "PR69", "MS65", "Proof", "BU")
+- Purchase price (often handwritten on flip or sticker - e.g., "$5", "$12.50")
 
 Return ONLY a valid JSON object (no markdown, no explanation) with these fields:
 {
-  "description": "Full description (e.g., '1921-D Morgan Silver Dollar', '14K Gold Cuban Link Bracelet')",
+  "description": "Full description (e.g., '1976-S Washington Quarter Proof', '14K Gold Cuban Link Bracelet')",
   "category": "One of: Coins - Silver, Coins - Gold, Silver - Sterling, Silver - Bullion, Gold - Jewelry, Gold - Bullion, Gold - Scrap, Platinum, Palladium, Other",
   "metalType": "Gold, Silver, Platinum, Palladium, or Other",
-  "purity": "e.g., 999, 925, 14K, 10K, 18K, 90%",
+  "purity": "e.g., 999, 925, 14K, 10K, 18K, 90%, 40%",
   "estimatedWeightOz": number or null,
-  "year": "year if visible on either side" or null,
-  "mint": "mint mark if visible on either side (P, D, S, O, CC, W)" or null,
-  "grade": "estimated grade (G, VG, F, VF, XF, AU, BU, MS60-MS70)" or null,
-  "notes": "condition notes, identifying marks, or other details",
+  "year": "year if visible on coin or written on holder" or null,
+  "mint": "mint mark if visible (P, D, S, O, CC, W)" or null,
+  "grade": "grade from holder/flip/slab (Proof, PR69, MS65, BU, etc.) or estimated grade" or null,
+  "purchasePrice": number or null (if a price is written/labeled, extract just the number),
+  "notes": "condition notes, certification number if slabbed, or other details",
   "confidence": "high, medium, or low"
 }
 
@@ -7569,13 +7577,7 @@ Common silver coin weights (90% silver, ASW = Actual Silver Weight):
 - Standing Liberty Quarter: 0.1808 oz ASW
 - Roosevelt/Mercury Dime (pre-1965): 0.0723 oz ASW
 - American Silver Eagle: 1.0 oz (999 fine)
-
-Mint mark locations:
-- Morgan Dollar: Reverse, below wreath
-- Peace Dollar: Reverse, below ONE
-- Washington Quarter: Reverse (pre-1968) or Obverse (1968+)
-- Walking Liberty Half: Obverse, below IN GOD WE TRUST
-- Mercury Dime: Reverse, left of fasces
+- 1976 Bicentennial Quarter (40% silver S-mint): 0.0739 oz ASW
 
 Return ONLY the JSON object.`
       });
@@ -7635,6 +7637,7 @@ Return ONLY the JSON object.`
         year: aiResult.year || prev.year,
         mint: aiResult.mint || prev.mint,
         grade: aiResult.grade || prev.grade,
+        purchasePrice: aiResult.purchasePrice || prev.purchasePrice,
         notes: aiResult.notes || prev.notes
       }));
       
