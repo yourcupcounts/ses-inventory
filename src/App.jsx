@@ -8891,6 +8891,7 @@ export default function SESInventoryApp() {
   const [clients, setClients] = useState(null);
   const [lots, setLots] = useState(null);
   const [dataLoaded, setDataLoaded] = useState(false); // Track if initial load is complete
+  const [kpiExpanded, setKpiExpanded] = useState(true); // KPI dashboard expanded by default
   const [view, setView] = useState('list');
   const [selectedItem, setSelectedItem] = useState(null);
   const [pendingListing, setPendingListing] = useState(null); // Store generated listing for eBay
@@ -9421,175 +9422,389 @@ export default function SESInventoryApp() {
   if (view === 'ebaySync') return <EbaySyncView onBack={() => setView('settings')} onImportListings={handleImportEbayListings} inventory={inventory} />;
 
   // LIST VIEW
+  // Calculate comprehensive KPIs
+  const calculateKPIs = () => {
+    const inv = inventory || [];
+    const availableItems = inv.filter(i => i.status === 'Available' && !i.plannedDisposition);
+    const stashItems = inv.filter(i => i.status === 'Stash');
+    const holdItems = inv.filter(i => i.plannedDisposition === 'hold');
+    const sellItems = inv.filter(i => i.plannedDisposition === 'sell');
+    const soldItems = inv.filter(i => i.status === 'Sold');
+    const listedItems = inv.filter(i => i.ebayListingId);
+    
+    // Helper to calculate spot value
+    const calcSpotValue = (items) => items.reduce((sum, item) => {
+      const weight = parseFloat(item.weightOz) || 0;
+      let purityDecimal = 1;
+      if (item.purity?.includes('K')) purityDecimal = parseInt(item.purity) / 24;
+      else if (item.purity?.includes('%')) purityDecimal = parseInt(item.purity) / 100;
+      else if (item.purity === '925') purityDecimal = 0.925;
+      else if (item.purity === '999' || item.purity === '9999') purityDecimal = 0.999;
+      return sum + (weight * purityDecimal * (liveSpotPrices[item.metalType?.toLowerCase()] || 0));
+    }, 0);
+    
+    const calcCostBasis = (items) => items.reduce((sum, i) => sum + (parseFloat(i.purchasePrice) || 0), 0);
+    const calcMeltValue = (items) => items.reduce((sum, i) => sum + (parseFloat(i.meltValue) || 0), 0);
+    
+    // Portfolio by disposition
+    const stashValue = calcSpotValue(stashItems);
+    const stashCost = calcCostBasis(stashItems);
+    const holdValue = calcSpotValue(holdItems);
+    const holdCost = calcCostBasis(holdItems);
+    const sellValue = calcSpotValue(sellItems);
+    const sellCost = calcCostBasis(sellItems);
+    const availableValue = calcSpotValue(availableItems);
+    const availableCost = calcCostBasis(availableItems);
+    
+    // Total portfolio
+    const totalValue = stashValue + holdValue + sellValue + availableValue;
+    const totalCost = stashCost + holdCost + sellCost + availableCost;
+    const unrealizedPL = totalValue - totalCost;
+    
+    // Sold performance
+    const totalSalesRevenue = soldItems.reduce((sum, i) => sum + (parseFloat(i.salePrice) || 0), 0);
+    const soldCostBasis = calcCostBasis(soldItems);
+    const realizedPL = totalSalesRevenue - soldCostBasis;
+    const avgProfitMargin = soldCostBasis > 0 ? ((realizedPL / soldCostBasis) * 100) : 0;
+    
+    // Metal breakdown
+    const silverItems = inv.filter(i => i.metalType?.toLowerCase() === 'silver' && i.status !== 'Sold');
+    const goldItems = inv.filter(i => i.metalType?.toLowerCase() === 'gold' && i.status !== 'Sold');
+    const platinumItems = inv.filter(i => i.metalType?.toLowerCase() === 'platinum' && i.status !== 'Sold');
+    
+    return {
+      // Counts
+      totalItems: inv.length,
+      availableCount: availableItems.length,
+      stashCount: stashItems.length,
+      holdCount: holdItems.length,
+      sellCount: sellItems.length,
+      soldCount: soldItems.length,
+      listedCount: listedItems.length,
+      
+      // Values by disposition
+      stashValue, stashCost,
+      holdValue, holdCost,
+      sellValue, sellCost,
+      availableValue, availableCost,
+      
+      // Portfolio totals
+      totalValue,
+      totalCost,
+      unrealizedPL,
+      
+      // Realized P&L
+      totalSalesRevenue,
+      soldCostBasis,
+      realizedPL,
+      avgProfitMargin,
+      
+      // Net worth (current holdings at spot)
+      netWorth: totalValue,
+      
+      // By metal
+      silverValue: calcSpotValue(silverItems),
+      silverCount: silverItems.length,
+      goldValue: calcSpotValue(goldItems),
+      goldCount: goldItems.length,
+      platinumValue: calcSpotValue(platinumItems),
+      platinumCount: platinumItems.length
+    };
+  };
+  
+  const kpis = calculateKPIs();
+
   return (
-    <div className="min-h-screen bg-amber-50">
-      <div className="bg-amber-700 text-white p-4 shadow-lg">
+    <div className="min-h-screen bg-gray-100">
+      {/* Clean Header with Spot Prices */}
+      <div className="bg-gradient-to-r from-amber-700 to-amber-800 text-white p-4">
         <div className="flex justify-between items-center">
-          <h1 className="text-xl font-bold flex items-center gap-2"><Package size={24} /> SES Inventory</h1>
-          <div className="flex gap-1">
-            <button onClick={() => setView('clients')} className="p-2 hover:bg-amber-600 rounded"><Users size={20} /></button>
-            <button onClick={() => setView('holdStatus')} className="p-2 hover:bg-amber-600 rounded"><Clock size={20} /></button>
-            <button onClick={() => setView('dashboard')} className="p-2 hover:bg-amber-600 rounded"><BarChart3 size={20} /></button>
-            <button onClick={() => setView('settings')} className="p-2 hover:bg-amber-600 rounded"><Settings size={20} /></button>
-          </div>
-        </div>
-        <div className="grid grid-cols-4 gap-2 mt-3 text-xs">
-          <div className="bg-amber-600 p-2 rounded text-center"><div className="font-bold">{stats.availableItems}</div><div className="opacity-80">Stock</div></div>
-          <div className="bg-amber-600 p-2 rounded text-center"><div className="font-bold">${stats.totalMelt.toLocaleString()}</div><div className="opacity-80">Melt</div></div>
-          <div className="bg-amber-600 p-2 rounded text-center"><div className="font-bold">{stats.soldItems}</div><div className="opacity-80">Sold</div></div>
-          <div className="bg-amber-600 p-2 rounded text-center"><div className="font-bold text-green-300">${stats.totalProfit.toLocaleString()}</div><div className="opacity-80">Profit</div></div>
-        </div>
-      </div>
-      
-      {/* Main Action - Start Appraisal */}
-      <div className="px-4 pt-4">
-        <button 
-          onClick={() => setView('appraisal')} 
-          className="w-full bg-gradient-to-r from-teal-500 to-teal-600 text-white py-4 rounded-xl shadow-lg flex items-center justify-center gap-3"
-        >
-          <Camera size={24} />
-          <div className="text-left">
-            <div className="font-bold text-lg">Start Appraisal Session</div>
-            <div className="text-teal-100 text-sm">Snap • Price • Buy</div>
-          </div>
-        </button>
-      </div>
-      
-      {/* Calculator Button */}
-      <div className="px-4 pt-2">
-        <button onClick={() => setView('calculator')} className="w-full bg-gradient-to-r from-gray-700 to-gray-800 text-white py-3 rounded-lg shadow flex items-center justify-center gap-2">
-          <Calculator size={20} /> Scrap Calculator
-        </button>
-      </div>
-      
-      {/* Lots Management Button */}
-      {lots.filter(l => l.status !== 'sold' && l.status !== 'broken').length > 0 && (
-        <div className="px-4 pt-2">
-          <button onClick={() => setView('lots')} className="w-full bg-gradient-to-r from-purple-600 to-purple-700 text-white py-3 rounded-lg shadow flex items-center justify-between px-4">
-            <div className="flex items-center gap-2">
-              <Layers size={20} />
-              <span>Manage Lots</span>
-            </div>
-            <div className="text-right">
-              <span className="font-bold">{lots.filter(l => l.status !== 'sold' && l.status !== 'broken').length}</span>
-              <span className="text-purple-200 text-sm ml-1">active</span>
-            </div>
+          <h1 className="text-lg font-bold">Stevens Estate Services</h1>
+          <button onClick={() => setView('settings')} className="p-2 hover:bg-amber-600 rounded">
+            <Settings size={20} />
           </button>
         </div>
-      )}
-      
-      {/* Personal Stash Button */}
-      <div className="px-4 pt-2">
-        {(() => {
-          const stashItems = inventory.filter(i => i.status === 'Stash');
-          const stashValue = stashItems.reduce((sum, item) => {
-            const weight = parseFloat(item.weightOz) || 0;
-            let purityDecimal = 1;
-            if (item.purity?.includes('K')) purityDecimal = parseInt(item.purity) / 24;
-            else if (item.purity?.includes('%')) purityDecimal = parseInt(item.purity) / 100;
-            else if (item.purity === '925') purityDecimal = 0.925;
-            else if (item.purity === '999' || item.purity === '9999') purityDecimal = 0.999;
-            return sum + (weight * purityDecimal * (liveSpotPrices[item.metalType?.toLowerCase()] || 0));
-          }, 0);
-          return (
-            <button 
-              onClick={() => setView('stash')} 
-              className="w-full bg-gradient-to-r from-amber-700 to-yellow-600 text-white py-3 rounded-lg shadow flex items-center justify-between px-4"
-            >
-              <div className="flex items-center gap-2">
-                <Star size={20} />
-                <span>Personal Stash</span>
-              </div>
-              <div className="text-right">
-                <span className="font-bold">${stashValue.toFixed(2)}</span>
-                <span className="text-amber-200 text-sm ml-2">({stashItems.length} items)</span>
-              </div>
-            </button>
-          );
-        })()}
+        <div className="flex items-center justify-between mt-2 text-sm">
+          <div className="flex gap-4">
+            <span>Au: <span className="font-bold">${liveSpotPrices.gold?.toLocaleString()}</span></span>
+            <span>Ag: <span className="font-bold">${liveSpotPrices.silver?.toFixed(2)}</span></span>
+            <span>Pt: <span className="font-bold">${liveSpotPrices.platinum?.toLocaleString()}</span></span>
+          </div>
+          <button onClick={refreshSpotPrices} disabled={isLoadingPrices} className="p-1">
+            <RefreshCw size={16} className={isLoadingPrices ? 'animate-spin' : ''} />
+          </button>
+        </div>
       </div>
       
-      {/* Hold Status Quick View */}
-      <div className="px-4 pt-2">
-        <button onClick={() => setView('holdStatus')} className="w-full bg-gradient-to-r from-purple-600 to-purple-700 text-white py-3 rounded-lg shadow flex items-center justify-center gap-4">
-          <div className="flex items-center gap-1"><Lock size={16} /> <span className="font-bold">{onHoldCount}</span> On Hold</div>
-          <div className="text-purple-200">|</div>
-          <div className="flex items-center gap-1"><Unlock size={16} /> <span className="font-bold">{readyCount}</span> Ready to Sell</div>
+      {/* Quick Actions - 3 Main Buttons */}
+      <div className="p-4 grid grid-cols-3 gap-3">
+        <button 
+          onClick={() => setView('appraisal')}
+          className="bg-teal-600 text-white p-4 rounded-xl shadow-lg flex flex-col items-center gap-2"
+        >
+          <Camera size={28} />
+          <span className="text-sm font-medium">Appraisal</span>
+        </button>
+        <button 
+          onClick={() => setView('clients')}
+          className="bg-indigo-600 text-white p-4 rounded-xl shadow-lg flex flex-col items-center gap-2"
+        >
+          <Users size={28} />
+          <span className="text-sm font-medium">Clients</span>
+        </button>
+        <button 
+          onClick={() => setView('calculator')}
+          className="bg-gray-700 text-white p-4 rounded-xl shadow-lg flex flex-col items-center gap-2"
+        >
+          <Calculator size={28} />
+          <span className="text-sm font-medium">Scrap Calc</span>
         </button>
       </div>
       
-      {/* Spot Value Quick View */}
-      <div className="px-4 pt-2">
-        <button onClick={() => setView('spotValue')} className="w-full bg-gradient-to-r from-yellow-500 to-yellow-600 text-white py-3 rounded-lg shadow flex items-center justify-center gap-2">
-          <DollarSign size={18} /> 
-          <span>Spot Value: <span className="font-bold">${Object.values(calculateSpotValues(inventory, spotPrices)).reduce((s, m) => s + m.spotValue, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span></span>
-        </button>
-      </div>
-      
-      {/* eBay Listings Button */}
-      <div className="px-4 pt-2">
-        {(() => {
-          const listedItems = inventory.filter(i => i.ebayListingId);
-          const unlistedItems = inventory.filter(i => i.status === 'Available' && !i.ebayListingId);
-          return (
-            <button 
-              onClick={() => setView('ebayListings')} 
-              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-3 rounded-lg shadow flex items-center justify-center gap-4"
-            >
-              <ExternalLink size={18} />
-              <div className="flex items-center gap-4">
-                <div><span className="font-bold">{listedItems.length}</span> Listed</div>
-                <div className="text-blue-200">|</div>
-                <div><span className="font-bold">{unlistedItems.length}</span> Not Listed</div>
+      {/* KPI Dashboard - Collapsible */}
+      <div className="px-4 pb-2">
+        <details open={kpiExpanded} onToggle={(e) => setKpiExpanded(e.target.open)} className="bg-white rounded-xl shadow-lg overflow-hidden">
+          <summary className="p-4 cursor-pointer bg-gradient-to-r from-blue-600 to-blue-700 text-white flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <BarChart3 size={20} />
+              <span className="font-bold">Dashboard</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-blue-100 text-sm">Net Worth:</span>
+              <span className="font-bold text-lg">${kpis.netWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+            </div>
+          </summary>
+          
+          <div className="p-4 space-y-4">
+            {/* Portfolio by Disposition */}
+            <div>
+              <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Portfolio by Status</h4>
+              <div className="grid grid-cols-2 gap-2">
+                {/* Stash */}
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2 text-amber-700 mb-1">
+                    <Star size={16} />
+                    <span className="font-medium text-sm">Stash</span>
+                    <span className="text-xs bg-amber-200 px-1.5 rounded">{kpis.stashCount}</span>
+                  </div>
+                  <div className="text-lg font-bold text-amber-800">${kpis.stashValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                  <div className={`text-xs ${kpis.stashValue - kpis.stashCost >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {kpis.stashValue - kpis.stashCost >= 0 ? '+' : ''}${(kpis.stashValue - kpis.stashCost).toFixed(0)} P&L
+                  </div>
+                </div>
+                
+                {/* Hold */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2 text-blue-700 mb-1">
+                    <Archive size={16} />
+                    <span className="font-medium text-sm">Hold</span>
+                    <span className="text-xs bg-blue-200 px-1.5 rounded">{kpis.holdCount}</span>
+                  </div>
+                  <div className="text-lg font-bold text-blue-800">${kpis.holdValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                  <div className={`text-xs ${kpis.holdValue - kpis.holdCost >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {kpis.holdValue - kpis.holdCost >= 0 ? '+' : ''}${(kpis.holdValue - kpis.holdCost).toFixed(0)} P&L
+                  </div>
+                </div>
+                
+                {/* Sell */}
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2 text-green-700 mb-1">
+                    <DollarSign size={16} />
+                    <span className="font-medium text-sm">Sell</span>
+                    <span className="text-xs bg-green-200 px-1.5 rounded">{kpis.sellCount}</span>
+                  </div>
+                  <div className="text-lg font-bold text-green-800">${kpis.sellValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                  <div className={`text-xs ${kpis.sellValue - kpis.sellCost >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {kpis.sellValue - kpis.sellCost >= 0 ? '+' : ''}${(kpis.sellValue - kpis.sellCost).toFixed(0)} P&L
+                  </div>
+                </div>
+                
+                {/* Available (untagged) */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2 text-gray-700 mb-1">
+                    <Package size={16} />
+                    <span className="font-medium text-sm">Available</span>
+                    <span className="text-xs bg-gray-200 px-1.5 rounded">{kpis.availableCount}</span>
+                  </div>
+                  <div className="text-lg font-bold text-gray-800">${kpis.availableValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                  <div className={`text-xs ${kpis.availableValue - kpis.availableCost >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {kpis.availableValue - kpis.availableCost >= 0 ? '+' : ''}${(kpis.availableValue - kpis.availableCost).toFixed(0)} P&L
+                  </div>
+                </div>
               </div>
-            </button>
-          );
-        })()}
+            </div>
+            
+            {/* Summary Row */}
+            <div className="bg-gradient-to-r from-gray-800 to-gray-900 text-white rounded-lg p-4">
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <div className="text-gray-400 text-xs">Total Cost</div>
+                  <div className="font-bold">${kpis.totalCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                </div>
+                <div>
+                  <div className="text-gray-400 text-xs">Current Value</div>
+                  <div className="font-bold text-lg">${kpis.totalValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                </div>
+                <div>
+                  <div className="text-gray-400 text-xs">Unrealized P&L</div>
+                  <div className={`font-bold ${kpis.unrealizedPL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {kpis.unrealizedPL >= 0 ? '+' : ''}${kpis.unrealizedPL.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Realized Performance */}
+            {kpis.soldCount > 0 && (
+              <div>
+                <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Realized Performance</h4>
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <div className="grid grid-cols-4 gap-2 text-center text-sm">
+                    <div>
+                      <div className="text-gray-500 text-xs">Sold</div>
+                      <div className="font-bold">{kpis.soldCount}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-500 text-xs">Revenue</div>
+                      <div className="font-bold">${kpis.totalSalesRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-500 text-xs">Profit</div>
+                      <div className={`font-bold ${kpis.realizedPL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        ${kpis.realizedPL.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-gray-500 text-xs">Margin</div>
+                      <div className={`font-bold ${kpis.avgProfitMargin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {kpis.avgProfitMargin.toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Metal Breakdown */}
+            <div>
+              <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">By Metal</h4>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-gray-100 rounded-lg p-2 text-center">
+                  <div className="text-gray-500 text-xs">Silver</div>
+                  <div className="font-bold text-gray-700">${kpis.silverValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                  <div className="text-xs text-gray-400">{kpis.silverCount} items</div>
+                </div>
+                <div className="bg-yellow-50 rounded-lg p-2 text-center">
+                  <div className="text-yellow-600 text-xs">Gold</div>
+                  <div className="font-bold text-yellow-700">${kpis.goldValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                  <div className="text-xs text-yellow-500">{kpis.goldCount} items</div>
+                </div>
+                <div className="bg-gray-200 rounded-lg p-2 text-center">
+                  <div className="text-gray-600 text-xs">Platinum</div>
+                  <div className="font-bold text-gray-700">${kpis.platinumValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                  <div className="text-xs text-gray-400">{kpis.platinumCount} items</div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Quick Links */}
+            <div className="grid grid-cols-3 gap-2 pt-2">
+              <button onClick={() => setView('stash')} className="text-amber-600 text-sm py-2 bg-amber-50 rounded-lg">
+                View Stash →
+              </button>
+              <button onClick={() => setView('holdStatus')} className="text-purple-600 text-sm py-2 bg-purple-50 rounded-lg">
+                Hold Status →
+              </button>
+              <button onClick={() => setView('tax')} className="text-green-600 text-sm py-2 bg-green-50 rounded-lg">
+                Tax Report →
+              </button>
+            </div>
+          </div>
+        </details>
       </div>
       
-      <div className="px-4 pt-3 grid grid-cols-3 gap-2">
-        <button onClick={() => setView('clients')} className="bg-indigo-600 text-white py-2 rounded-lg text-sm flex items-center justify-center gap-1"><Users size={16} /> Clients</button>
-        <button onClick={() => setView('dashboard')} className="bg-blue-600 text-white py-2 rounded-lg text-sm flex items-center justify-center gap-1"><BarChart3 size={16} /> Analytics</button>
-        <button onClick={() => setView('tax')} className="bg-green-600 text-white py-2 rounded-lg text-sm flex items-center justify-center gap-1"><FileText size={16} /> Tax</button>
-      </div>
-      
-      <div className="p-4">
-        <div className="flex gap-2 mb-4">
+      {/* Search and Inventory List */}
+      <div className="p-4 pt-2">
+        <div className="flex gap-2 mb-3">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
-            <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg" />
+            <input 
+              type="text" 
+              placeholder="Search inventory..." 
+              value={searchTerm} 
+              onChange={(e) => setSearchTerm(e.target.value)} 
+              className="w-full pl-10 pr-4 py-2 border rounded-lg bg-white" 
+            />
           </div>
           <select value={filter} onChange={(e) => setFilter(e.target.value)} className="border rounded-lg px-3 bg-white">
-            <option value="all">All</option><option value="available">Available</option><option value="sold">Sold</option>
+            <option value="all">All</option>
+            <option value="available">Available</option>
+            <option value="sold">Sold</option>
           </select>
         </div>
+        
+        {/* Inventory Count */}
+        <div className="flex justify-between items-center mb-2 text-sm text-gray-500">
+          <span>{filteredInventory.length} items</span>
+          {lots.filter(l => l.status !== 'sold' && l.status !== 'broken').length > 0 && (
+            <button onClick={() => setView('lots')} className="text-purple-600 flex items-center gap-1">
+              <Layers size={14} /> {lots.filter(l => l.status !== 'sold' && l.status !== 'broken').length} Lots
+            </button>
+          )}
+        </div>
+        
+        {/* Inventory Items */}
         <div className="space-y-2 pb-24">
           {filteredInventory.map(item => {
             const holdStatus = getHoldStatus(item);
             const profit = item.status === 'Sold' ? (item.salePrice - item.purchasePrice) : (item.meltValue - item.purchasePrice);
             return (
-              <div key={item.id} onClick={() => { setSelectedItem(item); setView('detail'); }} className={`bg-white p-3 rounded-lg shadow cursor-pointer hover:shadow-md ${item.status === 'Sold' ? 'opacity-70' : ''}`}>
+              <div 
+                key={item.id} 
+                onClick={() => { setSelectedItem(item); setView('detail'); }} 
+                className={`bg-white p-3 rounded-lg shadow cursor-pointer hover:shadow-md transition-shadow ${item.status === 'Sold' ? 'opacity-60' : ''}`}
+              >
                 <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="font-medium">{item.description}</div>
-                    <div className="text-sm text-gray-500">{item.id} • {item.category}</div>
-                    {item.lotId && <div className="text-xs text-purple-600">Lot: {item.lotId}</div>}
-                    {item.status === 'Available' && (
-                      <div className={`text-xs mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded ${
-                        holdStatus.status === 'exempt' ? 'bg-blue-100 text-blue-700' :
-                        holdStatus.status === 'hold' ? 'bg-red-100 text-red-700' :
-                        'bg-green-100 text-green-700'
-                      }`}>
-                        {holdStatus.status === 'exempt' && <><ShieldCheck size={12} /> No Hold</>}
-                        {holdStatus.status === 'hold' && <><Lock size={12} /> {holdStatus.daysLeft}d hold</>}
-                        {holdStatus.status === 'released' && <><Unlock size={12} /> Ready</>}
-                      </div>
+                  <div className="flex gap-3">
+                    {item.photo && (
+                      <img src={`data:image/jpeg;base64,${item.photo}`} className="w-12 h-12 rounded object-cover" />
                     )}
+                    <div>
+                      <div className="font-medium">{item.description}</div>
+                      <div className="text-xs text-gray-500">{item.id} • {item.category}</div>
+                      <div className="flex gap-1 mt-1">
+                        {item.status === 'Stash' && (
+                          <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded flex items-center gap-1">
+                            <Star size={10} /> Stash
+                          </span>
+                        )}
+                        {item.plannedDisposition === 'hold' && (
+                          <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Hold</span>
+                        )}
+                        {item.plannedDisposition === 'sell' && (
+                          <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">Sell</span>
+                        )}
+                        {item.ebayListingId && (
+                          <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded flex items-center gap-1">
+                            <ExternalLink size={10} /> eBay
+                          </span>
+                        )}
+                        {item.status === 'Available' && !item.plannedDisposition && (
+                          <span className={`text-xs px-1.5 py-0.5 rounded flex items-center gap-1 ${
+                            holdStatus.status === 'hold' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                          }`}>
+                            {holdStatus.status === 'hold' ? <><Lock size={10} /> {holdStatus.daysLeft}d</> : <><Unlock size={10} /> Ready</>}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                   <div className="text-right">
                     <div className="font-bold text-amber-700">${item.meltValue}</div>
-                    <div className="text-xs text-gray-500">Cost: ${item.purchasePrice}</div>
-                    <div className={`text-xs font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{profit >= 0 ? '+' : ''}${profit}</div>
+                    <div className="text-xs text-gray-400">Cost: ${item.purchasePrice}</div>
+                    <div className={`text-xs font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {profit >= 0 ? '+' : ''}${profit.toFixed(0)}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -9597,12 +9812,12 @@ export default function SESInventoryApp() {
           })}
         </div>
         
-        {/* Floating Action Buttons */}
-        <div className="fixed bottom-6 right-6 flex flex-col gap-2">
-          <button onClick={() => setView('lotPurchase')} className="bg-purple-600 text-white p-3 rounded-full shadow-lg flex items-center justify-center" title="Add Lot">
-            <Layers size={20} />
-          </button>
-          <button onClick={() => setView('add')} className="bg-amber-600 text-white p-4 rounded-full shadow-lg">
+        {/* Floating Action Button */}
+        <div className="fixed bottom-6 right-6">
+          <button 
+            onClick={() => setView('add')} 
+            className="bg-amber-600 text-white p-4 rounded-full shadow-lg hover:bg-amber-700 transition-colors"
+          >
             <Plus size={24} />
           </button>
         </div>
