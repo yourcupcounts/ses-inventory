@@ -305,8 +305,8 @@ const AIVisionService = {
   // Analyze coin/metal image using Claude Vision via secure proxy
   async analyzeImage(base64Image) {
     if (!CONFIG.features.useAiVision) {
-      console.log('AI Vision disabled - returning mock data');
-      return this.getMockAnalysis();
+      console.log('AI Vision disabled - returning manual entry required');
+      return this.getManualEntryResult();
     }
     
     try {
@@ -318,7 +318,18 @@ const AIVisionService = {
         },
         body: JSON.stringify({
           max_tokens: 1024,
-          system: 'You are an expert numismatist and precious metals appraiser. Analyze images of coins and precious metal items accurately.',
+          system: `You are an expert numismatist and precious metals appraiser for Stevens Estate Services. Your job is to accurately identify items brought in for appraisal.
+
+CRITICAL: First determine if this is actually a precious metal item (coin, bullion, jewelry, silverware, etc.) or something else entirely.
+
+If it is NOT a precious metal item (like electronics, toys, household items, etc.), respond with:
+{
+  "isPreciousMetal": false,
+  "type": "description of what you actually see",
+  "notes": "This is not a precious metal item"
+}
+
+Only if it IS a precious metal item, provide full analysis.`,
           messages: [{
             role: 'user',
             content: [
@@ -332,23 +343,35 @@ const AIVisionService = {
               },
               {
                 type: 'text',
-                text: `Analyze this coin or precious metal item and provide the following information in JSON format:
+                text: `Look at this image carefully. What do you see?
+
+FIRST: Is this a precious metal item (coin, bullion, gold/silver jewelry, sterling silverware, etc.)?
+
+If NO - this is NOT a precious metal item, respond with:
 {
+  "isPreciousMetal": false,
+  "type": "what you actually see (e.g., TV remote, phone, toy, etc.)",
+  "notes": "This is not a precious metal item and cannot be appraised for metal value."
+}
+
+If YES - this IS a precious metal item, respond with:
+{
+  "isPreciousMetal": true,
   "type": "coin type or item description",
   "metal": "Gold/Silver/Platinum/Palladium",
-  "purity": "purity as percentage or karat",
+  "purity": "purity as percentage or karat (e.g., 90%, 925, 14K)",
   "year": "year if visible, null if not",
   "mintMark": "mint mark if visible, null if not",
   "grade": "estimated grade (cull/ag/vg/fine/vf/xf/au/bu/ms60-70)",
   "weight": "weight in troy oz if known, null if unknown",
-  "coinKey": "reference key if recognized (e.g., morgan-dollar, silver-eagle)",
+  "coinKey": "reference key if recognized (see list below), null otherwise",
   "confidence": 0.0-1.0,
   "notes": "any notable features, damage, or observations"
 }
 
-Common coin reference keys: morgan-dollar, peace-dollar, walking-liberty-half, franklin-half, kennedy-half-90, washington-quarter, roosevelt-dime, mercury-dime, silver-eagle, gold-eagle-1oz, gold-buffalo, st-gaudens-20, liberty-20
+Common coin reference keys: morgan-dollar, peace-dollar, walking-liberty-half, franklin-half, kennedy-half-90, washington-quarter, standing-liberty-quarter, barber-quarter, roosevelt-dime, mercury-dime, barber-dime, silver-eagle, gold-eagle-1oz, gold-eagle-1/2oz, gold-eagle-1/4oz, gold-eagle-1/10oz, gold-buffalo, st-gaudens-20, liberty-20
 
-If this is jewelry or scrap, set coinKey to null and describe the item.`
+For jewelry or scrap, set coinKey to null and describe the item type.`
               }
             ]
           }]
@@ -367,26 +390,37 @@ If this is jewelry or scrap, set coinKey to null and describe the item.`
       // Parse JSON from response
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
+        const result = JSON.parse(jsonMatch[0]);
+        
+        // If not a precious metal, flag for manual handling
+        if (result.isPreciousMetal === false) {
+          return {
+            ...result,
+            coinKey: null,
+            metal: null,
+            notPreciousMetal: true,
+            confidence: 0.95 // High confidence it's NOT a PM item
+          };
+        }
+        
+        return result;
       }
       
-      return this.getMockAnalysis();
+      return this.getManualEntryResult();
     } catch (error) {
       console.error('AI Vision analysis failed:', error);
-      return this.getMockAnalysis();
+      return this.getManualEntryResult();
     }
   },
   
-  // Mock analysis for demo/testing
-  getMockAnalysis() {
-    const mockResults = [
-      { type: 'Morgan Dollar', metal: 'Silver', purity: '90%', year: '1921', mintMark: 'S', grade: 'vf', coinKey: 'morgan-dollar', confidence: 0.85 },
-      { type: 'Peace Dollar', metal: 'Silver', purity: '90%', year: '1923', mintMark: null, grade: 'xf', coinKey: 'peace-dollar', confidence: 0.88 },
-      { type: 'Silver Eagle', metal: 'Silver', purity: '999', year: '2024', mintMark: null, grade: 'bu', coinKey: 'silver-eagle', confidence: 0.92 },
-      { type: 'Walking Liberty Half', metal: 'Silver', purity: '90%', year: '1943', mintMark: 'D', grade: 'fine', coinKey: 'walking-liberty-half', confidence: 0.82 },
-      { type: 'Gold Eagle 1oz', metal: 'Gold', purity: '91.67%', year: '2023', mintMark: null, grade: 'bu', coinKey: 'gold-eagle-1oz', confidence: 0.90 },
-    ];
-    return mockResults[Math.floor(Math.random() * mockResults.length)];
+  // Return result requiring manual entry (used when API fails or is disabled)
+  getManualEntryResult() {
+    return {
+      type: 'Unknown Item',
+      needsManualEntry: true,
+      confidence: 0,
+      notes: 'AI analysis unavailable - please identify manually'
+    };
   }
 };
 
@@ -962,32 +996,15 @@ function getHoldStatus(item) {
   }
 }
 
-const starterInventory = [
-  { id: 'SES-001', description: 'Sterling Silver Candlesticks (Pair)', category: 'Silver - Sterling', metalType: 'Silver', purity: '925', weightOz: 12.4, source: 'Estate Sale - Johnson', clientId: 'CLI-001', dateAcquired: '2025-10-15', purchasePrice: 180, meltValue: 285, status: 'Sold', dateSold: '2025-10-22', salePrice: 280, salePlatform: 'Direct', notes: 'Weighted bases' },
-  { id: 'SES-002', description: '14K Gold Class Ring', category: 'Gold - Jewelry', metalType: 'Gold', purity: '14K', weightOz: 0.45, source: 'Walk-in', clientId: 'CLI-002', dateAcquired: '2025-10-18', purchasePrice: 320, meltValue: 356, status: 'Sold', dateSold: '2025-10-25', salePrice: 356, salePlatform: 'Refiner', notes: 'Sent to refiner' },
-  { id: 'SES-003', description: 'Morgan Silver Dollar 1921', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.859, source: 'Estate Sale - Johnson', clientId: 'CLI-001', dateAcquired: '2025-10-15', purchasePrice: 25, meltValue: 22, status: 'Sold', dateSold: '2025-10-16', salePrice: 36, salePlatform: 'eBay', notes: 'XF condition - EXEMPT from hold' },
-  { id: 'SES-004', description: '10K Gold Wedding Band', category: 'Gold - Jewelry', metalType: 'Gold', purity: '10K', weightOz: 0.25, source: 'Walk-in', clientId: 'CLI-003', dateAcquired: '2026-01-06', purchasePrice: 180, meltValue: 232, status: 'Available', notes: 'Plain band - ON HOLD' },
-  { id: 'SES-005', description: 'Sterling Silver Flatware Set (45pc)', category: 'Silver - Sterling', metalType: 'Silver', purity: '925', weightOz: 48.5, source: 'Estate Sale - Martinez', clientId: 'CLI-004', dateAcquired: '2026-01-08', purchasePrice: 850, meltValue: 1358, status: 'Available', notes: 'Gorham Chantilly - ON HOLD' },
-  { id: 'SES-006', description: '1oz Gold American Eagle', category: 'Gold - Coins', metalType: 'Gold', purity: '22K', weightOz: 1.0, source: 'Walk-in', clientId: 'CLI-002', dateAcquired: '2026-01-10', purchasePrice: 2550, meltValue: 2685, status: 'Available', notes: '2024 BU - EXEMPT from hold' },
-  { id: 'SES-007', description: 'Silver-Plated Tea Service', category: 'Silver - Plated', metalType: 'Silver', purity: 'Plated', weightOz: 0, source: 'Estate Sale - Johnson', clientId: 'CLI-001', dateAcquired: '2026-01-03', purchasePrice: 25, meltValue: 0, status: 'Available', notes: 'Will refine in-house' },
-  { id: 'SES-008', description: '18K Gold Rope Chain', category: 'Gold - Jewelry', metalType: 'Gold', purity: '18K', weightOz: 0.85, source: 'Pawn Buyout', clientId: 'CLI-005', dateAcquired: '2026-01-02', purchasePrice: 1200, meltValue: 1713, status: 'Available', notes: '24 inch' },
-  { id: 'SES-009', description: 'Walking Liberty Half Dollars (10)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 3.575, source: 'Estate Sale - Martinez', clientId: 'CLI-004', dateAcquired: '2026-01-11', purchasePrice: 95, meltValue: 97, status: 'Available', notes: 'Mixed dates - EXEMPT from hold' },
-  { id: 'SES-010', description: 'Platinum Wedding Ring', category: 'Platinum', metalType: 'Platinum', purity: '950', weightOz: 0.35, source: 'Walk-in', clientId: 'CLI-003', dateAcquired: '2026-01-09', purchasePrice: 280, meltValue: 327, status: 'Available', notes: 'Size 7 - ON HOLD' },
-  { id: 'SES-011', description: '14K Gold Bracelet', category: 'Gold - Jewelry', metalType: 'Gold', purity: '14K', weightOz: 0.65, source: 'Walk-in', clientId: 'CLI-002', dateAcquired: '2025-12-20', purchasePrice: 480, meltValue: 515, status: 'Available', notes: 'Broken clasp - HOLD COMPLETE' },
-  { id: 'SES-012', description: 'Sterling Tea Set (4pc)', category: 'Silver - Sterling', metalType: 'Silver', purity: '925', weightOz: 32.5, source: 'Estate Sale - Chen', clientId: 'CLI-006', dateAcquired: '2025-12-15', purchasePrice: 620, meltValue: 910, status: 'Available', notes: 'Reed & Barton - HOLD COMPLETE' },
-  { id: 'SES-013', description: '1oz Silver Eagles (20)', category: 'Silver - Bullion', metalType: 'Silver', purity: '999', weightOz: 20.0, source: 'Walk-in', clientId: 'CLI-002', dateAcquired: '2026-01-08', purchasePrice: 580, meltValue: 605, status: 'Available', notes: '2025 BU tube - EXEMPT from hold' },
-  { id: 'SES-014', description: '10K Gold Necklace', category: 'Gold - Jewelry', metalType: 'Gold', purity: '10K', weightOz: 0.38, source: 'Pawn Buyout', clientId: 'CLI-005', dateAcquired: '2026-01-10', purchasePrice: 285, meltValue: 350, status: 'Available', notes: '18 inch rope - ON HOLD' },
-  { id: 'SES-015', description: 'Peace Dollar 1923', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.859, source: 'Walk-in', clientId: 'CLI-003', dateAcquired: '2026-01-11', purchasePrice: 28, meltValue: 23, status: 'Available', notes: 'AU condition - EXEMPT from hold' },
-];
+// Start with empty inventory - populate via app usage
+const starterInventory = [];
 
-const starterClients = [
-  { id: 'CLI-001', name: 'Robert Johnson', type: 'Private', email: 'rjohnson@email.com', phone: '704-555-0101', address: '123 Oak St, Charlotte, NC 28202', idType: 'NC Driver License', idNumber: 'J1234567', idExpiry: '2027-05-15', idFrontPhoto: null, idBackPhoto: null, signature: null, signatureTimestamp: null, signatureLocation: null, notes: 'Estate executor', dateAdded: '2025-10-15', totalTransactions: 3, totalPurchased: 230 },
-  { id: 'CLI-002', name: 'Maria Santos', type: 'Private', email: 'msantos@email.com', phone: '704-555-0102', address: '456 Pine Ave, Charlotte, NC 28203', idType: 'NC Driver License', idNumber: 'S7654321', idExpiry: '2026-11-20', idFrontPhoto: null, idBackPhoto: null, signature: null, signatureTimestamp: null, signatureLocation: null, notes: 'Regular seller', dateAdded: '2025-10-18', totalTransactions: 4, totalPurchased: 3930 },
-  { id: 'CLI-003', name: 'James Wilson', type: 'Private', email: 'jwilson@email.com', phone: '704-555-0103', address: '789 Elm Dr, Concord, NC 28025', idType: 'NC Driver License', idNumber: 'W9876543', idExpiry: '2028-03-10', idFrontPhoto: null, idBackPhoto: null, signature: null, signatureTimestamp: null, signatureLocation: null, notes: 'Walk-in', dateAdded: '2025-11-02', totalTransactions: 3, totalPurchased: 488 },
-  { id: 'CLI-004', name: 'Martinez Estate Services', type: 'Business', email: 'info@martinezestates.com', phone: '704-555-0104', address: '100 Business Park, Charlotte, NC 28204', businessLicense: 'NC-BUS-12345', taxId: '**-***1234', idType: 'Business License', idNumber: 'NC-BUS-12345', idFrontPhoto: null, idBackPhoto: null, signature: null, signatureTimestamp: null, signatureLocation: null, notes: 'Estate liquidation', dateAdded: '2025-11-10', totalTransactions: 2, totalPurchased: 945 },
-  { id: 'CLI-005', name: 'Quick Cash Pawn', type: 'Business', email: 'buyer@quickcashpawn.com', phone: '704-555-0105', address: '200 Trade St, Charlotte, NC 28206', businessLicense: 'NC-BUS-67890', taxId: '**-***5678', idType: 'Business License', idNumber: 'NC-BUS-67890', idFrontPhoto: null, idBackPhoto: null, signature: null, signatureTimestamp: null, signatureLocation: null, notes: 'Pawn buyouts', dateAdded: '2025-12-01', totalTransactions: 2, totalPurchased: 1485 },
-  { id: 'CLI-006', name: 'David Chen', type: 'Private', email: 'dchen@email.com', phone: '704-555-0106', address: '321 Maple Ln, Huntersville, NC 28078', idType: 'NC Driver License', idNumber: 'C2468135', idExpiry: '2027-08-22', idFrontPhoto: null, idBackPhoto: null, signature: null, signatureTimestamp: null, signatureLocation: null, notes: 'Estate sale', dateAdded: '2026-01-05', totalTransactions: 1, totalPurchased: 620 },
-];
+// Start with empty clients - add via app
+const starterClients = [];
+
+// Starter lots for items purchased as sets
+// Start with empty lots - populate via app usage
+const starterLots = [];
 
 // ============ EBAY LISTING VIEW ============
 function EbayListingView({ item, onBack, onListingCreated }) {
@@ -2376,6 +2393,8 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
   const [evaluatingItem, setEvaluatingItem] = useState(null);
   const [showCoinPicker, setShowCoinPicker] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(false);
+  const [showNewClientForm, setShowNewClientForm] = useState(false);
+  const [newClientData, setNewClientData] = useState({ name: '', type: 'Private', phone: '', notes: '' });
   const [bulkDiscount, setBulkDiscount] = useState('');
   const [discountMethod, setDiscountMethod] = useState('proportional');
   const [sessionNotes, setSessionNotes] = useState('');
@@ -2505,6 +2524,29 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
       
       setAnalyzing(false);
       
+      // Check if this is not a precious metal item
+      if (analysis.notPreciousMetal || analysis.isPreciousMetal === false) {
+        return {
+          photo: photoBase64,
+          description: analysis.type || 'Non-Precious Metal Item',
+          notPreciousMetal: true,
+          needsManualEntry: false,
+          confidence: analysis.confidence || 0.95,
+          notes: analysis.notes || 'This item is not a precious metal and cannot be appraised for metal value.'
+        };
+      }
+      
+      // Check if manual entry is needed
+      if (analysis.needsManualEntry) {
+        return {
+          photo: photoBase64,
+          description: analysis.type || 'Unknown Item',
+          needsManualEntry: true,
+          confidence: 0,
+          notes: analysis.notes
+        };
+      }
+      
       return {
         coinKey: analysis.coinKey,
         grade: analysis.grade || 'bu',
@@ -2541,6 +2583,18 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
       const base64 = event.target.result.split(',')[1];
       const analysis = await analyzePhoto(base64);
       
+      // Handle non-precious metal items
+      if (analysis.notPreciousMetal) {
+        setEvaluatingItem({
+          id: `eval-${Date.now()}`,
+          photo: base64,
+          description: analysis.description,
+          notPreciousMetal: true,
+          notes: analysis.notes
+        });
+        return; // Don't show manual entry - just show "not PM" result
+      }
+      
       if (analysis.coinKey && coinReference[analysis.coinKey]) {
         const valuation = calculateCoinValue(analysis.coinKey, analysis.grade, 1);
         setEvaluatingItem({
@@ -2555,7 +2609,10 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
           id: `eval-${Date.now()}`,
           photo: base64,
           description: analysis.description || 'Unknown Item',
-          needsManualEntry: true
+          needsManualEntry: true,
+          metal: analysis.metal,
+          purity: analysis.purity,
+          notes: analysis.notes
         });
         setShowManualEntry(true);
       }
@@ -2691,9 +2748,108 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
               ))}
             </div>
             
-            <button className="w-full mt-3 border-2 border-dashed border-gray-300 rounded-lg p-3 text-gray-500 flex items-center justify-center gap-2">
+            <button 
+              onClick={() => setShowNewClientForm(true)}
+              className="w-full mt-3 border-2 border-dashed border-gray-300 rounded-lg p-3 text-gray-500 flex items-center justify-center gap-2 hover:border-teal-400 hover:text-teal-600 transition-colors"
+            >
               <UserPlus size={18} /> Add New Client
             </button>
+            
+            {/* New Client Form Modal */}
+            {showNewClientForm && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-lg max-w-md w-full p-4">
+                  <h3 className="font-bold text-lg mb-4">Add New Client</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Name *</label>
+                      <input
+                        type="text"
+                        value={newClientData.name}
+                        onChange={(e) => setNewClientData({...newClientData, name: e.target.value})}
+                        className="w-full border rounded p-2"
+                        placeholder="Client name"
+                        autoFocus
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Type</label>
+                      <select
+                        value={newClientData.type}
+                        onChange={(e) => setNewClientData({...newClientData, type: e.target.value})}
+                        className="w-full border rounded p-2 bg-white"
+                      >
+                        <option value="Private">Private Individual</option>
+                        <option value="Business">Business</option>
+                        <option value="Estate">Estate</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Phone</label>
+                      <input
+                        type="tel"
+                        value={newClientData.phone}
+                        onChange={(e) => setNewClientData({...newClientData, phone: e.target.value})}
+                        className="w-full border rounded p-2"
+                        placeholder="(555) 555-5555"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Notes</label>
+                      <textarea
+                        value={newClientData.notes}
+                        onChange={(e) => setNewClientData({...newClientData, notes: e.target.value})}
+                        className="w-full border rounded p-2"
+                        rows={2}
+                        placeholder="Optional notes..."
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-4">
+                    <button 
+                      onClick={() => {
+                        setShowNewClientForm(false);
+                        setNewClientData({ name: '', type: 'Private', phone: '', notes: '' });
+                      }}
+                      className="flex-1 py-2 border rounded-lg"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={() => {
+                        if (newClientData.name.trim()) {
+                          const newClient = {
+                            id: `CLI-${Date.now()}`,
+                            name: newClientData.name.trim(),
+                            type: newClientData.type,
+                            phone: newClientData.phone,
+                            notes: newClientData.notes,
+                            email: '',
+                            address: '',
+                            idType: '',
+                            idNumber: '',
+                            dateAdded: new Date().toISOString().split('T')[0],
+                            totalTransactions: 0,
+                            totalPurchased: 0
+                          };
+                          // Add to clients list (will be handled by parent)
+                          clients.push(newClient);
+                          setSessionClient(newClient);
+                          setShowNewClientForm(false);
+                          setNewClientData({ name: '', type: 'Private', phone: '', notes: '' });
+                        }
+                      }}
+                      disabled={!newClientData.name.trim()}
+                      className={`flex-1 py-2 rounded-lg font-medium ${
+                        newClientData.name.trim() ? 'bg-teal-600 text-white' : 'bg-gray-200 text-gray-400'
+                      }`}
+                    >
+                      Add & Select
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           
           <button
@@ -2952,7 +3108,7 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
               )}
               
               {/* Valuation Display */}
-              {!evaluatingItem.showGradeSelect && !evaluatingItem.needsManualEntry && (
+              {!evaluatingItem.showGradeSelect && !evaluatingItem.needsManualEntry && !evaluatingItem.notPreciousMetal && (
                 <div className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-white font-bold text-lg">{evaluatingItem.description}</h3>
@@ -3157,6 +3313,50 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                       className="flex-1 bg-teal-600 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2"
                     >
                       <Plus size={20} /> Add ${evaluatingItem.buyPrice?.toFixed(2)}
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              {/* Not a Precious Metal Item Display */}
+              {evaluatingItem.notPreciousMetal && (
+                <div className="p-4">
+                  <div className="flex items-center justify-center mb-4">
+                    <div className="bg-red-900 text-red-200 px-4 py-2 rounded-lg flex items-center gap-2">
+                      <X size={20} />
+                      <span className="font-medium">Not a Precious Metal</span>
+                    </div>
+                  </div>
+                  
+                  <div className="text-center mb-4">
+                    <h3 className="text-white font-bold text-lg mb-2">{evaluatingItem.description}</h3>
+                    <p className="text-gray-400 text-sm">
+                      {evaluatingItem.notes || 'This item cannot be appraised for precious metal value.'}
+                    </p>
+                  </div>
+                  
+                  <div className="bg-gray-700 p-3 rounded-lg mb-4">
+                    <p className="text-gray-300 text-sm text-center">
+                      This item does not appear to contain precious metals (gold, silver, platinum, or palladium). 
+                      We cannot provide a melt value appraisal.
+                    </p>
+                  </div>
+                  
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setEvaluatingItem(null)}
+                      className="flex-1 bg-gray-600 text-white py-3 rounded-lg font-medium"
+                    >
+                      Dismiss
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEvaluatingItem({ ...evaluatingItem, notPreciousMetal: false, needsManualEntry: true });
+                        setShowManualEntry(true);
+                      }}
+                      className="flex-1 bg-amber-600 text-white py-3 rounded-lg font-medium"
+                    >
+                      Actually, It's PM...
                     </button>
                   </div>
                 </div>
@@ -4118,6 +4318,231 @@ function LotPurchaseView({ clients, onSave, onCancel }) {
               <button onClick={() => setShowAddItem(false)} className="flex-1 border py-3 rounded-lg">Cancel</button>
               <button onClick={addItemToLot} className="flex-1 bg-purple-600 text-white py-3 rounded-lg font-medium">
                 Add {newItem.quantity > 1 ? `${newItem.quantity} Items` : 'Item'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============ LOTS MANAGEMENT VIEW ============
+function LotsView({ lots, inventory, liveSpotPrices, onBack, onUpdateLot, onBreakLot, onSelectItem }) {
+  const [selectedLot, setSelectedLot] = useState(null);
+  const [showBreakConfirm, setShowBreakConfirm] = useState(null);
+  
+  // Calculate lot values
+  const getLotValue = (lot) => {
+    // Get items belonging to this lot
+    const lotItems = inventory.filter(item => 
+      lot.itemIds?.includes(item.id) || item.lotId === lot.id
+    );
+    
+    if (lotItems.length === 0) {
+      // Lot might be stored as a single item with quantity
+      const singleItem = inventory.find(item => lot.itemIds?.includes(item.id));
+      if (singleItem) {
+        const meltValue = parseFloat(singleItem.meltValue) || 0;
+        return {
+          itemCount: singleItem.quantity || 1,
+          totalCost: lot.totalCost,
+          currentMelt: meltValue,
+          profit: meltValue - lot.totalCost
+        };
+      }
+    }
+    
+    const totalMelt = lotItems.reduce((sum, item) => sum + (parseFloat(item.meltValue) || 0), 0);
+    const itemCount = lotItems.reduce((sum, item) => sum + (item.quantity || 1), 0);
+    
+    return {
+      itemCount: itemCount || lot.totalItems,
+      totalCost: lot.totalCost,
+      currentMelt: totalMelt,
+      profit: totalMelt - lot.totalCost
+    };
+  };
+  
+  // Get status color
+  const getStatusColor = (status) => {
+    switch(status) {
+      case 'intact': return 'bg-green-100 text-green-700';
+      case 'partial': return 'bg-yellow-100 text-yellow-700';
+      case 'broken': return 'bg-gray-100 text-gray-500';
+      case 'sold': return 'bg-blue-100 text-blue-700';
+      default: return 'bg-gray-100 text-gray-500';
+    }
+  };
+  
+  const activeLots = lots.filter(l => l.status !== 'sold' && l.status !== 'broken');
+  const soldLots = lots.filter(l => l.status === 'sold' || l.status === 'broken');
+  
+  return (
+    <div className="min-h-screen bg-gray-100">
+      <div className="bg-purple-700 text-white p-4">
+        <div className="flex items-center justify-between">
+          <button onClick={onBack} className="flex items-center gap-1">← Back</button>
+          <h1 className="text-xl font-bold flex items-center gap-2">
+            <Package size={24} /> Lot Management
+          </h1>
+          <div className="w-16"></div>
+        </div>
+      </div>
+      
+      <div className="p-4 space-y-4 pb-24">
+        {/* Summary */}
+        <div className="bg-gradient-to-r from-purple-600 to-purple-700 rounded-lg shadow p-4 text-white">
+          <div className="grid grid-cols-3 gap-3">
+            <div className="text-center">
+              <div className="text-2xl font-bold">{activeLots.length}</div>
+              <div className="text-xs opacity-80">Active Lots</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold">
+                ${activeLots.reduce((sum, lot) => sum + lot.totalCost, 0).toLocaleString()}
+              </div>
+              <div className="text-xs opacity-80">Total Cost</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold">
+                {activeLots.reduce((sum, lot) => sum + (lot.totalItems || 0), 0)}
+              </div>
+              <div className="text-xs opacity-80">Total Items</div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Active Lots */}
+        <div className="bg-white rounded-lg shadow">
+          <div className="p-3 border-b font-medium text-gray-700">Active Lots</div>
+          {activeLots.length === 0 ? (
+            <div className="p-4 text-center text-gray-400">No active lots</div>
+          ) : (
+            <div className="divide-y">
+              {activeLots.map(lot => {
+                const values = getLotValue(lot);
+                const profitPercent = values.totalCost > 0 ? ((values.profit / values.totalCost) * 100) : 0;
+                
+                return (
+                  <div key={lot.id} className="p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1">
+                        <div className="font-medium">{lot.description}</div>
+                        <div className="text-sm text-gray-500">{lot.id} • {lot.dateAcquired}</div>
+                      </div>
+                      <span className={`text-xs px-2 py-1 rounded ${getStatusColor(lot.status)}`}>
+                        {lot.status || 'intact'}
+                      </span>
+                    </div>
+                    
+                    <div className="grid grid-cols-4 gap-2 mb-3 text-sm">
+                      <div className="bg-gray-50 p-2 rounded text-center">
+                        <div className="text-xs text-gray-500">Items</div>
+                        <div className="font-bold">{values.itemCount}</div>
+                      </div>
+                      <div className="bg-gray-50 p-2 rounded text-center">
+                        <div className="text-xs text-gray-500">Cost</div>
+                        <div className="font-bold">${values.totalCost}</div>
+                      </div>
+                      <div className="bg-gray-50 p-2 rounded text-center">
+                        <div className="text-xs text-gray-500">Melt</div>
+                        <div className="font-bold text-amber-600">${values.currentMelt.toFixed(0)}</div>
+                      </div>
+                      <div className="bg-gray-50 p-2 rounded text-center">
+                        <div className="text-xs text-gray-500">Profit</div>
+                        <div className={`font-bold ${values.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {values.profit >= 0 ? '+' : ''}${values.profit.toFixed(0)}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {lot.notes && (
+                      <div className="text-xs text-gray-500 mb-3 p-2 bg-gray-50 rounded">
+                        {lot.notes}
+                      </div>
+                    )}
+                    
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => {
+                          // Find the main item for this lot
+                          const lotItem = inventory.find(item => lot.itemIds?.includes(item.id));
+                          if (lotItem && onSelectItem) onSelectItem(lotItem);
+                        }}
+                        className="flex-1 py-2 text-sm bg-purple-100 text-purple-700 rounded font-medium"
+                      >
+                        View Item
+                      </button>
+                      <button 
+                        onClick={() => setShowBreakConfirm(lot)}
+                        className="flex-1 py-2 text-sm bg-amber-100 text-amber-700 rounded font-medium"
+                      >
+                        Break Apart
+                      </button>
+                      <button 
+                        onClick={() => onUpdateLot({ ...lot, status: 'sold' })}
+                        className="flex-1 py-2 text-sm bg-green-100 text-green-700 rounded font-medium"
+                      >
+                        Sold as Set
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        
+        {/* Sold/Broken Lots */}
+        {soldLots.length > 0 && (
+          <div className="bg-white rounded-lg shadow">
+            <div className="p-3 border-b font-medium text-gray-500">Completed Lots</div>
+            <div className="divide-y">
+              {soldLots.map(lot => (
+                <div key={lot.id} className="p-3 opacity-60">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <div className="font-medium text-sm">{lot.description}</div>
+                      <div className="text-xs text-gray-500">{lot.totalItems} items • ${lot.totalCost}</div>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded ${getStatusColor(lot.status)}`}>
+                      {lot.status}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      
+      {/* Break Lot Confirmation Modal */}
+      {showBreakConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-4">
+            <h3 className="font-bold text-lg mb-2">Break Apart Lot?</h3>
+            <p className="text-gray-600 mb-4">
+              This will convert "{showBreakConfirm.description}" into {showBreakConfirm.totalItems} individual inventory items, each with cost basis of ${(showBreakConfirm.totalCost / showBreakConfirm.totalItems).toFixed(2)}.
+            </p>
+            <p className="text-sm text-amber-600 mb-4">
+              ⚠️ Consider: Sets often sell for a premium over individual coins. Are you sure you want to break this apart?
+            </p>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setShowBreakConfirm(null)}
+                className="flex-1 py-3 border rounded-lg"
+              >
+                Keep as Set
+              </button>
+              <button 
+                onClick={() => {
+                  if (onBreakLot) onBreakLot(showBreakConfirm);
+                  setShowBreakConfirm(null);
+                }}
+                className="flex-1 py-3 bg-amber-600 text-white rounded-lg font-medium"
+              >
+                Break Apart
               </button>
             </div>
           </div>
@@ -6494,7 +6919,7 @@ function SettingsView({ onBack, onExport, onImport, onReset, fileInputRef, coinB
 export default function SESInventoryApp() {
   const [inventory, setInventory] = useState(starterInventory);
   const [clients, setClients] = useState(starterClients);
-  const [lots, setLots] = useState([]); // Track lots
+  const [lots, setLots] = useState(starterLots); // Track lots
   const [view, setView] = useState('list');
   const [selectedItem, setSelectedItem] = useState(null);
   const [selectedClient, setSelectedClient] = useState(null);
@@ -6782,6 +7207,41 @@ export default function SESInventoryApp() {
   // Other views
   if (view === 'appraisal') return <AppraisalSessionView clients={clients} spotPrices={liveSpotPrices} buyPercentages={buyPercentages} coinBuyPercents={coinBuyPercents} onComplete={handleAppraisalComplete} onCancel={() => setView('list')} />;
   if (view === 'lotPurchase') return <LotPurchaseView clients={clients} onSave={handleLotSave} onCancel={() => setView('list')} />;
+  if (view === 'lots') return <LotsView 
+    lots={lots} 
+    inventory={inventory} 
+    liveSpotPrices={liveSpotPrices} 
+    onBack={() => setView('list')} 
+    onUpdateLot={(updatedLot) => setLots(lots.map(l => l.id === updatedLot.id ? updatedLot : l))}
+    onBreakLot={(lot) => {
+      // Break lot into individual items
+      const lotItem = inventory.find(item => lot.itemIds?.includes(item.id));
+      if (lotItem && lotItem.quantity > 1) {
+        // Create individual items from the lot
+        const costPerItem = lot.totalCost / lot.totalItems;
+        const newItems = [];
+        let currentMax = Math.max(...inventory.map(i => parseInt(i.id.replace('SES-', '')) || 0));
+        
+        for (let i = 0; i < lot.totalItems; i++) {
+          newItems.push({
+            ...lotItem,
+            id: `SES-${String(currentMax + i + 1).padStart(3, '0')}`,
+            description: lotItem.description.replace(/\(\d+ coin[s]? set\)/i, '').trim(),
+            quantity: 1,
+            purchasePrice: Math.round(costPerItem * 100) / 100,
+            meltValue: Math.round((lotItem.meltValue / lot.totalItems) * 100) / 100,
+            notes: `Broken from ${lot.id}: ${lot.description}`,
+            lotId: lot.id
+          });
+        }
+        
+        // Remove original lot item and add individual items
+        setInventory([...inventory.filter(i => i.id !== lotItem.id), ...newItems]);
+        setLots(lots.map(l => l.id === lot.id ? { ...l, status: 'broken' } : l));
+      }
+    }}
+    onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }}
+  />;
   if (view === 'calculator') return <ScrapCalculatorView spotPrices={liveSpotPrices} onRefresh={refreshSpotPrices} isLoading={isLoadingPrices} onBack={() => setView('list')} />;
   if (view === 'holdStatus') return <HoldStatusView inventory={inventory} onBack={() => setView('list')} onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }} />;
   if (view === 'spotValue') return <SpotValueView inventory={inventory} onBack={() => setView('list')} liveSpotPrices={liveSpotPrices} />;
@@ -6791,7 +7251,7 @@ export default function SESInventoryApp() {
   if (view === 'add') return <AddItemView clients={clients} onSave={(item) => { setInventory([...inventory, { ...item, id: getNextId('SES') }]); setView('list'); }} onCancel={() => setView('list')} calculateMelt={calculateMelt} />;
   if (view === 'detail' && selectedItem) return <DetailView item={selectedItem} clients={clients} liveSpotPrices={liveSpotPrices} onUpdate={(u) => { setInventory(inventory.map(i => i.id === u.id ? u : i)); setSelectedItem(u); }} onDelete={() => { setInventory(inventory.filter(i => i.id !== selectedItem.id)); setView('list'); }} onBack={() => { setView('list'); setSelectedItem(null); }} onListOnEbay={() => setView('ebayListing')} />;
   if (view === 'ebayListing' && selectedItem) return <EbayListingView item={selectedItem} onBack={() => setView('detail')} onListingCreated={(listing) => { setInventory(inventory.map(i => i.id === selectedItem.id ? { ...i, ebayListingId: listing.listingId, ebayUrl: listing.ebayUrl, status: 'Listed' } : i)); setSelectedItem({ ...selectedItem, ebayListingId: listing.listingId, ebayUrl: listing.ebayUrl, status: 'Listed' }); setView('detail'); }} />;
-  if (view === 'settings') return <SettingsView onBack={() => setView('list')} onExport={handleExport} onImport={handleImport} onReset={() => { setInventory(starterInventory); setClients(starterClients); }} fileInputRef={fileInputRef} coinBuyPercents={coinBuyPercents} onUpdateCoinBuyPercent={handleUpdateCoinBuyPercent} />;
+  if (view === 'settings') return <SettingsView onBack={() => setView('list')} onExport={handleExport} onImport={handleImport} onReset={() => { setInventory(starterInventory); setClients(starterClients); setLots(starterLots); }} fileInputRef={fileInputRef} coinBuyPercents={coinBuyPercents} onUpdateCoinBuyPercent={handleUpdateCoinBuyPercent} />;
 
   // LIST VIEW
   return (
@@ -6834,6 +7294,22 @@ export default function SESInventoryApp() {
           <Calculator size={20} /> Scrap Calculator
         </button>
       </div>
+      
+      {/* Lots Management Button */}
+      {lots.filter(l => l.status !== 'sold' && l.status !== 'broken').length > 0 && (
+        <div className="px-4 pt-2">
+          <button onClick={() => setView('lots')} className="w-full bg-gradient-to-r from-purple-600 to-purple-700 text-white py-3 rounded-lg shadow flex items-center justify-between px-4">
+            <div className="flex items-center gap-2">
+              <Layers size={20} />
+              <span>Manage Lots</span>
+            </div>
+            <div className="text-right">
+              <span className="font-bold">{lots.filter(l => l.status !== 'sold' && l.status !== 'broken').length}</span>
+              <span className="text-purple-200 text-sm ml-1">active</span>
+            </div>
+          </button>
+        </div>
+      )}
       
       {/* Personal Stash Button */}
       <div className="px-4 pt-2">
