@@ -228,19 +228,24 @@ const SpotPriceService = {
   // Fetch live spot prices from our own serverless API
   async fetchFromMetalsLive() {
     try {
-      // Use our own Vercel serverless function (no CORS issues)
-      const response = await fetch('/api/spot-prices');
+      // Try allorigins proxy (reliable CORS proxy)
+      const response = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent('https://api.metals.live/v1/spot'));
       if (!response.ok) throw new Error('API error');
       const data = await response.json();
       
-      if (data.gold) this.lastPrices.gold = data.gold;
-      if (data.silver) this.lastPrices.silver = data.silver;
-      if (data.platinum) this.lastPrices.platinum = data.platinum;
-      if (data.palladium) this.lastPrices.palladium = data.palladium;
-      
-      this.lastUpdate = new Date();
-      console.log('Spot prices updated from', data.source + ':', this.lastPrices);
-      return this.lastPrices;
+      // Parse response - returns array of objects
+      if (Array.isArray(data)) {
+        data.forEach(item => {
+          if (item.gold) this.lastPrices.gold = item.gold;
+          if (item.silver) this.lastPrices.silver = item.silver;
+          if (item.platinum) this.lastPrices.platinum = item.platinum;
+          if (item.palladium) this.lastPrices.palladium = item.palladium;
+        });
+        this.lastUpdate = new Date();
+        console.log('Spot prices updated:', this.lastPrices);
+        return this.lastPrices;
+      }
+      throw new Error('Invalid response format');
     } catch (error) {
       console.log('Spot price fetch failed, using defaults:', error.message);
       return this.lastPrices;
