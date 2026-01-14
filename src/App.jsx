@@ -7594,9 +7594,9 @@ Return ONLY the JSON object.`
       });
       
       if (!response.ok) {
-        const errText = await response.text();
-        console.error('API error:', errText);
-        throw new Error('API request failed');
+        const errData = await response.json().catch(() => ({}));
+        console.error('API error:', response.status, errData);
+        throw new Error(errData.details || errData.error || `API error ${response.status}`);
       }
       
       const data = await response.json();
