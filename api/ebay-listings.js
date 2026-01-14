@@ -1,5 +1,5 @@
 // eBay Active Listings API
-// Fetches seller's current active listings
+// Fetches seller's current active listings from multiple sources
 
 export default async function handler(req, res) {
   // Enable CORS
@@ -20,8 +20,24 @@ export default async function handler(req, res) {
   const accessToken = authHeader.replace('Bearer ', '');
   
   try {
-    // Use the Sell Inventory API to get offers (active listings)
-    // First, get inventory items
+    // First get user info to get the username for Browse API
+    let username = null;
+    const userResponse = await fetch(
+      'https://apiz.ebay.com/commerce/identity/v1/user/',
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    if (userResponse.ok) {
+      const userData = await userResponse.json();
+      username = userData.username;
+    }
+    
+    // Use the Sell Inventory API to get offers (listings created via API)
     const inventoryResponse = await fetch(
       'https://api.ebay.com/sell/inventory/v1/inventory_item?limit=100',
       {
@@ -32,21 +48,11 @@ export default async function handler(req, res) {
       }
     );
     
-    if (!inventoryResponse.ok) {
-      const errorData = await inventoryResponse.json().catch(() => ({}));
-      
-      // Check if token expired
-      if (inventoryResponse.status === 401) {
-        return res.status(401).json({ 
-          error: 'Token expired', 
-          needsRefresh: true,
-          details: errorData 
-        });
-      }
-      
-      // If inventory API fails, try the Browse API to get active listings
-      // Or fall back to returning empty
-      console.log('Inventory API failed:', inventoryResponse.status, errorData);
+    if (!inventoryResponse.ok && inventoryResponse.status === 401) {
+      return res.status(401).json({ 
+        error: 'Token expired', 
+        needsRefresh: true
+      });
     }
     
     let inventoryData = { inventoryItems: [] };
@@ -54,7 +60,7 @@ export default async function handler(req, res) {
       inventoryData = await inventoryResponse.json();
     }
     
-    // Also get active listings via offers
+    // Get active offers from Inventory API
     const offersResponse = await fetch(
       'https://api.ebay.com/sell/inventory/v1/offer?limit=100',
       {
@@ -70,11 +76,54 @@ export default async function handler(req, res) {
       offersData = await offersResponse.json();
     }
     
-    // If both inventory APIs fail, try the Trading API via Fulfillment
-    // Get active orders which indicates what's been listed/sold
-    let activeListings = [];
+    // *** KEY: Use Browse API to get ALL active listings ***
+    // This includes listings created on eBay website, app, or any method
+    let browseListings = [];
+    let browseError = null;
     
-    // Try to get active listings via the Browse API (seller's view)
+    if (username) {
+      try {
+        // Search for all active listings by this seller
+        const browseResponse = await fetch(
+          `https://api.ebay.com/buy/browse/v1/item_summary/search?q=*&filter=sellers:{${encodeURIComponent(username)}}&limit=200`,
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+              'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
+            }
+          }
+        );
+        
+        if (browseResponse.ok) {
+          const browseData = await browseResponse.json();
+          browseListings = (browseData.itemSummaries || []).map(item => ({
+            type: 'browse',
+            itemId: item.itemId,
+            legacyItemId: item.legacyItemId,
+            title: item.title,
+            price: item.price?.value,
+            currency: item.price?.currency,
+            condition: item.condition,
+            conditionId: item.conditionId,
+            imageUrl: item.image?.imageUrl,
+            thumbnailImages: item.thumbnailImages?.map(t => t.imageUrl),
+            itemWebUrl: item.itemWebUrl,
+            seller: item.seller?.username,
+            buyingOptions: item.buyingOptions,
+            itemGroupType: item.itemGroupType,
+            categories: item.categories?.map(c => ({ id: c.categoryId, name: c.categoryName }))
+          }));
+        } else {
+          const errData = await browseResponse.json().catch(() => ({}));
+          browseError = { status: browseResponse.status, ...errData };
+        }
+      } catch (browseErr) {
+        browseError = { message: browseErr.message };
+      }
+    }
+    
+    // Get fulfillment orders
     const fulfillmentResponse = await fetch(
       'https://api.ebay.com/sell/fulfillment/v1/order?limit=50',
       {
@@ -90,59 +139,69 @@ export default async function handler(req, res) {
       fulfillmentData = await fulfillmentResponse.json();
     }
     
-    // Combine and format the data
+    // Combine all sources into a unified listings array
     const listings = [];
+    const seenItemIds = new Set();
     
-    // Process offers (these are the actual active listings)
-    if (offersData.offers && offersData.offers.length > 0) {
-      for (const offer of offersData.offers) {
+    // Add browse listings first (most comprehensive)
+    for (const item of browseListings) {
+      if (!seenItemIds.has(item.itemId)) {
+        seenItemIds.add(item.itemId);
         listings.push({
-          type: 'offer',
-          sku: offer.sku,
-          listingId: offer.listingId,
-          offerId: offer.offerId,
-          status: offer.status,
-          format: offer.format,
-          price: offer.pricingSummary?.price?.value,
-          currency: offer.pricingSummary?.price?.currency,
-          quantity: offer.availableQuantity,
-          marketplaceId: offer.marketplaceId,
-          categoryId: offer.categoryId
+          ...item,
+          status: 'ACTIVE',
+          source: 'browse'
         });
       }
     }
     
-    // Process inventory items and match with offers
-    if (inventoryData.inventoryItems && inventoryData.inventoryItems.length > 0) {
-      for (const item of inventoryData.inventoryItems) {
-        // Check if we already have this SKU from offers
-        const existingOffer = listings.find(l => l.sku === item.sku);
+    // Add offers from Inventory API
+    if (offersData.offers && offersData.offers.length > 0) {
+      for (const offer of offersData.offers) {
+        // Check if we already have this listing from browse
+        const existingListing = listings.find(l => 
+          l.legacyItemId === offer.listingId || 
+          l.itemId === offer.listingId
+        );
         
-        if (existingOffer) {
-          // Enhance with inventory data
-          existingOffer.title = item.product?.title;
-          existingOffer.description = item.product?.description;
-          existingOffer.imageUrls = item.product?.imageUrls;
-          existingOffer.condition = item.condition;
-          existingOffer.conditionDescription = item.conditionDescription;
-        } else {
-          // Inventory item without an active offer
+        if (existingListing) {
+          // Enhance with offer data
+          existingListing.sku = offer.sku;
+          existingListing.offerId = offer.offerId;
+          existingListing.format = offer.format;
+          existingListing.inventoryPrice = offer.pricingSummary?.price?.value;
+          existingListing.quantity = offer.availableQuantity;
+        } else if (!seenItemIds.has(offer.listingId)) {
+          // Add as new listing
+          seenItemIds.add(offer.listingId);
           listings.push({
-            type: 'inventory',
-            sku: item.sku,
-            title: item.product?.title,
-            description: item.product?.description,
-            imageUrls: item.product?.imageUrls,
-            condition: item.condition,
-            conditionDescription: item.conditionDescription,
-            quantity: item.availability?.shipToLocationAvailability?.quantity,
-            status: 'NOT_LISTED'
+            type: 'offer',
+            sku: offer.sku,
+            listingId: offer.listingId,
+            offerId: offer.offerId,
+            status: offer.status,
+            format: offer.format,
+            price: offer.pricingSummary?.price?.value,
+            currency: offer.pricingSummary?.price?.currency,
+            quantity: offer.availableQuantity,
+            source: 'inventory_api'
           });
         }
       }
     }
     
-    // Add info from fulfillment/orders
+    // Enhance listings with inventory item details
+    if (inventoryData.inventoryItems) {
+      for (const item of inventoryData.inventoryItems) {
+        const existingListing = listings.find(l => l.sku === item.sku);
+        if (existingListing) {
+          existingListing.inventoryTitle = item.product?.title;
+          existingListing.inventoryDescription = item.product?.description;
+          existingListing.inventoryImageUrls = item.product?.imageUrls;
+        }
+      }
+    }
+    
     const recentOrders = fulfillmentData.orders?.slice(0, 10).map(order => ({
       orderId: order.orderId,
       creationDate: order.creationDate,
@@ -157,15 +216,21 @@ export default async function handler(req, res) {
     
     res.status(200).json({
       success: true,
+      username,
       totalListings: listings.length,
       listings,
       recentOrders,
       raw: {
+        browseCount: browseListings.length,
         inventoryCount: inventoryData.inventoryItems?.length || 0,
         offersCount: offersData.offers?.length || 0,
         ordersCount: fulfillmentData.orders?.length || 0
       },
+      errors: {
+        browse: browseError
+      },
       apiStatus: {
+        user: userResponse.status,
         inventory: inventoryResponse.status,
         offers: offersResponse.status,
         fulfillment: fulfillmentResponse.status

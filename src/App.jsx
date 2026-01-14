@@ -8691,21 +8691,24 @@ function EbaySyncView({ onBack, onImportListings, inventory }) {
     return false;
   };
   
-  // Check if listing already exists in inventory (by title match)
+  // Check if listing already exists in inventory (by title match or ID)
   const isAlreadyImported = (listing) => {
     const title = (listing.title || listing.sku || '').toLowerCase();
     return inventory.some(item => 
-      item.description?.toLowerCase().includes(title) || 
+      item.description?.toLowerCase().includes(title.substring(0, 30)) || 
       item.ebayListingId === listing.listingId ||
+      item.ebayListingId === listing.itemId ||
+      item.ebayListingId === listing.legacyItemId ||
       item.ebayOfferId === listing.offerId
     );
   };
   
   const toggleSelection = (listing) => {
+    const listingId = listing.itemId || listing.sku || listing.listingId;
     setSelectedListings(prev => {
-      const exists = prev.find(l => l.sku === listing.sku);
+      const exists = prev.find(l => (l.itemId || l.sku || l.listingId) === listingId);
       if (exists) {
-        return prev.filter(l => l.sku !== listing.sku);
+        return prev.filter(l => (l.itemId || l.sku || l.listingId) !== listingId);
       } else {
         return [...prev, listing];
       }
@@ -8724,13 +8727,14 @@ function EbaySyncView({ onBack, onImportListings, inventory }) {
       status: 'Listed',
       source: 'eBay',
       dateAcquired: new Date().toISOString().split('T')[0],
-      ebayListingId: listing.listingId,
+      ebayListingId: listing.itemId || listing.legacyItemId || listing.listingId,
       ebayOfferId: listing.offerId,
       ebayPrice: listing.price,
       ebayQuantity: listing.quantity,
-      ebayStatus: listing.status,
+      ebayStatus: listing.status || 'ACTIVE',
+      ebayUrl: listing.itemWebUrl,
       notes: `Imported from eBay. Price: $${listing.price || 0}`,
-      photo: listing.imageUrls?.[0] || null
+      photo: listing.imageUrl || listing.imageUrls?.[0] || null
     }));
     
     onImportListings(itemsToImport);
@@ -8798,30 +8802,30 @@ function EbaySyncView({ onBack, onImportListings, inventory }) {
                 <div className="divide-y max-h-96 overflow-y-auto">
                   {newListings.map(listing => (
                     <div 
-                      key={listing.sku || listing.listingId} 
+                      key={listing.itemId || listing.sku || listing.listingId} 
                       className={`p-3 flex items-center gap-3 cursor-pointer hover:bg-gray-50 ${
-                        selectedListings.find(l => l.sku === listing.sku) ? 'bg-blue-50' : ''
+                        selectedListings.find(l => (l.itemId || l.sku) === (listing.itemId || listing.sku)) ? 'bg-blue-50' : ''
                       }`}
                       onClick={() => toggleSelection(listing)}
                     >
                       <input
                         type="checkbox"
-                        checked={!!selectedListings.find(l => l.sku === listing.sku)}
+                        checked={!!selectedListings.find(l => (l.itemId || l.sku) === (listing.itemId || listing.sku))}
                         onChange={() => {}}
                         className="w-5 h-5"
                       />
-                      {listing.imageUrls?.[0] && (
-                        <img src={listing.imageUrls[0]} alt="" className="w-12 h-12 object-cover rounded" />
+                      {(listing.imageUrl || listing.imageUrls?.[0]) && (
+                        <img src={listing.imageUrl || listing.imageUrls[0]} alt="" className="w-12 h-12 object-cover rounded" />
                       )}
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-sm truncate">{listing.title || listing.sku}</div>
                         <div className="text-xs text-gray-500">
-                          {listing.status} • Qty: {listing.quantity || 1}
+                          {listing.condition || listing.status || 'Active'} • {listing.itemId ? `#${listing.itemId.slice(-6)}` : listing.sku}
                         </div>
                       </div>
                       <div className="text-right">
                         <div className="font-bold text-green-600">${listing.price || 0}</div>
-                        <div className="text-xs text-gray-400">{listing.format || 'Fixed'}</div>
+                        <div className="text-xs text-gray-400">{listing.buyingOptions?.[0] || listing.format || 'Fixed'}</div>
                       </div>
                     </div>
                   ))}

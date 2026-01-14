@@ -9,13 +9,16 @@ export default function handler(req, res) {
     return res.status(500).json({ error: 'eBay credentials not configured' });
   }
   
-  // Scopes we need for inventory access
+  // Scopes we need for full listing and selling access
   const scopes = [
     'https://api.ebay.com/oauth/api_scope',
     'https://api.ebay.com/oauth/api_scope/sell.inventory.readonly',
     'https://api.ebay.com/oauth/api_scope/sell.inventory',
     'https://api.ebay.com/oauth/api_scope/sell.account.readonly',
-    'https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly'
+    'https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly',
+    'https://api.ebay.com/oauth/api_scope/sell.marketing.readonly',
+    'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly',
+    'https://api.ebay.com/oauth/api_scope/buy.browse'  // Access to browse seller's own listings
   ].join(' ');
   
   // Build eBay authorization URL
