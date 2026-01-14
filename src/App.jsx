@@ -5863,25 +5863,249 @@ function AddItemView({ onSave, onCancel, calculateMelt, clients }) {
   );
 }
 
-function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay }) {
+function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay, liveSpotPrices }) {
   const [showSold, setShowSold] = useState(false);
   const [salePrice, setSalePrice] = useState(item.meltValue || '');
   const [salePlatform, setSalePlatform] = useState('Refiner');
   const [ebayPrices, setEbayPrices] = useState(null);
   const [isLoadingEbay, setIsLoadingEbay] = useState(false);
-  const [showEbayPrices, setShowEbayPrices] = useState(false);
+  const [showPricingAnalysis, setShowPricingAnalysis] = useState(false);
+  const [generatedListing, setGeneratedListing] = useState(null);
   const client = clients.find(c => c.id === item.clientId);
   const holdStatus = getHoldStatus(item);
   const profit = item.status === 'Sold' ? (item.salePrice - item.purchasePrice) : (item.meltValue - item.purchasePrice);
   
-  // Fetch eBay sold prices
+  // Generate optimized eBay listing
+  const generateListing = (ebayData) => {
+    const coinInfo = item.coinKey ? coinReference[item.coinKey] : null;
+    
+    // Build optimized title (max 80 chars, keyword-rich)
+    let title = '';
+    if (item.year) title += `${item.year} `;
+    if (item.mint) title += `${item.mint} `;
+    title += item.description;
+    if (item.grade) {
+      const gradeUpper = item.grade.toUpperCase();
+      if (gradeUpper.startsWith('MS') || gradeUpper.startsWith('PF')) {
+        title += ` ${gradeUpper} PCGS NGC`;
+      } else {
+        title += ` ${gradeUpper}`;
+      }
+    }
+    if (item.purity && !title.includes(item.purity)) title += ` ${item.purity}`;
+    if (item.metalType === 'Silver' && !title.toLowerCase().includes('silver')) title += ' Silver';
+    if (item.metalType === 'Gold' && !title.toLowerCase().includes('gold')) title += ' Gold';
+    title = title.slice(0, 80);
+    
+    // Generate detailed description
+    const description = `
+${item.description}${item.year ? ` - ${item.year}` : ''}${item.mint ? `-${item.mint}` : ''}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 ITEM DETAILS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Metal: ${item.metalType || 'Silver'}
+• Purity: ${item.purity || 'N/A'}
+• Weight: ${item.weightOz || 'N/A'} troy oz
+${item.year ? `• Year: ${item.year}` : ''}
+${item.mint ? `• Mint: ${item.mint}` : ''}
+${item.grade ? `• Grade/Condition: ${item.grade.toUpperCase()}` : ''}
+${coinInfo ? `• Actual Silver Weight: ${coinInfo.aswOz || coinInfo.agwOz || 'N/A'} oz` : ''}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📦 SHIPPING & HANDLING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Ships within 1 business day of cleared payment
+• Securely packaged in protective flip/holder
+• USPS First Class with tracking included
+• Insurance available upon request
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ SELLER GUARANTEE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• 100% authentic guaranteed
+• What you see is what you get
+• 30-day return policy for any reason
+
+${item.notes ? `\nNotes: ${item.notes}` : ''}
+
+Thanks for looking! Check out our other listings for more great coins and precious metals.
+`.trim();
+
+    // Pricing strategy based on eBay data
+    let pricingStrategy = {
+      recommendedFormat: 'FIXED_PRICE',
+      binPrice: 0,
+      auctionStart: 0,
+      reasoning: ''
+    };
+    
+    if (ebayData && ebayData.count > 0) {
+      const avgPrice = ebayData.avgPrice;
+      const meltValue = parseFloat(item.meltValue) || 0;
+      const premium = avgPrice - meltValue;
+      const premiumPercent = meltValue > 0 ? ((premium / meltValue) * 100) : 0;
+      
+      if (premiumPercent > 30) {
+        // High premium item - auction might get more
+        pricingStrategy = {
+          recommendedFormat: 'AUCTION',
+          binPrice: Math.round(avgPrice * 1.1),
+          auctionStart: Math.round(avgPrice * 0.7),
+          reasoning: `High collector premium (${premiumPercent.toFixed(0)}% over melt). Auction could drive competitive bidding.`
+        };
+      } else if (premiumPercent > 10) {
+        // Moderate premium - BIN with best offer
+        pricingStrategy = {
+          recommendedFormat: 'FIXED_PRICE',
+          binPrice: Math.round(avgPrice * 0.95),
+          auctionStart: Math.round(avgPrice * 0.8),
+          reasoning: `Moderate premium (${premiumPercent.toFixed(0)}% over melt). BIN at 5% below average for quick sale.`
+        };
+      } else {
+        // Low premium - compete on price
+        pricingStrategy = {
+          recommendedFormat: 'FIXED_PRICE',
+          binPrice: Math.round(ebayData.lowPrice * 1.05),
+          auctionStart: Math.round(ebayData.lowPrice),
+          reasoning: `Low premium item. Price competitively near low end for fast turnover.`
+        };
+      }
+    } else {
+      // No eBay data - price based on melt
+      const meltValue = parseFloat(item.meltValue) || 0;
+      pricingStrategy = {
+        recommendedFormat: 'FIXED_PRICE',
+        binPrice: Math.round(meltValue * 1.15),
+        auctionStart: Math.round(meltValue),
+        reasoning: `No eBay comps found. Pricing at 15% over melt value.`
+      };
+    }
+    
+    return {
+      title,
+      description,
+      pricingStrategy,
+      condition: item.grade ? 'USED_EXCELLENT' : 'USED_GOOD',
+      category: coinInfo ? '39482' : '11116', // US Coins or Bullion
+    };
+  };
+  
+  // Calculate sell strategy recommendation
+  const getSellStrategy = (ebayData) => {
+    const meltValue = parseFloat(item.meltValue) || 0;
+    const cost = parseFloat(item.purchasePrice) || 0;
+    const meltProfit = meltValue - cost;
+    const meltProfitPercent = cost > 0 ? ((meltProfit / cost) * 100) : 0;
+    
+    let strategy = {
+      recommendation: 'HOLD',
+      confidence: 'medium',
+      reasoning: '',
+      options: []
+    };
+    
+    if (ebayData && ebayData.count > 0) {
+      const ebayAvg = ebayData.avgPrice;
+      const ebayProfit = ebayAvg - cost;
+      const ebayProfitPercent = cost > 0 ? ((ebayProfit / cost) * 100) : 0;
+      const ebayVsMelt = ebayAvg - meltValue;
+      const ebayFees = ebayAvg * 0.13; // ~13% eBay + PayPal fees
+      const ebayNet = ebayAvg - ebayFees;
+      const ebayNetProfit = ebayNet - cost;
+      
+      strategy.options = [
+        {
+          channel: 'Refiner',
+          grossPrice: meltValue,
+          fees: 0,
+          netPrice: meltValue,
+          profit: meltProfit,
+          profitPercent: meltProfitPercent,
+          timeToSell: 'Immediate',
+          risk: 'None'
+        },
+        {
+          channel: 'eBay',
+          grossPrice: ebayAvg,
+          fees: ebayFees,
+          netPrice: ebayNet,
+          profit: ebayNetProfit,
+          profitPercent: cost > 0 ? ((ebayNetProfit / cost) * 100) : 0,
+          timeToSell: '3-14 days',
+          risk: 'Low-Medium'
+        }
+      ];
+      
+      // Determine recommendation
+      if (ebayNetProfit > meltProfit * 1.2) {
+        // eBay nets 20%+ more than melt
+        strategy.recommendation = 'SELL_EBAY';
+        strategy.confidence = 'high';
+        strategy.reasoning = `eBay nets $${ebayNetProfit.toFixed(2)} vs $${meltProfit.toFixed(2)} at refiner (+$${(ebayNetProfit - meltProfit).toFixed(2)}). Worth the extra effort.`;
+      } else if (ebayNetProfit > meltProfit) {
+        // eBay slightly better
+        strategy.recommendation = 'SELL_EBAY';
+        strategy.confidence = 'medium';
+        strategy.reasoning = `eBay nets slightly more ($${(ebayNetProfit - meltProfit).toFixed(2)} extra), but refiner is faster with less hassle.`;
+      } else if (meltProfitPercent > 20) {
+        // Good profit at refiner
+        strategy.recommendation = 'SELL_REFINER';
+        strategy.confidence = 'high';
+        strategy.reasoning = `Strong ${meltProfitPercent.toFixed(0)}% profit at melt. Quick, guaranteed sale.`;
+      } else if (meltProfitPercent < 5 && ebayVsMelt > meltValue * 0.1) {
+        // Low melt profit but collector premium exists
+        strategy.recommendation = 'SELL_EBAY';
+        strategy.confidence = 'medium';
+        strategy.reasoning = `Low melt margin but ${((ebayVsMelt/meltValue)*100).toFixed(0)}% collector premium on eBay.`;
+      } else if (meltProfitPercent < 0) {
+        // Underwater
+        strategy.recommendation = 'STASH';
+        strategy.confidence = 'medium';
+        strategy.reasoning = `Currently underwater. Hold for spot price recovery or collector demand.`;
+      } else {
+        strategy.recommendation = 'HOLD';
+        strategy.confidence = 'low';
+        strategy.reasoning = `Marginal profit either way. Consider holding for better conditions.`;
+      }
+    } else {
+      // No eBay data
+      if (meltProfitPercent > 15) {
+        strategy.recommendation = 'SELL_REFINER';
+        strategy.confidence = 'medium';
+        strategy.reasoning = `${meltProfitPercent.toFixed(0)}% profit at melt. No eBay comps to compare.`;
+      } else {
+        strategy.recommendation = 'HOLD';
+        strategy.confidence = 'low';
+        strategy.reasoning = `Low melt margin and no eBay data. Hold for now.`;
+      }
+      
+      strategy.options = [
+        {
+          channel: 'Refiner',
+          grossPrice: meltValue,
+          fees: 0,
+          netPrice: meltValue,
+          profit: meltProfit,
+          profitPercent: meltProfitPercent,
+          timeToSell: 'Immediate',
+          risk: 'None'
+        }
+      ];
+    }
+    
+    return strategy;
+  };
+  
+  // Fetch eBay sold prices and generate analysis
   const fetchEbayPrices = async () => {
     setIsLoadingEbay(true);
     try {
       const searchQuery = item.description + (item.year ? ` ${item.year}` : '') + (item.grade ? ` ${item.grade}` : '');
-      const results = await EbayPricingService.searchSoldListings(searchQuery, 10);
+      const results = await EbayPricingService.searchSoldListings(searchQuery, 15);
       setEbayPrices(results);
-      setShowEbayPrices(true);
+      setGeneratedListing(generateListing(results));
+      setShowPricingAnalysis(true);
     } catch (error) {
       console.error('eBay price lookup failed:', error);
     }
@@ -5904,9 +6128,11 @@ function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay })
       onUpdate({ ...item, status: 'Stash' });
     }
   };
+  
+  const sellStrategy = ebayPrices ? getSellStrategy(ebayPrices) : null;
 
   return (
-    <div className="min-h-screen bg-amber-50">
+    <div className="min-h-screen bg-amber-50 pb-24">
       <div className="bg-amber-700 text-white p-4 flex justify-between">
         <button onClick={onBack}>← Back</button>
         <button onClick={onDelete}><Trash2 size={20} /></button>
@@ -5980,99 +6206,176 @@ function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay })
         
         {item.notes && <div className="mt-4 p-3 bg-gray-50 rounded text-sm">{item.notes}</div>}
         
-        {/* eBay Price Check Section */}
+        {/* PRICING ANALYSIS SECTION */}
         {item.status === 'Available' && holdStatus.canSell && !item.ebayListingId && (
           <div className="mt-4 border-t pt-4">
             <button 
               onClick={fetchEbayPrices}
               disabled={isLoadingEbay}
-              className="w-full py-3 rounded font-medium flex items-center justify-center gap-2 bg-gray-100 text-gray-700 border border-gray-300"
+              className="w-full py-3 rounded-lg font-medium flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white"
             >
               {isLoadingEbay ? (
-                <><Loader size={18} className="animate-spin" /> Checking eBay...</>
+                <><Loader size={18} className="animate-spin" /> Analyzing Market...</>
               ) : (
-                <><Search size={18} /> Check eBay Sold Prices</>
+                <><TrendingUp size={18} /> Analyze Pricing & Generate Listing</>
               )}
             </button>
             
-            {/* eBay Price Results */}
-            {showEbayPrices && ebayPrices && (
-              <div className="mt-3 p-3 bg-blue-50 rounded-lg">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="font-medium text-blue-800">eBay Recent Sales</span>
-                  <button onClick={() => setShowEbayPrices(false)} className="text-gray-500"><X size={16} /></button>
+            {/* Pricing Analysis Results */}
+            {showPricingAnalysis && sellStrategy && (
+              <div className="mt-4 space-y-4">
+                {/* Recommendation Banner */}
+                <div className={`p-4 rounded-lg ${
+                  sellStrategy.recommendation === 'SELL_EBAY' ? 'bg-blue-100 border-2 border-blue-400' :
+                  sellStrategy.recommendation === 'SELL_REFINER' ? 'bg-green-100 border-2 border-green-400' :
+                  sellStrategy.recommendation === 'STASH' ? 'bg-amber-100 border-2 border-amber-400' :
+                  'bg-gray-100 border-2 border-gray-300'
+                }`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    {sellStrategy.recommendation === 'SELL_EBAY' && <><ExternalLink size={20} className="text-blue-600" /><span className="font-bold text-blue-800">Recommend: Sell on eBay</span></>}
+                    {sellStrategy.recommendation === 'SELL_REFINER' && <><DollarSign size={20} className="text-green-600" /><span className="font-bold text-green-800">Recommend: Sell to Refiner</span></>}
+                    {sellStrategy.recommendation === 'STASH' && <><Star size={20} className="text-amber-600" /><span className="font-bold text-amber-800">Recommend: Stash / Hold</span></>}
+                    {sellStrategy.recommendation === 'HOLD' && <><Clock size={20} className="text-gray-600" /><span className="font-bold text-gray-800">Recommend: Hold</span></>}
+                    <span className={`text-xs px-2 py-0.5 rounded ${
+                      sellStrategy.confidence === 'high' ? 'bg-green-200 text-green-800' :
+                      sellStrategy.confidence === 'medium' ? 'bg-yellow-200 text-yellow-800' :
+                      'bg-gray-200 text-gray-600'
+                    }`}>{sellStrategy.confidence} confidence</span>
+                  </div>
+                  <p className="text-sm text-gray-700">{sellStrategy.reasoning}</p>
                 </div>
                 
-                {ebayPrices.count > 0 ? (
-                  <>
-                    <div className="grid grid-cols-3 gap-2 mb-3">
-                      <div className="bg-white p-2 rounded text-center">
-                        <div className="text-xs text-gray-500">Low</div>
-                        <div className="font-bold text-red-600">${ebayPrices.lowPrice}</div>
-                      </div>
-                      <div className="bg-white p-2 rounded text-center">
-                        <div className="text-xs text-gray-500">Avg</div>
-                        <div className="font-bold text-blue-600">${ebayPrices.avgPrice}</div>
-                      </div>
-                      <div className="bg-white p-2 rounded text-center">
-                        <div className="text-xs text-gray-500">High</div>
-                        <div className="font-bold text-green-600">${ebayPrices.highPrice}</div>
-                      </div>
-                    </div>
-                    <div className="text-xs text-gray-600 mb-2">Based on {ebayPrices.count} recent sales</div>
-                    
-                    {/* Suggested Price */}
-                    <div className="bg-green-100 p-2 rounded mb-3">
-                      <div className="text-xs text-green-700">Suggested List Price</div>
-                      <div className="text-xl font-bold text-green-700">${Math.round(ebayPrices.avgPrice * 0.95)}</div>
-                      <div className="text-xs text-green-600">5% below average for quick sale</div>
-                    </div>
-                    
-                    {/* Listings */}
-                    <div className="space-y-2 max-h-64 overflow-y-auto">
-                      <div className="text-xs text-gray-500 mb-1">
-                        {ebayPrices.source === 'sold' ? 'Recent sold:' : 'Active listings:'}
-                      </div>
-                      {ebayPrices.items.slice(0, 10).map((listing, idx) => (
-                        <a 
-                          key={idx}
-                          href={listing.itemUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block p-2 bg-white rounded hover:bg-gray-50 border border-gray-200"
-                        >
-                          <div className="flex items-start gap-2">
-                            {listing.imageUrl && <img src={listing.imageUrl} className="w-12 h-12 object-cover rounded" />}
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs truncate font-medium">{listing.title}</div>
-                              <div className="flex justify-between items-center mt-1">
-                                <span className="text-xs text-gray-500">
-                                  {listing.status === 'Sold' ? `Sold ${listing.soldDate}` : 'Active'} • {listing.listingType || 'BIN'}
-                                </span>
-                                <span className="font-bold text-green-600">${listing.price}</span>
-                              </div>
-                              <div className="text-xs text-blue-500 mt-1">{listing.shortUrl}</div>
-                            </div>
+                {/* Channel Comparison */}
+                <div className="bg-white border rounded-lg overflow-hidden">
+                  <div className="bg-gray-100 px-3 py-2 font-medium text-sm">Channel Comparison</div>
+                  <div className="divide-y">
+                    {sellStrategy.options.map((opt, idx) => (
+                      <div key={idx} className={`p-3 ${opt.channel === 'eBay' && sellStrategy.recommendation === 'SELL_EBAY' ? 'bg-blue-50' : opt.channel === 'Refiner' && sellStrategy.recommendation === 'SELL_REFINER' ? 'bg-green-50' : ''}`}>
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="font-medium">{opt.channel}</span>
+                          <span className={`text-lg font-bold ${opt.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            ${opt.netPrice.toFixed(2)} net
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-xs text-gray-600">
+                          <div>
+                            <span className="block text-gray-400">Gross</span>
+                            ${opt.grossPrice.toFixed(2)}
                           </div>
-                        </a>
-                      ))}
+                          <div>
+                            <span className="block text-gray-400">Fees</span>
+                            -${opt.fees.toFixed(2)}
+                          </div>
+                          <div>
+                            <span className="block text-gray-400">Profit</span>
+                            <span className={opt.profit >= 0 ? 'text-green-600' : 'text-red-600'}>
+                              {opt.profit >= 0 ? '+' : ''}${opt.profit.toFixed(2)} ({opt.profitPercent.toFixed(0)}%)
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {opt.timeToSell} • {opt.risk} risk
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* eBay Market Data */}
+                {ebayPrices && ebayPrices.count > 0 && (
+                  <div className="bg-white border rounded-lg overflow-hidden">
+                    <div className="bg-gray-100 px-3 py-2 font-medium text-sm flex justify-between items-center">
+                      <span>eBay Market Data ({ebayPrices.count} {ebayPrices.source === 'sold' ? 'sold' : 'active'})</span>
                     </div>
-                  </>
-                ) : (
-                  <div className="text-sm text-gray-600">No recent sales found for this item</div>
+                    <div className="p-3">
+                      <div className="grid grid-cols-3 gap-2 mb-3">
+                        <div className="text-center p-2 bg-red-50 rounded">
+                          <div className="text-xs text-gray-500">Low</div>
+                          <div className="font-bold text-red-600">${ebayPrices.lowPrice}</div>
+                        </div>
+                        <div className="text-center p-2 bg-blue-50 rounded">
+                          <div className="text-xs text-gray-500">Avg</div>
+                          <div className="font-bold text-blue-600">${ebayPrices.avgPrice}</div>
+                        </div>
+                        <div className="text-center p-2 bg-green-50 rounded">
+                          <div className="text-xs text-gray-500">High</div>
+                          <div className="font-bold text-green-600">${ebayPrices.highPrice}</div>
+                        </div>
+                      </div>
+                      <div className="max-h-32 overflow-y-auto space-y-1">
+                        {ebayPrices.items.slice(0, 5).map((listing, idx) => (
+                          <a 
+                            key={idx}
+                            href={listing.itemUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex justify-between items-center p-2 bg-gray-50 rounded text-xs hover:bg-gray-100"
+                          >
+                            <span className="truncate flex-1 mr-2">{listing.title?.slice(0, 40)}...</span>
+                            <span className="font-medium text-green-600">${listing.price}</span>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Generated Listing Preview */}
+                {generatedListing && (
+                  <div className="bg-white border rounded-lg overflow-hidden">
+                    <div className="bg-blue-600 text-white px-3 py-2 font-medium text-sm">
+                      📝 Auto-Generated eBay Listing
+                    </div>
+                    <div className="p-3 space-y-3">
+                      {/* Title */}
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">Title ({generatedListing.title.length}/80 chars)</div>
+                        <div className="font-medium text-sm bg-gray-50 p-2 rounded">{generatedListing.title}</div>
+                      </div>
+                      
+                      {/* Pricing Strategy */}
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">Suggested Pricing</div>
+                        <div className="bg-green-50 p-3 rounded">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-sm font-medium">
+                              {generatedListing.pricingStrategy.recommendedFormat === 'AUCTION' ? '🔨 Auction' : '💰 Buy It Now'}
+                            </span>
+                            <span className="text-xl font-bold text-green-700">
+                              ${generatedListing.pricingStrategy.binPrice}
+                            </span>
+                          </div>
+                          {generatedListing.pricingStrategy.recommendedFormat === 'AUCTION' && (
+                            <div className="text-xs text-gray-600 mb-1">
+                              Start: ${generatedListing.pricingStrategy.auctionStart} | BIN: ${generatedListing.pricingStrategy.binPrice}
+                            </div>
+                          )}
+                          <div className="text-xs text-gray-600">{generatedListing.pricingStrategy.reasoning}</div>
+                        </div>
+                      </div>
+                      
+                      {/* Description Preview */}
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">Description Preview</div>
+                        <div className="bg-gray-50 p-2 rounded text-xs max-h-32 overflow-y-auto whitespace-pre-wrap font-mono">
+                          {generatedListing.description.slice(0, 500)}...
+                        </div>
+                      </div>
+                      
+                      {/* List on eBay Button */}
+                      {onListOnEbay && (
+                        <button 
+                          onClick={onListOnEbay}
+                          className="w-full py-3 rounded-lg font-medium flex items-center justify-center gap-2 bg-blue-600 text-white"
+                        >
+                          <ExternalLink size={18} />
+                          Create eBay Listing @ ${generatedListing.pricingStrategy.binPrice}
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
-            )}
-            
-            {/* List on eBay Button */}
-            {onListOnEbay && (
-              <button 
-                onClick={onListOnEbay}
-                className="w-full mt-3 py-3 rounded font-medium flex items-center justify-center gap-2 bg-blue-600 text-white"
-              >
-                <ExternalLink size={18} />
-                List on eBay {ebayPrices?.avgPrice ? `@ $${Math.round(ebayPrices.avgPrice * 0.95)}` : ''}
-              </button>
             )}
           </div>
         )}
@@ -6081,7 +6384,7 @@ function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay })
         {(item.status === 'Available' || item.status === 'Stash') && (
           <button 
             onClick={handleToggleStash}
-            className={`w-full mt-2 py-3 rounded font-medium flex items-center justify-center gap-2 ${
+            className={`w-full mt-4 py-3 rounded font-medium flex items-center justify-center gap-2 ${
               item.status === 'Stash' 
                 ? 'bg-gray-200 text-gray-700 border border-gray-300' 
                 : 'bg-amber-100 text-amber-700 border border-amber-300'
@@ -6494,7 +6797,7 @@ export default function SESInventoryApp() {
   if (view === 'tax') return <TaxReportView inventory={inventory} onBack={() => setView('list')} />;
   if (view === 'ebayListings') return <EbayListingsView inventory={inventory} onBack={() => setView('list')} onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }} onListItem={(item) => { setSelectedItem(item); setView('ebayListing'); }} />;
   if (view === 'add') return <AddItemView clients={clients} onSave={(item) => { setInventory([...inventory, { ...item, id: getNextId('SES') }]); setView('list'); }} onCancel={() => setView('list')} calculateMelt={calculateMelt} />;
-  if (view === 'detail' && selectedItem) return <DetailView item={selectedItem} clients={clients} onUpdate={(u) => { setInventory(inventory.map(i => i.id === u.id ? u : i)); setSelectedItem(u); }} onDelete={() => { setInventory(inventory.filter(i => i.id !== selectedItem.id)); setView('list'); }} onBack={() => { setView('list'); setSelectedItem(null); }} onListOnEbay={() => setView('ebayListing')} />;
+  if (view === 'detail' && selectedItem) return <DetailView item={selectedItem} clients={clients} liveSpotPrices={liveSpotPrices} onUpdate={(u) => { setInventory(inventory.map(i => i.id === u.id ? u : i)); setSelectedItem(u); }} onDelete={() => { setInventory(inventory.filter(i => i.id !== selectedItem.id)); setView('list'); }} onBack={() => { setView('list'); setSelectedItem(null); }} onListOnEbay={() => setView('ebayListing')} />;
   if (view === 'ebayListing' && selectedItem) return <EbayListingView item={selectedItem} onBack={() => setView('detail')} onListingCreated={(listing) => { setInventory(inventory.map(i => i.id === selectedItem.id ? { ...i, ebayListingId: listing.listingId, ebayUrl: listing.ebayUrl, status: 'Listed' } : i)); setSelectedItem({ ...selectedItem, ebayListingId: listing.listingId, ebayUrl: listing.ebayUrl, status: 'Listed' }); setView('detail'); }} />;
   if (view === 'settings') return <SettingsView onBack={() => setView('list')} onExport={handleExport} onImport={handleImport} onReset={() => { setInventory(starterInventory); setClients(starterClients); }} fileInputRef={fileInputRef} coinBuyPercents={coinBuyPercents} onUpdateCoinBuyPercent={handleUpdateCoinBuyPercent} />;
 
