@@ -16,13 +16,14 @@ const CONFIG = {
   
   // Anthropic API Key for AI Vision (coin identification)
   // Get from: https://console.anthropic.com/ → API Keys
-  anthropicApiKey: "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",
+  anthropicApiKey: "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",
   
   // eBay API Credentials for market price lookups
   // Get from: https://developer.ebay.com/ → My Account → Application Keys
   ebay: {
-    appId: "YOUR_EBAY_APP_ID", // YourAppID-PRD-xxxxxxxx-xxxxxxxx
-    certId: "YOUR_EBAY_CERT_ID", // PRD-xxxxxxxxxxxxxxxx
+    appId: "SethStev-SESInven-PRD-9b467ee89-f21e0627",
+    certId: "PRD-b467ee899249-ec3d-43db-89b3-cd88",
+    devId: "9188052b-0446-44ab-83a1-e529fc600d4f",
   },
   
   // Spot Price API (Metals.live is free, no key needed)
@@ -33,8 +34,8 @@ const CONFIG = {
   features: {
     useFirebase: true, // Firebase cloud sync enabled
     useAiVision: true, // AI coin identification enabled
-    useEbayPricing: false, // Set to true when eBay credentials are added
-    useEbayListing: false, // Set to true to enable eBay listing creation
+    useEbayPricing: true, // eBay market price lookups enabled
+    useEbayListing: true, // eBay listing creation enabled
     useLiveSpot: true, // Metals.live works without a key
   }
 };
@@ -224,27 +225,22 @@ const SpotPriceService = {
   lastPrices: { gold: 2685.50, silver: 30.25, platinum: 985.00, palladium: 945.00 },
   lastUpdate: null,
   
-  // Fetch live spot prices
+  // Fetch live spot prices from our own serverless API
   async fetchFromMetalsLive() {
     try {
-      // Use corsproxy.io to bypass CORS
-      const response = await fetch('https://corsproxy.io/?' + encodeURIComponent('https://api.metals.live/v1/spot'));
+      // Use our own Vercel serverless function (no CORS issues)
+      const response = await fetch('/api/spot-prices');
       if (!response.ok) throw new Error('API error');
       const data = await response.json();
       
-      // Parse response - returns array of objects
-      if (Array.isArray(data)) {
-        data.forEach(item => {
-          if (item.gold) this.lastPrices.gold = item.gold;
-          if (item.silver) this.lastPrices.silver = item.silver;
-          if (item.platinum) this.lastPrices.platinum = item.platinum;
-          if (item.palladium) this.lastPrices.palladium = item.palladium;
-        });
-        this.lastUpdate = new Date();
-        console.log('Spot prices updated:', this.lastPrices);
-        return this.lastPrices;
-      }
-      throw new Error('Invalid response format');
+      if (data.gold) this.lastPrices.gold = data.gold;
+      if (data.silver) this.lastPrices.silver = data.silver;
+      if (data.platinum) this.lastPrices.platinum = data.platinum;
+      if (data.palladium) this.lastPrices.palladium = data.palladium;
+      
+      this.lastUpdate = new Date();
+      console.log('Spot prices updated from', data.source + ':', this.lastPrices);
+      return this.lastPrices;
     } catch (error) {
       console.log('Spot price fetch failed, using defaults:', error.message);
       return this.lastPrices;
