@@ -792,35 +792,95 @@ const EbayListingService = {
 
 // ============ EBAY PRICING SERVICE ============
 const EbayPricingService = {
-  // Search for sold listings via Vercel API proxy (avoids CORS)
-  async searchSoldListings(query, limit = 10) {
+  // Search for SOLD listings via Finding API (accurate market values)
+  async searchSoldListings(query, options = {}) {
     try {
       const params = new URLSearchParams({
         query: query,
-        limit: limit.toString()
+        daysBack: options.daysBack || '90'
       });
       
-      const response = await fetch(`/api/ebay-search?${params}`);
+      // Add optional filters
+      if (options.category) params.append('category', options.category);
+      if (options.minPrice) params.append('minPrice', options.minPrice);
+      if (options.maxPrice) params.append('maxPrice', options.maxPrice);
+      if (options.condition) params.append('condition', options.condition);
+      
+      const response = await fetch(`/api/ebay-sold?${params}`);
       
       if (!response.ok) {
         const error = await response.json();
+        console.error('eBay sold search error:', error);
         throw new Error(error.error || 'Search failed');
       }
       
-      return await response.json();
+      const data = await response.json();
+      
+      // Map to expected format for compatibility
+      return {
+        count: data.stats?.count || 0,
+        avgPrice: data.stats?.avgPrice || 0,
+        medianPrice: data.stats?.medianPrice || 0,
+        lowPrice: data.stats?.lowPrice || 0,
+        highPrice: data.stats?.highPrice || 0,
+        items: data.items?.map(item => ({
+          title: item.title,
+          price: item.price,
+          soldDate: item.soldDate,
+          condition: item.condition,
+          imageUrl: item.imageUrl,
+          itemUrl: item.itemUrl,
+          listingType: item.listingType,
+          bidCount: item.bidCount
+        })) || [],
+        priceDistribution: data.priceDistribution,
+        query: data.query
+      };
     } catch (error) {
       console.error('eBay search error:', error);
       return null;
     }
   },
   
-  // Get market price for a specific coin
-  async getCoinMarketPrice(coinName, grade, year = null) {
+  // Get market price for a specific coin with smart query building
+  async getCoinMarketPrice(coinName, options = {}) {
     let query = coinName;
-    if (grade) query += ` ${grade.toUpperCase()}`;
-    if (year) query += ` ${year}`;
+    if (options.grade) query += ` ${options.grade.toUpperCase()}`;
+    if (options.year) query += ` ${options.year}`;
+    if (options.mint) query += ` ${options.mint}`;
     
-    return await this.searchSoldListings(query, 20);
+    // Use coins category for better results
+    return await this.searchSoldListings(query, { 
+      ...options,
+      category: '11116', // Coins & Paper Money
+      daysBack: options.daysBack || '60'
+    });
+  },
+  
+  // Get silver coin market prices (90% silver, etc)
+  async getSilverCoinPrice(coinType, options = {}) {
+    // Build specific search for silver coins
+    const searches = {
+      'mercury-dime': 'Mercury Dime 90% silver -proof -roll',
+      'roosevelt-dime-silver': 'Roosevelt Dime 90% silver 1964 -proof -roll',
+      'washington-quarter': 'Washington Quarter 90% silver -proof -roll',
+      'standing-liberty-quarter': 'Standing Liberty Quarter 90% silver',
+      'barber-quarter': 'Barber Quarter 90% silver',
+      'walking-liberty-half': 'Walking Liberty Half Dollar 90% silver',
+      'franklin-half': 'Franklin Half Dollar 90% silver',
+      'kennedy-half-silver': 'Kennedy Half Dollar 90% silver 1964',
+      'morgan-dollar': 'Morgan Silver Dollar',
+      'peace-dollar': 'Peace Silver Dollar',
+      'american-silver-eagle': 'American Silver Eagle 1oz'
+    };
+    
+    const query = searches[coinType] || `${coinType} 90% silver`;
+    
+    return await this.searchSoldListings(query, {
+      category: '11116',
+      daysBack: '30',
+      ...options
+    });
   }
 };
 
