@@ -222,24 +222,25 @@ const FirebaseService = {
 
 // ============ SPOT PRICE SERVICE ============
 const SpotPriceService = {
-  lastPrices: { gold: 2685.50, silver: 30.25, platinum: 985.00, palladium: 945.00 },
+  lastPrices: { gold: 4600.00, silver: 90.00, platinum: 985.00, palladium: 945.00 },
   lastUpdate: null,
   
   // Fetch live spot prices from goldprice.org (free, CORS-friendly)
   async fetchFromMetalsLive() {
     try {
+      console.log('Fetching spot prices from goldprice.org...');
       const response = await fetch('https://data-asg.goldprice.org/dbXRates/USD');
-      if (!response.ok) throw new Error('API error');
+      if (!response.ok) throw new Error('API error: ' + response.status);
       const data = await response.json();
+      console.log('API response:', data);
       
       // Parse response - xauPrice is gold, xagPrice is silver
       if (data.items && data.items[0]) {
         const item = data.items[0];
         if (item.xauPrice) this.lastPrices.gold = item.xauPrice;
         if (item.xagPrice) this.lastPrices.silver = item.xagPrice;
-        // Platinum and palladium not available from this API, keep defaults or last known
         this.lastUpdate = new Date();
-        console.log('Spot prices updated:', this.lastPrices);
+        console.log('Spot prices updated successfully:', this.lastPrices);
         return this.lastPrices;
       }
       throw new Error('Invalid response format');
@@ -4248,7 +4249,7 @@ function ScrapCalculatorView({ spotPrices: propSpotPrices, onRefresh, isLoading:
   // Calculate price per unit for display
   const calcPricePerUnit = (spotPrice, purity, buyPercent) => {
     const pricePerOz = spotPrice * purity * (buyPercent / 100);
-    return pricePerOz / toTroyOz[unit]; // Convert to selected unit
+    return pricePerOz * toTroyOz[unit]; // Convert to selected unit (multiply to get smaller unit price)
   };
   
   // Calculate totals
