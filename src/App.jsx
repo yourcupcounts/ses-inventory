@@ -436,6 +436,135 @@ For jewelry or scrap, set coinKey to null and describe the item type.`
       notes: `AI analysis unavailable: ${reason}. Please identify manually.`,
       apiError: reason
     };
+  },
+  
+  // Analyze a pair of images (front and back of coin)
+  async analyzeImagePair(frontBase64, backBase64) {
+    if (!CONFIG.features.useAiVision) {
+      console.log('AI Vision disabled - returning manual entry required');
+      return this.getManualEntryResult('AI Vision is disabled in config');
+    }
+    
+    try {
+      const response = await fetch('/api/anthropic', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          max_tokens: 1024,
+          system: `You are an expert numismatist and precious metals appraiser for Stevens Estate Services. You will receive TWO images - the FRONT (obverse) and BACK (reverse) of a coin or item. Use both images together to make your identification.
+
+CRITICAL: First determine if this is actually a precious metal item (coin, bullion, jewelry, etc.) or something else entirely.`,
+          messages: [{
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'Here is the FRONT (obverse) of the item:'
+              },
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: 'image/jpeg',
+                  data: frontBase64
+                }
+              },
+              {
+                type: 'text',
+                text: 'Here is the BACK (reverse) of the item:'
+              },
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: 'image/jpeg',
+                  data: backBase64
+                }
+              },
+              {
+                type: 'text',
+                text: `Analyze BOTH images together to identify this item.
+
+FIRST: Is this a precious metal item (coin, bullion, gold/silver jewelry, sterling silverware, etc.)?
+
+If NO - this is NOT a precious metal item, respond with:
+{
+  "isPreciousMetal": false,
+  "type": "what you actually see",
+  "notes": "This is not a precious metal item and cannot be appraised for metal value."
+}
+
+If YES - this IS a precious metal item, respond with:
+{
+  "isPreciousMetal": true,
+  "type": "coin type or item description",
+  "metal": "Gold/Silver/Platinum/Palladium",
+  "purity": "purity as percentage (e.g., 90%, 99.9%, 92.5%)",
+  "year": "year if visible on either side, null if not",
+  "mintMark": "mint mark if visible (D, S, O, CC, etc.), null if not",
+  "grade": "estimated grade based on wear visible (cull/ag/vg/fine/vf/xf/au/bu/ms60-70)",
+  "weight": "weight in troy oz if this is a standard coin type, null if unknown",
+  "coinKey": "reference key if recognized (see list below), null otherwise",
+  "confidence": 0.0-1.0,
+  "notes": "any notable features, damage, toning, or observations from either side"
+}
+
+Common coin reference keys: morgan-dollar, peace-dollar, walking-liberty-half, franklin-half, kennedy-half-90, washington-quarter, standing-liberty-quarter, barber-quarter, roosevelt-dime, mercury-dime, barber-dime, silver-eagle, gold-eagle-1oz, gold-eagle-1/2oz, gold-eagle-1/4oz, gold-eagle-1/10oz, gold-buffalo, st-gaudens-20, liberty-20
+
+For jewelry or scrap, set coinKey to null and describe the item type.`
+              }
+            ]
+          }]
+        })
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('AI Vision proxy error:', response.status, errorText);
+        
+        let errorMessage = 'API request failed';
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.error || errorMessage;
+        } catch (e) {
+          errorMessage = errorText || `HTTP ${response.status}`;
+        }
+        
+        return this.getManualEntryResult(errorMessage);
+      }
+      
+      const data = await response.json();
+      const content = data.content?.[0]?.text || '';
+      
+      if (!content) {
+        return this.getManualEntryResult('Empty response from AI');
+      }
+      
+      // Parse JSON from response
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const result = JSON.parse(jsonMatch[0]);
+        
+        if (result.isPreciousMetal === false) {
+          return {
+            ...result,
+            coinKey: null,
+            metal: null,
+            notPreciousMetal: true,
+            confidence: 0.95
+          };
+        }
+        
+        return result;
+      }
+      
+      return this.getManualEntryResult('Could not parse AI response');
+    } catch (error) {
+      console.error('AI Vision analysis failed:', error);
+      return this.getManualEntryResult(error.message || 'Network error');
+    }
   }
 };
 
@@ -1175,13 +1304,13 @@ const starterLots = [
 ];
 
 // ============ EBAY LISTING VIEW ============
-function EbayListingView({ item, onBack, onListingCreated }) {
+function EbayListingView({ item, generatedListing, onBack, onListingCreated }) {
   const [photos, setPhotos] = useState(item.photos || (item.photo ? [item.photo] : []));
   const [video, setVideo] = useState(null); // Video as base64 or blob URL
   const [videoFile, setVideoFile] = useState(null); // Original file for upload
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [price, setPrice] = useState(item.meltValue || '');
+  const [price, setPrice] = useState('');
   const [condition, setCondition] = useState('USED_EXCELLENT');
   const [quantity, setQuantity] = useState(1);
   const [format, setFormat] = useState('FIXED_PRICE'); // FIXED_PRICE or AUCTION
@@ -1206,17 +1335,31 @@ function EbayListingView({ item, onBack, onListingCreated }) {
   const photoInputRef = useRef(null);
   const videoInputRef = useRef(null);
   
-  // Generate title based on item
+  // Use generatedListing if provided, otherwise generate basic title/desc
   useEffect(() => {
-    let generatedTitle = item.description;
-    if (item.year) generatedTitle += ` ${item.year}`;
-    if (item.mint) generatedTitle += `-${item.mint}`;
-    if (item.grade) generatedTitle += ` ${item.grade.toUpperCase()}`;
-    if (item.purity) generatedTitle += ` ${item.purity}`;
-    setTitle(generatedTitle);
-    
-    // Generate description
-    const desc = `${item.description}
+    if (generatedListing) {
+      // Use the pre-generated listing from DetailView
+      setTitle(generatedListing.title || '');
+      setDescription(generatedListing.description || '');
+      setPrice(generatedListing.pricingStrategy?.binPrice || item.meltValue || '');
+      setFormat(generatedListing.pricingStrategy?.recommendedFormat === 'AUCTION' ? 'AUCTION' : 'FIXED_PRICE');
+      if (generatedListing.pricingStrategy?.auctionStart) {
+        setStartingBid(generatedListing.pricingStrategy.auctionStart);
+      }
+      if (generatedListing.pricingStrategy?.binPrice) {
+        setBuyItNow(generatedListing.pricingStrategy.binPrice);
+      }
+    } else {
+      // Fallback: generate basic title
+      let generatedTitle = item.description;
+      if (item.year) generatedTitle += ` ${item.year}`;
+      if (item.mint) generatedTitle += `-${item.mint}`;
+      if (item.grade) generatedTitle += ` ${item.grade.toUpperCase()}`;
+      if (item.purity) generatedTitle += ` ${item.purity}`;
+      setTitle(generatedTitle);
+      
+      // Generate basic description
+      const desc = `${item.description}
 
 Metal: ${item.metalType || 'Silver'}
 Purity: ${item.purity || 'N/A'}
@@ -1228,13 +1371,15 @@ ${item.grade ? `Grade: ${item.grade.toUpperCase()}` : ''}
 ${item.notes || ''}
 
 Ships securely in protective packaging. Thanks for looking!`;
-    setDescription(desc);
+      setDescription(desc);
+      setPrice(item.meltValue || '');
+    }
     
     // Get category suggestions
     if (item.coinKey && EbayListingService.coinCategories[item.coinKey]) {
       setCategoryId(EbayListingService.coinCategories[item.coinKey]);
     }
-  }, [item]);
+  }, [item, generatedListing]);
   
   // Load business policies on mount
   useEffect(() => {
@@ -2569,6 +2714,11 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
   const [analyzing, setAnalyzing] = useState(false);
   const [apiError, setApiError] = useState(null);
   
+  // Two-photo capture state
+  const [captureStep, setCaptureStep] = useState('idle'); // idle, front, back
+  const [frontPhoto, setFrontPhoto] = useState(null);
+  const [backPhoto, setBackPhoto] = useState(null);
+  
   const cameraRef = useRef(null);
   const photoInputRef = useRef(null);
   
@@ -2742,24 +2892,98 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
     }
   };
   
-  // Handle photo capture
+  // Handle photo capture - supports both single and two-photo mode
   const handlePhotoCapture = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     
-    setApiError(null); // Clear any previous error
-    
     const reader = new FileReader();
     reader.onload = async (event) => {
       const base64 = event.target.result.split(',')[1];
+      
+      // Two-photo flow for coins
+      if (captureStep === 'front') {
+        setFrontPhoto(base64);
+        setCaptureStep('back');
+        // Reset the input so the same file can be selected again
+        e.target.value = '';
+        return;
+      }
+      
+      if (captureStep === 'back') {
+        setBackPhoto(base64);
+        setCaptureStep('idle');
+        // Now analyze both photos together
+        setAnalyzing(true);
+        setApiError(null);
+        
+        try {
+          const analysis = await analyzePhotoPair(frontPhoto, base64);
+          
+          if (analysis.apiError) {
+            setApiError(analysis.apiError);
+          }
+          
+          // Handle non-precious metal items
+          if (analysis.notPreciousMetal) {
+            setEvaluatingItem({
+              id: `eval-${Date.now()}`,
+              photo: frontPhoto, // Use front as main photo
+              photoBack: base64,
+              description: analysis.description,
+              notPreciousMetal: true,
+              notes: analysis.notes
+            });
+            setFrontPhoto(null);
+            setBackPhoto(null);
+            setAnalyzing(false);
+            return;
+          }
+          
+          if (analysis.coinKey && coinReference[analysis.coinKey]) {
+            const valuation = calculateCoinValue(analysis.coinKey, analysis.grade, 1);
+            setEvaluatingItem({
+              ...analysis,
+              ...valuation,
+              id: `eval-${Date.now()}`,
+              photo: frontPhoto,
+              photoBack: base64
+            });
+          } else {
+            // Unknown item - show manual entry
+            setEvaluatingItem({
+              id: `eval-${Date.now()}`,
+              photo: frontPhoto,
+              photoBack: base64,
+              description: analysis.description || 'Unknown Item',
+              needsManualEntry: true,
+              metal: analysis.metal,
+              purity: analysis.purity,
+              notes: analysis.notes,
+              apiError: analysis.apiError
+            });
+            setShowManualEntry(true);
+          }
+          
+          setFrontPhoto(null);
+          setBackPhoto(null);
+          setAnalyzing(false);
+        } catch (error) {
+          console.error('Analysis error:', error);
+          setApiError('Failed to analyze images');
+          setAnalyzing(false);
+        }
+        return;
+      }
+      
+      // Single photo mode (original behavior) - for quick adds
+      setApiError(null);
       const analysis = await analyzePhoto(base64);
       
-      // Check for API error
       if (analysis.apiError) {
         setApiError(analysis.apiError);
       }
       
-      // Handle non-precious metal items
       if (analysis.notPreciousMetal) {
         setEvaluatingItem({
           id: `eval-${Date.now()}`,
@@ -2768,7 +2992,7 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
           notPreciousMetal: true,
           notes: analysis.notes
         });
-        return; // Don't show manual entry - just show "not PM" result
+        return;
       }
       
       if (analysis.coinKey && coinReference[analysis.coinKey]) {
@@ -2780,7 +3004,6 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
           photo: base64
         });
       } else {
-        // Unknown item - show manual entry
         setEvaluatingItem({
           id: `eval-${Date.now()}`,
           photo: base64,
@@ -2795,6 +3018,48 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
       }
     };
     reader.readAsDataURL(file);
+  };
+  
+  // Analyze a pair of photos (front and back)
+  const analyzePhotoPair = async (frontBase64, backBase64) => {
+    try {
+      const analysis = await AIVisionService.analyzeImagePair(frontBase64, backBase64);
+      
+      if (analysis.notPreciousMetal || analysis.isPreciousMetal === false) {
+        return {
+          description: analysis.type || 'Non-Precious Metal Item',
+          notPreciousMetal: true,
+          notes: analysis.notes || 'This item is not a precious metal.'
+        };
+      }
+      
+      if (analysis.needsManualEntry) {
+        return {
+          description: analysis.type || 'Unknown Item',
+          needsManualEntry: true,
+          notes: analysis.notes
+        };
+      }
+      
+      return {
+        coinKey: analysis.coinKey,
+        grade: analysis.grade || 'vf',
+        description: analysis.type || 'Unknown Item',
+        year: analysis.year,
+        mint: analysis.mintMark,
+        metal: analysis.metal,
+        purity: analysis.purity,
+        confidence: analysis.confidence || 0.5,
+        notes: analysis.notes
+      };
+    } catch (error) {
+      console.error('AI analysis error:', error);
+      return {
+        description: 'Unknown Item',
+        needsManualEntry: true,
+        apiError: error.message
+      };
+    }
   };
   
   // Add item to session
@@ -3078,35 +3343,124 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
         <div className="p-4">
           {!evaluatingItem && !analyzing && (
             <div className="space-y-4">
-              {/* Capture Options */}
-              <div className="bg-gray-800 rounded-xl p-6 text-center">
-                <Camera size={48} className="mx-auto text-gray-500 mb-4" />
-                <p className="text-gray-400 mb-4">Snap a photo to identify and price</p>
-                
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  ref={photoInputRef}
-                  onChange={handlePhotoCapture}
-                  className="hidden"
-                />
-                
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => photoInputRef.current?.click()}
-                    className="flex-1 bg-teal-600 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2"
-                  >
-                    <Camera size={20} /> Take Photo
-                  </button>
-                  <button
-                    onClick={() => setShowCoinPicker(true)}
-                    className="flex-1 bg-gray-700 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2"
-                  >
-                    <Search size={20} /> Manual Lookup
-                  </button>
+              {/* Two-Photo Capture Flow */}
+              {captureStep !== 'idle' ? (
+                <div className="bg-gray-800 rounded-xl p-6 text-center">
+                  {captureStep === 'front' && (
+                    <>
+                      <div className="text-teal-400 text-lg font-bold mb-2">Step 1 of 2</div>
+                      <Camera size={48} className="mx-auto text-teal-500 mb-4" />
+                      <p className="text-white font-medium mb-2">Take photo of FRONT (obverse)</p>
+                      <p className="text-gray-400 text-sm mb-4">Show the main design side of the coin</p>
+                      
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        ref={photoInputRef}
+                        onChange={handlePhotoCapture}
+                        className="hidden"
+                      />
+                      
+                      <button
+                        onClick={() => photoInputRef.current?.click()}
+                        className="w-full bg-teal-600 text-white py-4 rounded-lg font-medium flex items-center justify-center gap-2"
+                      >
+                        <Camera size={24} /> Capture Front
+                      </button>
+                      
+                      <button
+                        onClick={() => setCaptureStep('idle')}
+                        className="w-full mt-3 text-gray-400 py-2"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  )}
+                  
+                  {captureStep === 'back' && (
+                    <>
+                      <div className="text-teal-400 text-lg font-bold mb-2">Step 2 of 2</div>
+                      
+                      {/* Show front photo preview */}
+                      {frontPhoto && (
+                        <div className="mb-4">
+                          <p className="text-gray-400 text-xs mb-2">Front captured ✓</p>
+                          <img 
+                            src={`data:image/jpeg;base64,${frontPhoto}`} 
+                            className="w-24 h-24 mx-auto rounded-lg object-cover border-2 border-teal-500"
+                          />
+                        </div>
+                      )}
+                      
+                      <Camera size={48} className="mx-auto text-teal-500 mb-4" />
+                      <p className="text-white font-medium mb-2">Now take photo of BACK (reverse)</p>
+                      <p className="text-gray-400 text-sm mb-4">Flip the coin and capture the other side</p>
+                      
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        ref={photoInputRef}
+                        onChange={handlePhotoCapture}
+                        className="hidden"
+                      />
+                      
+                      <button
+                        onClick={() => photoInputRef.current?.click()}
+                        className="w-full bg-teal-600 text-white py-4 rounded-lg font-medium flex items-center justify-center gap-2"
+                      >
+                        <Camera size={24} /> Capture Back
+                      </button>
+                      
+                      <button
+                        onClick={() => { setCaptureStep('idle'); setFrontPhoto(null); }}
+                        className="w-full mt-3 text-gray-400 py-2"
+                      >
+                        Start Over
+                      </button>
+                    </>
+                  )}
                 </div>
-              </div>
+              ) : (
+                <>
+                  {/* Capture Options */}
+                  <div className="bg-gray-800 rounded-xl p-6 text-center">
+                    <Camera size={48} className="mx-auto text-gray-500 mb-4" />
+                    <p className="text-gray-400 mb-4">Snap photos to identify and price</p>
+                    
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      ref={photoInputRef}
+                      onChange={handlePhotoCapture}
+                      className="hidden"
+                    />
+                    
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setCaptureStep('front')}
+                        className="flex-1 bg-teal-600 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2"
+                      >
+                        <Camera size={20} /> Snap Coin (2 photos)
+                      </button>
+                      <button
+                        onClick={() => setShowCoinPicker(true)}
+                        className="flex-1 bg-gray-700 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2"
+                      >
+                        <Search size={20} /> Manual Lookup
+                      </button>
+                    </div>
+                    
+                    {/* Single photo option for non-coins */}
+                    <button
+                      onClick={() => photoInputRef.current?.click()}
+                      className="w-full mt-3 bg-gray-700 text-gray-300 py-2 rounded-lg text-sm"
+                    >
+                      Quick snap (1 photo) - for bars, jewelry, etc.
+                    </button>
+                  </div>
               
               {/* Quick Add Common Items */}
               <div className="bg-gray-800 rounded-xl p-4">
@@ -3150,6 +3504,8 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                     ))}
                   </div>
                 </div>
+              )}
+                </>
               )}
             </div>
           )}
@@ -7301,7 +7657,7 @@ Ships fast and packed well. Questions? Just ask.`;
                       {/* List on eBay Button */}
                       {onListOnEbay && (
                         <button 
-                          onClick={onListOnEbay}
+                          onClick={() => onListOnEbay(generatedListing)}
                           className="w-full py-3 rounded-lg font-medium flex items-center justify-center gap-2 bg-blue-600 text-white"
                         >
                           <ExternalLink size={18} />
@@ -7854,6 +8210,7 @@ export default function SESInventoryApp() {
   const [lots, setLots] = useState(starterLots); // Track lots
   const [view, setView] = useState('list');
   const [selectedItem, setSelectedItem] = useState(null);
+  const [pendingListing, setPendingListing] = useState(null); // Store generated listing for eBay
   const [selectedClient, setSelectedClient] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState('all');
@@ -8297,7 +8654,7 @@ export default function SESInventoryApp() {
     onUpdate={(u) => { setInventory(inventory.map(i => i.id === u.id ? u : i)); setSelectedItem(u); }} 
     onDelete={() => { setInventory(inventory.filter(i => i.id !== selectedItem.id)); setView('list'); }} 
     onBack={() => { setView('list'); setSelectedItem(null); }} 
-    onListOnEbay={() => setView('ebayListing')}
+    onListOnEbay={(listing) => { setPendingListing(listing); setView('ebayListing'); }}
     onCreateLot={(lotData) => {
       const lotId = getNextId('LOT');
       const newLot = {
@@ -8312,7 +8669,7 @@ export default function SESInventoryApp() {
       setSelectedItem(updatedItem);
     }}
   />;
-  if (view === 'ebayListing' && selectedItem) return <EbayListingView item={selectedItem} onBack={() => setView('detail')} onListingCreated={(listing) => { setInventory(inventory.map(i => i.id === selectedItem.id ? { ...i, ebayListingId: listing.listingId, ebayUrl: listing.ebayUrl, status: 'Listed' } : i)); setSelectedItem({ ...selectedItem, ebayListingId: listing.listingId, ebayUrl: listing.ebayUrl, status: 'Listed' }); setView('detail'); }} />;
+  if (view === 'ebayListing' && selectedItem) return <EbayListingView item={selectedItem} generatedListing={pendingListing} onBack={() => { setPendingListing(null); setView('detail'); }} onListingCreated={(listing) => { setInventory(inventory.map(i => i.id === selectedItem.id ? { ...i, ebayListingId: listing.listingId, ebayUrl: listing.ebayUrl, status: 'Listed' } : i)); setSelectedItem({ ...selectedItem, ebayListingId: listing.listingId, ebayUrl: listing.ebayUrl, status: 'Listed' }); setPendingListing(null); setView('detail'); }} />;
   if (view === 'settings') return <SettingsView onBack={() => setView('list')} onExport={handleExport} onImport={handleImport} onReset={() => { setInventory(starterInventory); setClients(starterClients); setLots(starterLots); }} fileInputRef={fileInputRef} coinBuyPercents={coinBuyPercents} onUpdateCoinBuyPercent={handleUpdateCoinBuyPercent} ebayConnected={ebayConnected} onEbayDisconnect={handleEbayDisconnect} onViewEbaySync={() => setView('ebaySync')} />;
   if (view === 'ebaySync') return <EbaySyncView onBack={() => setView('settings')} onImportListings={handleImportEbayListings} inventory={inventory} />;
 
