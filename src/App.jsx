@@ -6707,87 +6707,138 @@ function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay, l
   const holdStatus = getHoldStatus(item);
   const profit = item.status === 'Sold' ? (item.salePrice - item.purchasePrice) : (item.meltValue - item.purchasePrice);
   
-  // Generate optimized eBay listing - personal, human style
+  // Generate casual, human eBay listing - NO cost info, conversational tone
   const generateListing = (ebayData) => {
     const coinInfo = item.coinKey ? coinReference[item.coinKey] : null;
     
-    // Build optimized title (max 80 chars, keyword-rich but natural)
+    // Build optimized title (max 80 chars)
     let title = '';
     if (item.year) title += `${item.year} `;
     if (item.mint) title += `${item.mint} `;
     title += item.description;
     if (item.grade) {
-      const gradeUpper = item.grade.toUpperCase();
-      title += ` ${gradeUpper}`;
+      title += ` ${item.grade.toUpperCase()}`;
     }
     if (item.purity && !title.includes(item.purity)) title += ` ${item.purity}`;
     if (item.metalType === 'Silver' && !title.toLowerCase().includes('silver')) title += ' Silver';
     if (item.metalType === 'Gold' && !title.toLowerCase().includes('gold')) title += ' Gold';
     title = title.slice(0, 80);
     
-    // Determine item type for description style
+    // Determine item type
     const isCoin = item.category?.includes('Coin') || item.coinKey;
     const isJewelry = item.category?.includes('Sterling') || item.category?.includes('Jewelry');
     const isGraded = item.grade?.toUpperCase().startsWith('MS') || item.grade?.toUpperCase().startsWith('PF');
+    const isMexican = item.description?.toLowerCase().includes('mexico') || item.description?.toLowerCase().includes('mexican') || item.description?.toLowerCase().includes('taxco');
     
-    // Generate human, conversational description
+    // Build casual, conversational description
     let description = '';
     
-    // Opening line - warm and direct
-    if (isCoin) {
-      if (isGraded) {
-        description = `Up for sale is a beautiful ${item.year || ''} ${item.description}${item.mint ? ` from the ${item.mint} mint` : ''}, professionally graded ${item.grade?.toUpperCase()}.`;
+    if (isJewelry) {
+      // Jewelry style - like the obsidian bracelet example
+      if (isMexican) {
+        description = `Here's a nice piece of vintage Mexican silver.
+
+${item.description}. `;
+        
+        if (item.weightOz) {
+          const grams = Math.round(item.weightOz * 31.1);
+          description += `Got some weight to it at ${grams}g - you'll know you're wearing it. `;
+        }
+        
+        description += `
+
+Marked 925 MEXICO${item.notes?.includes('maker') ? '' : ' on the clasp'}. This is mid-century Mexican silver work - solid construction, nice patina that shows its age in a good way.`;
+        
+        if (item.notes) {
+          // Extract useful details from notes, skip purchase price stuff
+          const cleanNotes = item.notes.replace(/paid.*?%.*?(melt|value)/gi, '').replace(/\$[\d,.]+/g, '').trim();
+          if (cleanNotes.length > 10) {
+            description += ` ${cleanNotes}`;
+          }
+        }
+        
+        description += `
+
+No damage, clasp works great. What you see is what you get.`;
+        
       } else {
-        description = `Up for sale is a ${item.year || ''} ${item.description}${item.mint ? ` (${item.mint} mint)` : ''} in ${item.grade?.toUpperCase() || 'nice circulated'} condition.`;
+        // Generic jewelry
+        description = `${item.description}.`;
+        
+        if (item.weightOz) {
+          const grams = Math.round(item.weightOz * 31.1);
+          description += ` Nice weight at ${grams}g.`;
+        }
+        
+        if (item.purity) {
+          description += ` Marked ${item.purity}.`;
+        }
+        
+        if (item.notes) {
+          const cleanNotes = item.notes.replace(/paid.*?%.*?(melt|value)/gi, '').replace(/\$[\d,.]+/g, '').trim();
+          if (cleanNotes.length > 10) {
+            description += ` ${cleanNotes}`;
+          }
+        }
+        
+        description += `
+
+Good condition, no issues. Photos show exactly what you're getting.`;
       }
-    } else if (isJewelry) {
-      description = `Up for sale is ${item.description}. A nice piece with good weight and classic styling.`;
-    } else {
-      description = `Up for sale is ${item.description}.`;
-    }
-    
-    // Item Details section - conversational bullet style
-    description += `
+      
+    } else if (isCoin) {
+      // Coin style
+      if (isGraded) {
+        description = `${item.year || ''} ${item.description}${item.mint ? `-${item.mint}` : ''} graded ${item.grade?.toUpperCase()}.
 
-**Item Details:**
-* Metal: ${item.metalType || 'Silver'}
-* Purity: ${item.purity || 'N/A'}${coinInfo ? ` (${((coinInfo.purity || 0.9) * 100).toFixed(0)}% ${item.metalType?.toLowerCase() || 'silver'})` : ''}
-* Weight: ${item.weightOz || coinInfo?.aswOz || coinInfo?.agwOz || 'N/A'} troy oz actual ${item.metalType?.toLowerCase() || 'silver'} weight`;
-
-    if (item.year) description += `
-* Year: ${item.year}`;
-    if (item.mint) description += `
-* Mint: ${item.mint}`;
-    if (item.grade) description += `
-* Condition: ${item.grade.toUpperCase()}${isGraded ? ' (third-party graded, encapsulated)' : ''}`;
-
-    // Notes/condition details if available
-    if (item.notes) {
+Third-party graded and encapsulated - what you see is what you get. Nice eye appeal.`;
+      } else {
+        description = `${item.year || ''} ${item.description}${item.mint ? ` (${item.mint} mint)` : ''}.`;
+        
+        if (coinInfo) {
+          description += ` ${((coinInfo.purity || 0.9) * 100).toFixed(0)}% silver, ${coinInfo.aswOz || item.weightOz || ''} oz actual silver weight.`;
+        }
+        
+        if (item.grade) {
+          description += ` ${item.grade.toUpperCase()} condition.`;
+        }
+        
+        if (item.notes) {
+          const cleanNotes = item.notes.replace(/paid.*?%.*?(melt|value)/gi, '').replace(/\$[\d,.]+/g, '').replace(/retail/gi, '').trim();
+          if (cleanNotes.length > 10) {
+            description += ` ${cleanNotes}`;
+          }
+        }
+      }
+      
       description += `
 
-**Condition Notes:**
-${item.notes}`;
+Photos show the actual coin you'll receive. Check them out - happy to answer any questions.`;
+      
+    } else {
+      // Generic item
+      description = `${item.description}.`;
+      
+      if (item.notes) {
+        const cleanNotes = item.notes.replace(/paid.*?%.*?(melt|value)/gi, '').replace(/\$[\d,.]+/g, '').trim();
+        if (cleanNotes.length > 10) {
+          description += ` ${cleanNotes}`;
+        }
+      }
+      
+      description += `
+
+What you see is what you get. Check photos for condition.`;
     }
     
-    // What you get section
+    // Add shipping - casual
     description += `
 
-**What you get:** Exactly what's pictured - please examine photos carefully as they are part of the description.`;
-
-    // Shipping section - friendly and clear
-    description += `
-
-**Shipping:**
-Ships within 1 business day of cleared payment. Securely packaged in a protective flip or holder, sent USPS First Class with tracking. Insurance available on request for higher value items.`;
-
-    // Closing - personal touch
-    description += `
-
-Thanks for looking! Feel free to check out my other listings for more coins.`;
-
+Ships fast and packed well. Questions? Just ask.`;
+    
     description = description.trim();
-
-    // Pricing strategy based on eBay data
+    
+    // Pricing strategy based on eBay sold data
     let pricingStrategy = {
       recommendedFormat: 'FIXED_PRICE',
       binPrice: 0,
@@ -6797,6 +6848,7 @@ Thanks for looking! Feel free to check out my other listings for more coins.`;
     
     if (ebayData && ebayData.count > 0) {
       const avgPrice = ebayData.avgPrice;
+      const medianPrice = ebayData.medianPrice || avgPrice;
       const meltValue = parseFloat(item.meltValue) || 0;
       const premium = avgPrice - meltValue;
       const premiumPercent = meltValue > 0 ? ((premium / meltValue) * 100) : 0;
@@ -7055,7 +7107,6 @@ Thanks for looking! Feel free to check out my other listings for more coins.`;
         <div className="text-sm space-y-2">
           <div className="flex justify-between py-2 border-b"><span className="text-gray-500">Metal</span><span>{item.metalType} ({item.purity})</span></div>
           <div className="flex justify-between py-2 border-b"><span className="text-gray-500">Weight</span><span>{item.weightOz} oz</span></div>
-          <div className="flex justify-between py-2 border-b"><span className="text-gray-500">Source</span><span>{item.source}</span></div>
           <div className="flex justify-between py-2"><span className="text-gray-500">Acquired</span><span>{item.dateAcquired}</span></div>
         </div>
         
@@ -7335,7 +7386,6 @@ Thanks for looking! Feel free to check out my other listings for more coins.`;
                 
                 <div className="bg-gray-50 p-3 rounded-lg">
                   <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div><span className="text-gray-500">Source:</span> <span className="font-medium">{item.source || 'Unknown'}</span></div>
                     <div><span className="text-gray-500">Client:</span> <span className="font-medium">{client?.name || 'Unknown'}</span></div>
                     <div><span className="text-gray-500">Cost:</span> <span className="font-medium">${item.purchasePrice}</span></div>
                     <div><span className="text-gray-500">Acquired:</span> <span className="font-medium">{item.dateAcquired}</span></div>
