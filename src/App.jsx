@@ -6632,7 +6632,7 @@ function AddItemView({ onSave, onCancel, calculateMelt, clients }) {
   );
 }
 
-function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay, liveSpotPrices }) {
+function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay, liveSpotPrices, onCreateLot }) {
   const [showSold, setShowSold] = useState(false);
   const [salePrice, setSalePrice] = useState(item.meltValue || '');
   const [salePlatform, setSalePlatform] = useState('Refiner');
@@ -6640,6 +6640,9 @@ function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay, l
   const [isLoadingEbay, setIsLoadingEbay] = useState(false);
   const [showPricingAnalysis, setShowPricingAnalysis] = useState(false);
   const [generatedListing, setGeneratedListing] = useState(null);
+  const [showCreateLot, setShowCreateLot] = useState(false);
+  const [lotDescription, setLotDescription] = useState(item.description);
+  const [lotNotes, setLotNotes] = useState(item.notes || '');
   const client = clients.find(c => c.id === item.clientId);
   const holdStatus = getHoldStatus(item);
   const profit = item.status === 'Sold' ? (item.salePrice - item.purchasePrice) : (item.meltValue - item.purchasePrice);
@@ -7181,6 +7184,114 @@ Thanks for looking! Check out our other listings for more great coins and precio
             <div className="flex gap-2"><button onClick={() => setShowSold(false)} className="flex-1 border py-2 rounded">Cancel</button><button onClick={handleMarkSold} className="flex-1 bg-green-600 text-white py-2 rounded">Record Sale</button></div>
           </div>
         )}
+        
+        {/* Convert to Lot Button - only show if item doesn't already belong to a lot */}
+        {item.status === 'Available' && !item.lotId && onCreateLot && (
+          <button 
+            onClick={() => setShowCreateLot(true)}
+            className="w-full mt-2 py-3 rounded font-medium bg-purple-100 text-purple-700 border border-purple-300 flex items-center justify-center gap-2"
+          >
+            <Layers size={18} /> Convert to Lot
+          </button>
+        )}
+        
+        {/* Show lot info if item belongs to a lot */}
+        {item.lotId && (
+          <div className="mt-2 p-3 bg-purple-50 rounded-lg border border-purple-200">
+            <div className="flex items-center gap-2 text-purple-700">
+              <Layers size={16} />
+              <span className="text-sm font-medium">Part of Lot: {item.lotId}</span>
+            </div>
+          </div>
+        )}
+        
+        {/* Create Lot Modal */}
+        {showCreateLot && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg max-w-md w-full p-4">
+              <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
+                <Layers size={20} className="text-purple-600" /> Create Lot from Item
+              </h3>
+              <p className="text-gray-600 text-sm mb-4">
+                Convert this item into a lot for tracking as a set/group purchase.
+              </p>
+              
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Lot Description</label>
+                  <input
+                    type="text"
+                    value={lotDescription}
+                    onChange={(e) => setLotDescription(e.target.value)}
+                    className="w-full border rounded-lg p-2"
+                    placeholder="e.g., Franklin Half Dollar Set (15 coins)"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1">Total Items in Lot</label>
+                  <input
+                    type="number"
+                    defaultValue={item.quantity || 1}
+                    id="lotItemCount"
+                    className="w-full border rounded-lg p-2"
+                    min="1"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1">Lot Notes</label>
+                  <textarea
+                    value={lotNotes}
+                    onChange={(e) => setLotNotes(e.target.value)}
+                    className="w-full border rounded-lg p-2"
+                    rows={2}
+                    placeholder="Notes about the lot..."
+                  />
+                </div>
+                
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div><span className="text-gray-500">Source:</span> <span className="font-medium">{item.source || 'Unknown'}</span></div>
+                    <div><span className="text-gray-500">Client:</span> <span className="font-medium">{client?.name || 'Unknown'}</span></div>
+                    <div><span className="text-gray-500">Cost:</span> <span className="font-medium">${item.purchasePrice}</span></div>
+                    <div><span className="text-gray-500">Acquired:</span> <span className="font-medium">{item.dateAcquired}</span></div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex gap-2 mt-4">
+                <button
+                  onClick={() => setShowCreateLot(false)}
+                  className="flex-1 py-2 border rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    const itemCount = parseInt(document.getElementById('lotItemCount')?.value) || item.quantity || 1;
+                    onCreateLot({
+                      description: lotDescription,
+                      totalCost: item.purchasePrice,
+                      totalItems: itemCount,
+                      source: item.source,
+                      clientId: item.clientId,
+                      dateAcquired: item.dateAcquired,
+                      status: 'intact',
+                      allocationMethod: 'equal',
+                      notes: lotNotes,
+                      itemIds: [item.id]
+                    });
+                    setShowCreateLot(false);
+                  }}
+                  className="flex-1 py-2 rounded-lg font-medium bg-purple-600 text-white hover:bg-purple-700"
+                >
+                  Create Lot
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div></div>
     </div>
   );
@@ -7612,7 +7723,28 @@ export default function SESInventoryApp() {
   if (view === 'tax') return <TaxReportView inventory={inventory} onBack={() => setView('list')} />;
   if (view === 'ebayListings') return <EbayListingsView inventory={inventory} onBack={() => setView('list')} onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }} onListItem={(item) => { setSelectedItem(item); setView('ebayListing'); }} />;
   if (view === 'add') return <AddItemView clients={clients} onSave={(item) => { setInventory([...inventory, { ...item, id: getNextId('SES') }]); setView('list'); }} onCancel={() => setView('list')} calculateMelt={calculateMelt} />;
-  if (view === 'detail' && selectedItem) return <DetailView item={selectedItem} clients={clients} liveSpotPrices={liveSpotPrices} onUpdate={(u) => { setInventory(inventory.map(i => i.id === u.id ? u : i)); setSelectedItem(u); }} onDelete={() => { setInventory(inventory.filter(i => i.id !== selectedItem.id)); setView('list'); }} onBack={() => { setView('list'); setSelectedItem(null); }} onListOnEbay={() => setView('ebayListing')} />;
+  if (view === 'detail' && selectedItem) return <DetailView 
+    item={selectedItem} 
+    clients={clients} 
+    liveSpotPrices={liveSpotPrices} 
+    onUpdate={(u) => { setInventory(inventory.map(i => i.id === u.id ? u : i)); setSelectedItem(u); }} 
+    onDelete={() => { setInventory(inventory.filter(i => i.id !== selectedItem.id)); setView('list'); }} 
+    onBack={() => { setView('list'); setSelectedItem(null); }} 
+    onListOnEbay={() => setView('ebayListing')}
+    onCreateLot={(lotData) => {
+      const lotId = getNextId('LOT');
+      const newLot = {
+        id: lotId,
+        ...lotData,
+        createdAt: new Date().toISOString()
+      };
+      setLots([...lots, newLot]);
+      // Update item with lot reference
+      const updatedItem = { ...selectedItem, lotId: lotId };
+      setInventory(inventory.map(i => i.id === selectedItem.id ? updatedItem : i));
+      setSelectedItem(updatedItem);
+    }}
+  />;
   if (view === 'ebayListing' && selectedItem) return <EbayListingView item={selectedItem} onBack={() => setView('detail')} onListingCreated={(listing) => { setInventory(inventory.map(i => i.id === selectedItem.id ? { ...i, ebayListingId: listing.listingId, ebayUrl: listing.ebayUrl, status: 'Listed' } : i)); setSelectedItem({ ...selectedItem, ebayListingId: listing.listingId, ebayUrl: listing.ebayUrl, status: 'Listed' }); setView('detail'); }} />;
   if (view === 'settings') return <SettingsView onBack={() => setView('list')} onExport={handleExport} onImport={handleImport} onReset={() => { setInventory(starterInventory); setClients(starterClients); setLots(starterLots); }} fileInputRef={fileInputRef} coinBuyPercents={coinBuyPercents} onUpdateCoinBuyPercent={handleUpdateCoinBuyPercent} />;
 
