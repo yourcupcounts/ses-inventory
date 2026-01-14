@@ -2168,19 +2168,19 @@ function PersonalStashView({ inventory, spotPrices, onBack, onSelectItem, onMove
 const coinReference = {
   // Silver Coins - 90% (0.900 fine) - PERCENTAGE PRICING (melt-based)
   // buyPercent = what % of melt you're willing to pay (editable in settings)
-  'morgan-dollar': { name: 'Morgan Dollar', metal: 'Silver', purity: 0.90, aswOz: 0.7234, years: '1878-1921', pricingMode: 'percentage', buyPercent: 95, premiums: { cull: 2, ag: 3, vg: 5, fine: 8, vf: 12, xf: 18, au: 30, bu: 35 } },
-  'peace-dollar': { name: 'Peace Dollar', metal: 'Silver', purity: 0.90, aswOz: 0.7234, years: '1921-1935', pricingMode: 'percentage', buyPercent: 100, premiums: { cull: 1, ag: 2, vg: 3, fine: 4, vf: 6, xf: 10, au: 18, bu: 22 } },
-  'walking-liberty-half': { name: 'Walking Liberty Half', metal: 'Silver', purity: 0.90, aswOz: 0.3617, years: '1916-1947', pricingMode: 'percentage', buyPercent: 95, premiums: { cull: 0.25, ag: 0.50, vg: 0.75, fine: 1, vf: 1.50, xf: 3, au: 6, bu: 10 } },
-  'franklin-half': { name: 'Franklin Half', metal: 'Silver', purity: 0.90, aswOz: 0.3617, years: '1948-1963', pricingMode: 'percentage', buyPercent: 90, premiums: { cull: 0, ag: 0.25, vg: 0.50, fine: 0.75, vf: 1, xf: 2, au: 4, bu: 6 } },
-  'kennedy-half-90': { name: 'Kennedy Half (90%)', metal: 'Silver', purity: 0.90, aswOz: 0.3617, years: '1964', pricingMode: 'percentage', buyPercent: 85, premiums: { cull: 0, ag: 0, vg: 0.25, fine: 0.50, vf: 0.75, xf: 1, au: 2, bu: 3 } },
-  'washington-quarter': { name: 'Washington Quarter', metal: 'Silver', purity: 0.90, aswOz: 0.1808, years: '1932-1964', pricingMode: 'percentage', buyPercent: 85, premiums: { cull: 0, ag: 0, vg: 0, fine: 0.10, vf: 0.25, xf: 0.50, au: 1, bu: 2 } },
-  'standing-liberty-quarter': { name: 'Standing Liberty Quarter', metal: 'Silver', purity: 0.90, aswOz: 0.1808, years: '1916-1930', pricingMode: 'percentage', buyPercent: 90, premiums: { cull: 0.25, ag: 0.50, vg: 1, fine: 2, vf: 4, xf: 8, au: 15, bu: 25 } },
-  'barber-quarter': { name: 'Barber Quarter', metal: 'Silver', purity: 0.90, aswOz: 0.1808, years: '1892-1916', pricingMode: 'percentage', buyPercent: 90, premiums: { cull: 0.50, ag: 1, vg: 2, fine: 4, vf: 8, xf: 15, au: 25, bu: 40 } },
-  'roosevelt-dime': { name: 'Roosevelt Dime', metal: 'Silver', purity: 0.90, aswOz: 0.0723, years: '1946-1964', pricingMode: 'percentage', buyPercent: 85, premiums: { cull: 0, ag: 0, vg: 0, fine: 0, vf: 0, xf: 0.10, au: 0.25, bu: 0.50 } },
-  'mercury-dime': { name: 'Mercury Dime', metal: 'Silver', purity: 0.90, aswOz: 0.0723, years: '1916-1945', pricingMode: 'percentage', buyPercent: 90, premiums: { cull: 0, ag: 0.05, vg: 0.10, fine: 0.15, vf: 0.25, xf: 0.50, au: 1, bu: 2 } },
-  'barber-dime': { name: 'Barber Dime', metal: 'Silver', purity: 0.90, aswOz: 0.0723, years: '1892-1916', pricingMode: 'percentage', buyPercent: 90, premiums: { cull: 0.25, ag: 0.50, vg: 1, fine: 2, vf: 4, xf: 8, au: 15, bu: 25 } },
-  'war-nickel': { name: 'War Nickel (35%)', metal: 'Silver', purity: 0.35, aswOz: 0.0563, years: '1942-1945', pricingMode: 'percentage', buyPercent: 80, premiums: { cull: 0, ag: 0, vg: 0, fine: 0.05, vf: 0.10, xf: 0.25, au: 0.50, bu: 1 } },
-  'junk-silver-lot': { name: '90% Junk Silver (per $1 face)', metal: 'Silver', purity: 0.90, aswOz: 0.715, years: 'Pre-1965', pricingMode: 'percentage', buyPercent: 85, premiums: { avg: 0 } },
+  'morgan-dollar': { name: 'Morgan Dollar', metal: 'Silver', purity: 0.90, aswOz: 0.7234, years: '1878-1921', pricingMode: 'percentage', buyPercent: 70, premiums: { cull: 2, ag: 3, vg: 5, fine: 8, vf: 12, xf: 18, au: 30, bu: 35 } },
+  'peace-dollar': { name: 'Peace Dollar', metal: 'Silver', purity: 0.90, aswOz: 0.7234, years: '1921-1935', pricingMode: 'percentage', buyPercent: 70, premiums: { cull: 1, ag: 2, vg: 3, fine: 4, vf: 6, xf: 10, au: 18, bu: 22 } },
+  'walking-liberty-half': { name: 'Walking Liberty Half', metal: 'Silver', purity: 0.90, aswOz: 0.3617, years: '1916-1947', pricingMode: 'percentage', buyPercent: 70, premiums: { cull: 0.25, ag: 0.50, vg: 0.75, fine: 1, vf: 1.50, xf: 3, au: 6, bu: 10 } },
+  'franklin-half': { name: 'Franklin Half', metal: 'Silver', purity: 0.90, aswOz: 0.3617, years: '1948-1963', pricingMode: 'percentage', buyPercent: 70, premiums: { cull: 0, ag: 0.25, vg: 0.50, fine: 0.75, vf: 1, xf: 2, au: 4, bu: 6 } },
+  'kennedy-half-90': { name: 'Kennedy Half (90%)', metal: 'Silver', purity: 0.90, aswOz: 0.3617, years: '1964', pricingMode: 'percentage', buyPercent: 70, premiums: { cull: 0, ag: 0, vg: 0.25, fine: 0.50, vf: 0.75, xf: 1, au: 2, bu: 3 } },
+  'washington-quarter': { name: 'Washington Quarter', metal: 'Silver', purity: 0.90, aswOz: 0.1808, years: '1932-1964', pricingMode: 'percentage', buyPercent: 70, premiums: { cull: 0, ag: 0, vg: 0, fine: 0.10, vf: 0.25, xf: 0.50, au: 1, bu: 2 } },
+  'standing-liberty-quarter': { name: 'Standing Liberty Quarter', metal: 'Silver', purity: 0.90, aswOz: 0.1808, years: '1916-1930', pricingMode: 'percentage', buyPercent: 70, premiums: { cull: 0.25, ag: 0.50, vg: 1, fine: 2, vf: 4, xf: 8, au: 15, bu: 25 } },
+  'barber-quarter': { name: 'Barber Quarter', metal: 'Silver', purity: 0.90, aswOz: 0.1808, years: '1892-1916', pricingMode: 'percentage', buyPercent: 70, premiums: { cull: 0.50, ag: 1, vg: 2, fine: 4, vf: 8, xf: 15, au: 25, bu: 40 } },
+  'roosevelt-dime': { name: 'Roosevelt Dime', metal: 'Silver', purity: 0.90, aswOz: 0.0723, years: '1946-1964', pricingMode: 'percentage', buyPercent: 70, premiums: { cull: 0, ag: 0, vg: 0, fine: 0, vf: 0, xf: 0.10, au: 0.25, bu: 0.50 } },
+  'mercury-dime': { name: 'Mercury Dime', metal: 'Silver', purity: 0.90, aswOz: 0.0723, years: '1916-1945', pricingMode: 'percentage', buyPercent: 70, premiums: { cull: 0, ag: 0.05, vg: 0.10, fine: 0.15, vf: 0.25, xf: 0.50, au: 1, bu: 2 } },
+  'barber-dime': { name: 'Barber Dime', metal: 'Silver', purity: 0.90, aswOz: 0.0723, years: '1892-1916', pricingMode: 'percentage', buyPercent: 70, premiums: { cull: 0.25, ag: 0.50, vg: 1, fine: 2, vf: 4, xf: 8, au: 15, bu: 25 } },
+  'war-nickel': { name: 'War Nickel (35%)', metal: 'Silver', purity: 0.35, aswOz: 0.0563, years: '1942-1945', pricingMode: 'percentage', buyPercent: 70, premiums: { cull: 0, ag: 0, vg: 0, fine: 0.05, vf: 0.10, xf: 0.25, au: 0.50, bu: 1 } },
+  'junk-silver-lot': { name: '90% Junk Silver (per $1 face)', metal: 'Silver', purity: 0.90, aswOz: 0.715, years: 'Pre-1965', pricingMode: 'percentage', buyPercent: 70, premiums: { avg: 0 } },
   
   // Silver Bullion - FIXED PREMIUM PRICING (spot + $X)
   'silver-eagle': { 
@@ -3167,7 +3167,7 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                       onClick={async () => {
                         const query = `${evaluatingItem.description} ${evaluatingItem.year || ''} ${evaluatingItem.grade || ''}`.trim();
                         setEvaluatingItem({ ...evaluatingItem, ebayLoading: true });
-                        const results = await EbayListingService.searchSoldListings(query);
+                        const results = await EbayPricingService.searchSoldListings(query);
                         setEvaluatingItem({ ...evaluatingItem, ebayResults: results, ebayLoading: false });
                       }}
                       disabled={evaluatingItem.ebayLoading}
@@ -5935,9 +5935,26 @@ function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay })
   const [showSold, setShowSold] = useState(false);
   const [salePrice, setSalePrice] = useState(item.meltValue || '');
   const [salePlatform, setSalePlatform] = useState('Refiner');
+  const [ebayPrices, setEbayPrices] = useState(null);
+  const [isLoadingEbay, setIsLoadingEbay] = useState(false);
+  const [showEbayPrices, setShowEbayPrices] = useState(false);
   const client = clients.find(c => c.id === item.clientId);
   const holdStatus = getHoldStatus(item);
   const profit = item.status === 'Sold' ? (item.salePrice - item.purchasePrice) : (item.meltValue - item.purchasePrice);
+  
+  // Fetch eBay sold prices
+  const fetchEbayPrices = async () => {
+    setIsLoadingEbay(true);
+    try {
+      const searchQuery = item.description + (item.year ? ` ${item.year}` : '') + (item.grade ? ` ${item.grade}` : '');
+      const results = await EbayPricingService.searchSoldListings(searchQuery, 10);
+      setEbayPrices(results);
+      setShowEbayPrices(true);
+    } catch (error) {
+      console.error('eBay price lookup failed:', error);
+    }
+    setIsLoadingEbay(false);
+  };
   
   const handleMarkSold = () => {
     if (!holdStatus.canSell) {
@@ -6031,15 +6048,91 @@ function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay })
         
         {item.notes && <div className="mt-4 p-3 bg-gray-50 rounded text-sm">{item.notes}</div>}
         
-        {/* List on eBay Button - only show if hold complete and not already listed */}
-        {item.status === 'Available' && holdStatus.canSell && !item.ebayListingId && onListOnEbay && (
-          <button 
-            onClick={onListOnEbay}
-            className="w-full mt-4 py-3 rounded font-medium flex items-center justify-center gap-2 bg-blue-600 text-white"
-          >
-            <ExternalLink size={18} />
-            List on eBay
-          </button>
+        {/* eBay Price Check Section */}
+        {item.status === 'Available' && holdStatus.canSell && !item.ebayListingId && (
+          <div className="mt-4 border-t pt-4">
+            <button 
+              onClick={fetchEbayPrices}
+              disabled={isLoadingEbay}
+              className="w-full py-3 rounded font-medium flex items-center justify-center gap-2 bg-gray-100 text-gray-700 border border-gray-300"
+            >
+              {isLoadingEbay ? (
+                <><Loader size={18} className="animate-spin" /> Checking eBay...</>
+              ) : (
+                <><Search size={18} /> Check eBay Sold Prices</>
+              )}
+            </button>
+            
+            {/* eBay Price Results */}
+            {showEbayPrices && ebayPrices && (
+              <div className="mt-3 p-3 bg-blue-50 rounded-lg">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="font-medium text-blue-800">eBay Recent Sales</span>
+                  <button onClick={() => setShowEbayPrices(false)} className="text-gray-500"><X size={16} /></button>
+                </div>
+                
+                {ebayPrices.count > 0 ? (
+                  <>
+                    <div className="grid grid-cols-3 gap-2 mb-3">
+                      <div className="bg-white p-2 rounded text-center">
+                        <div className="text-xs text-gray-500">Low</div>
+                        <div className="font-bold text-red-600">${ebayPrices.lowPrice}</div>
+                      </div>
+                      <div className="bg-white p-2 rounded text-center">
+                        <div className="text-xs text-gray-500">Avg</div>
+                        <div className="font-bold text-blue-600">${ebayPrices.avgPrice}</div>
+                      </div>
+                      <div className="bg-white p-2 rounded text-center">
+                        <div className="text-xs text-gray-500">High</div>
+                        <div className="font-bold text-green-600">${ebayPrices.highPrice}</div>
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-600 mb-2">Based on {ebayPrices.count} recent sales</div>
+                    
+                    {/* Suggested Price */}
+                    <div className="bg-green-100 p-2 rounded mb-3">
+                      <div className="text-xs text-green-700">Suggested List Price</div>
+                      <div className="text-xl font-bold text-green-700">${Math.round(ebayPrices.avgPrice * 0.95)}</div>
+                      <div className="text-xs text-green-600">5% below average for quick sale</div>
+                    </div>
+                    
+                    {/* Recent Sold Items */}
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {ebayPrices.items.slice(0, 5).map((sold, idx) => (
+                        <a 
+                          key={idx}
+                          href={sold.itemUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 p-2 bg-white rounded hover:bg-gray-50"
+                        >
+                          {sold.imageUrl && <img src={sold.imageUrl} className="w-10 h-10 object-cover rounded" />}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs truncate">{sold.title}</div>
+                            <div className="text-xs text-gray-500">{sold.condition}</div>
+                          </div>
+                          <div className="font-bold text-green-600">${sold.price}</div>
+                        </a>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm text-gray-600">No recent sales found for this item</div>
+                )}
+              </div>
+            )}
+            
+            {/* List on eBay Button */}
+            {onListOnEbay && (
+              <button 
+                onClick={onListOnEbay}
+                className="w-full mt-3 py-3 rounded font-medium flex items-center justify-center gap-2 bg-blue-600 text-white"
+              >
+                <ExternalLink size={18} />
+                List on eBay {ebayPrices?.avgPrice ? `@ $${Math.round(ebayPrices.avgPrice * 0.95)}` : ''}
+              </button>
+            )}
+          </div>
         )}
         
         {/* Move to Stash / Move to Inventory Button */}
