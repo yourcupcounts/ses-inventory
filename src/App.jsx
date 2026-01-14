@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Package, Plus, X, Trash2, Search, Settings, Download, Upload, Camera, Loader, BarChart3, TrendingUp, TrendingDown, Clock, AlertTriangle, FileText, Filter, Users, UserPlus, Edit2, Check, MapPin, Calendar, CreditCard, Building, User, Lock, Unlock, ShieldCheck, DollarSign, RefreshCw, Calculator, Layers, Star, ExternalLink } from 'lucide-react';
+import { Package, Plus, X, Trash2, Search, Settings, Download, Upload, Camera, Loader, BarChart3, TrendingUp, TrendingDown, Clock, AlertTriangle, AlertCircle, FileText, Filter, Users, UserPlus, Edit2, Check, MapPin, Calendar, CreditCard, Building, User, Lock, Unlock, ShieldCheck, DollarSign, RefreshCw, Calculator, Layers, Star, ExternalLink } from 'lucide-react';
 
 // ============ CONFIGURATION - ADD YOUR API KEYS HERE ============
 const CONFIG = {
@@ -306,7 +306,7 @@ const AIVisionService = {
   async analyzeImage(base64Image) {
     if (!CONFIG.features.useAiVision) {
       console.log('AI Vision disabled - returning manual entry required');
-      return this.getManualEntryResult();
+      return this.getManualEntryResult('AI Vision is disabled in config');
     }
     
     try {
@@ -380,12 +380,26 @@ For jewelry or scrap, set coinKey to null and describe the item type.`
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('AI Vision proxy error:', errorText);
-        throw new Error(`API error: ${response.status}`);
+        console.error('AI Vision proxy error:', response.status, errorText);
+        
+        // Parse error for better message
+        let errorMessage = 'API request failed';
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.error || errorMessage;
+        } catch (e) {
+          errorMessage = errorText || `HTTP ${response.status}`;
+        }
+        
+        return this.getManualEntryResult(errorMessage);
       }
       
       const data = await response.json();
-      const content = data.content[0]?.text || '';
+      const content = data.content?.[0]?.text || '';
+      
+      if (!content) {
+        return this.getManualEntryResult('Empty response from AI');
+      }
       
       // Parse JSON from response
       const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -406,20 +420,21 @@ For jewelry or scrap, set coinKey to null and describe the item type.`
         return result;
       }
       
-      return this.getManualEntryResult();
+      return this.getManualEntryResult('Could not parse AI response');
     } catch (error) {
       console.error('AI Vision analysis failed:', error);
-      return this.getManualEntryResult();
+      return this.getManualEntryResult(error.message || 'Network error');
     }
   },
   
   // Return result requiring manual entry (used when API fails or is disabled)
-  getManualEntryResult() {
+  getManualEntryResult(reason = 'Unknown error') {
     return {
       type: 'Unknown Item',
       needsManualEntry: true,
       confidence: 0,
-      notes: 'AI analysis unavailable - please identify manually'
+      notes: `AI analysis unavailable: ${reason}. Please identify manually.`,
+      apiError: reason
     };
   }
 };
@@ -996,15 +1011,95 @@ function getHoldStatus(item) {
   }
 }
 
-// Start with empty inventory - populate via app usage
-const starterInventory = [];
+// Your actual inventory from past conversations
+const starterInventory = [
+  // January 13, 2026 - Auction Purchases
+  { id: 'SES-001', description: 'Franklin Half Dollars (15 coin set)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 5.43, source: 'Auction', clientId: 'CLI-001', dateAcquired: '2026-01-13', purchasePrice: 400, meltValue: 469, status: 'Available', notes: 'Capital Plastics holder, AU/BU condition. Retail $600-675.', coinKey: 'franklin-half', quantity: 15, lotId: 'LOT-001' },
+  { id: 'SES-002', description: 'Peace Dollars (9 coin set, 1924)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 6.96, source: 'Auction', clientId: 'CLI-001', dateAcquired: '2026-01-13', purchasePrice: 550, meltValue: 601, status: 'Available', notes: 'Capital Plastics holder, VF-AU. Retail $720-855.', coinKey: 'peace-dollar', quantity: 9, lotId: 'LOT-002' },
+  { id: 'SES-003', description: '1927-D Peace Dollar NGC AU55', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.7734, source: 'Auction', clientId: 'CLI-001', dateAcquired: '2026-01-13', purchasePrice: 75, meltValue: 67, status: 'Available', notes: 'NGC Cert #1531904-041, Semi-key date (1.27M mintage). Retail $125-175.', coinKey: 'peace-dollar', year: '1927', mint: 'D', grade: 'AU55' },
+  { id: 'SES-004', description: '1922 Peace Dollar NGC MS63', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.7734, source: 'Auction', clientId: 'CLI-001', dateAcquired: '2026-01-13', purchasePrice: 75, meltValue: 67, status: 'Available', notes: 'NGC Cert #6788772-065, Common date. Retail $85-110.', coinKey: 'peace-dollar', year: '1922', grade: 'MS63' },
+  { id: 'SES-005', description: '90% Silver Quarters (60 coins)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 10.85, source: 'Auction', clientId: 'CLI-001', dateAcquired: '2026-01-13', purchasePrice: 750, meltValue: 938, status: 'Available', notes: 'Mixed Washington quarters bulk lot.', coinKey: 'washington-quarter', quantity: 60, lotId: 'LOT-003' },
+  
+  // January 12, 2026 - Victorian Lace Antique Mall
+  { id: 'SES-006', description: 'Mexican Sterling Hinged Bangle (HPL maker)', category: 'Silver - Sterling', metalType: 'Silver', purity: '925', weightOz: 2.70, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 136.96, meltValue: 225, status: 'Available', notes: 'Modernist square design, 84g. Price includes 7% tax.' },
+  { id: 'SES-007', description: 'Mexican Sterling Chevron Link Bracelet', category: 'Silver - Sterling', metalType: 'Silver', purity: '925', weightOz: 1.93, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 48.15, meltValue: 161, status: 'Available', notes: 'Leaf/wheat pattern, 60g, Mexico 925 mark, TL-01 maker. Price includes tax. Paid 32% of melt.' },
+  { id: 'SES-008', description: '2008-S Hawaii Silver Proof Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 13, meltValue: 16, status: 'Available', notes: 'State Quarter series, SGC booth', coinKey: 'washington-quarter', year: '2008', mint: 'S', grade: 'PF' },
+  { id: 'SES-009', description: '2011-S Gettysburg Silver Proof Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 11, meltValue: 16, status: 'Available', notes: 'America the Beautiful', coinKey: 'washington-quarter', year: '2011', mint: 'S', grade: 'PF' },
+  { id: 'SES-010', description: '2010-S Grand Canyon Silver Proof Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 13, meltValue: 16, status: 'Available', notes: 'America the Beautiful', coinKey: 'washington-quarter', year: '2010', mint: 'S', grade: 'PF' },
+  { id: 'SES-011', description: '1962-D Franklin Half Dollar', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.3617, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 26, meltValue: 31, status: 'Available', coinKey: 'franklin-half', year: '1962', mint: 'D' },
+  { id: 'SES-012', description: '1930 Standing Liberty Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 23, meltValue: 16, status: 'Available', notes: 'Collector premium (150% melt)', coinKey: 'standing-liberty-quarter', year: '1930' },
+  { id: 'SES-013', description: '1928 Standing Liberty Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 23, meltValue: 16, status: 'Available', coinKey: 'standing-liberty-quarter', year: '1928' },
+  { id: 'SES-014', description: '1924 Standing Liberty Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 75, meltValue: 16, status: 'Available', notes: 'Paid 488% of melt - collector piece', coinKey: 'standing-liberty-quarter', year: '1924' },
+  { id: 'SES-015', description: '1927 Standing Liberty Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 23, meltValue: 16, status: 'Available', coinKey: 'standing-liberty-quarter', year: '1927' },
+  { id: 'SES-016', description: '1925 Standing Liberty Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 23, meltValue: 16, status: 'Available', coinKey: 'standing-liberty-quarter', year: '1925' },
+  { id: 'SES-017', description: '1903-O Barber Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 13, meltValue: 16, status: 'Available', notes: 'Good buy at 85% melt', coinKey: 'barber-quarter', year: '1903', mint: 'O' },
+  { id: 'SES-018', description: '1909 Barber Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 13, meltValue: 16, status: 'Available', coinKey: 'barber-quarter', year: '1909' },
+  { id: 'SES-019', description: '1908 Barber Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 13, meltValue: 16, status: 'Available', coinKey: 'barber-quarter', year: '1908' },
+  { id: 'SES-020', description: '1909-D Barber Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 14, meltValue: 16, status: 'Available', coinKey: 'barber-quarter', year: '1909', mint: 'D' },
+  { id: 'SES-021', description: '1912 Barber Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 23, meltValue: 16, status: 'Available', notes: 'Collector premium (150% melt)', coinKey: 'barber-quarter', year: '1912' },
+  { id: 'SES-022', description: '1915 Barber Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 23, meltValue: 16, status: 'Available', coinKey: 'barber-quarter', year: '1915' },
+  { id: 'SES-023', description: '1945-S Walking Liberty Half', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.3617, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 26, meltValue: 31, status: 'Available', coinKey: 'walking-liberty-half', year: '1945', mint: 'S' },
+  { id: 'SES-024', description: '1937 Walking Liberty Half', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.3617, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 28, meltValue: 31, status: 'Available', coinKey: 'walking-liberty-half', year: '1937' },
+  { id: 'SES-025', description: '1949-S Franklin Half Dollar', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.3617, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 26, meltValue: 31, status: 'Available', coinKey: 'franklin-half', year: '1949', mint: 'S' },
+  
+  // Other items from conversations
+  { id: 'SES-026', description: 'South African Threepence Coin Bracelet (8 coins)', category: 'Silver - World', metalType: 'Silver', purity: '80%', weightOz: 0.29, source: 'Walk-in', clientId: 'CLI-003', dateAcquired: '2026-01-13', purchasePrice: 18, meltValue: 25, status: 'Available', notes: 'George VI era 3d coins (1951-1952), broken bracelet, base metal bezels. Melt only.' },
+  { id: 'SES-027', description: 'Franklin Mint Apollo 13 Medal', category: 'Collectibles', metalType: 'Silver', purity: '925', weightOz: 0, source: 'Walk-in', clientId: 'CLI-003', dateAcquired: '2026-01-10', purchasePrice: 60, meltValue: 0, status: 'Available', notes: 'Space-flown metal content, presentation case & docs. Collector value $100-150, not melt.' },
+  { id: 'SES-028', description: 'Mexican Sterling Mahogany Obsidian Bracelet', category: 'Silver - Sterling', metalType: 'Silver', purity: '925', weightOz: 0.80, source: 'Walk-in', clientId: 'CLI-003', dateAcquired: '2026-01-11', purchasePrice: 42, meltValue: 67, status: 'Available', notes: 'Taxco-style, 8 oval cabochons, ~43g total (~25g silver). eBay value $80-120. Bought at 70% melt.' },
+];
 
-// Start with empty clients - add via app
-const starterClients = [];
+// Your actual clients
+const starterClients = [
+  { id: 'CLI-001', name: 'January 13 Auction', type: 'Business', email: '', phone: '', address: '', idType: 'Business', idNumber: '', idExpiry: '', idFrontPhoto: null, idBackPhoto: null, signature: null, signatureTimestamp: null, signatureLocation: null, notes: 'Auction house - Franklin set, Peace set, NGC slabs, 60 quarters. Total: $1,850', dateAdded: '2026-01-13', totalTransactions: 5, totalPurchased: 1850 },
+  { id: 'CLI-002', name: 'Victorian Lace Antique Mall', type: 'Business', email: '', phone: '', address: 'Rutherfordton, NC', businessLicense: '', taxId: '', idType: 'Business', idNumber: '', idFrontPhoto: null, idBackPhoto: null, signature: null, signatureTimestamp: null, signatureLocation: null, notes: 'Antique mall with multiple booths (SGC, WW, etc). Coins exempt from tax, jewelry taxed at 7%.', dateAdded: '2026-01-12', totalTransactions: 22, totalPurchased: 560 },
+  { id: 'CLI-003', name: 'Walk-in Sellers', type: 'Private', email: '', phone: '', address: '', idType: '', idNumber: '', idExpiry: '', idFrontPhoto: null, idBackPhoto: null, signature: null, signatureTimestamp: null, signatureLocation: null, notes: 'Miscellaneous walk-in sellers - SA bracelet, Apollo medal, obsidian bracelet', dateAdded: '2026-01-10', totalTransactions: 3, totalPurchased: 120 },
+];
 
-// Starter lots for items purchased as sets
-// Start with empty lots - populate via app usage
-const starterLots = [];
+// Your actual lots
+const starterLots = [
+  { 
+    id: 'LOT-001', 
+    description: 'Franklin Half Dollar Set (15 coins)', 
+    totalCost: 400, 
+    totalItems: 15, 
+    source: 'Auction',
+    clientId: 'CLI-001',
+    dateAcquired: '2026-01-13',
+    status: 'intact',
+    allocationMethod: 'equal',
+    notes: 'Capital Plastics holder, AU/BU condition. Paid 85.4% of melt ($468.57). Retail value $600-675. Consider selling as set for collector premium.',
+    itemIds: ['SES-001'],
+    createdAt: '2026-01-13T00:00:00Z'
+  },
+  { 
+    id: 'LOT-002', 
+    description: 'Peace Dollar Set (9 coins, 1924)', 
+    totalCost: 550, 
+    totalItems: 9, 
+    source: 'Auction',
+    clientId: 'CLI-001',
+    dateAcquired: '2026-01-13',
+    status: 'intact',
+    allocationMethod: 'equal',
+    notes: 'Capital Plastics holder (aftermarket, not mint issued), VF-AU. Paid 91.5% of melt ($600.88). Retail $720-855. Test for authenticity before resale.',
+    itemIds: ['SES-002'],
+    createdAt: '2026-01-13T00:00:00Z'
+  },
+  { 
+    id: 'LOT-003', 
+    description: '90% Silver Quarters (60 coins)', 
+    totalCost: 750, 
+    totalItems: 60, 
+    source: 'Auction',
+    clientId: 'CLI-001',
+    dateAcquired: '2026-01-13',
+    status: 'intact',
+    allocationMethod: 'equal',
+    notes: 'Mixed Washington quarters. $15 face value. Paid $50/face ($12.50/coin). Junk silver for melt or resale.',
+    itemIds: ['SES-005'],
+    createdAt: '2026-01-13T00:00:00Z'
+  }
+];
 
 // ============ EBAY LISTING VIEW ============
 function EbayListingView({ item, onBack, onListingCreated }) {
@@ -2399,6 +2494,7 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
   const [discountMethod, setDiscountMethod] = useState('proportional');
   const [sessionNotes, setSessionNotes] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
+  const [apiError, setApiError] = useState(null);
   
   const cameraRef = useRef(null);
   const photoInputRef = useRef(null);
@@ -2578,10 +2674,17 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
     const file = e.target.files?.[0];
     if (!file) return;
     
+    setApiError(null); // Clear any previous error
+    
     const reader = new FileReader();
     reader.onload = async (event) => {
       const base64 = event.target.result.split(',')[1];
       const analysis = await analyzePhoto(base64);
+      
+      // Check for API error
+      if (analysis.apiError) {
+        setApiError(analysis.apiError);
+      }
       
       // Handle non-precious metal items
       if (analysis.notPreciousMetal) {
@@ -2612,7 +2715,8 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
           needsManualEntry: true,
           metal: analysis.metal,
           purity: analysis.purity,
-          notes: analysis.notes
+          notes: analysis.notes,
+          apiError: analysis.apiError
         });
         setShowManualEntry(true);
       }
@@ -2975,6 +3079,25 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
             </div>
           )}
           
+          {/* API Error Banner */}
+          {apiError && (
+            <div className="bg-red-900 border border-red-700 rounded-lg p-3 mb-4">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="text-red-400 flex-shrink-0 mt-0.5" size={18} />
+                <div>
+                  <div className="text-red-200 font-medium text-sm">AI Identification Failed</div>
+                  <div className="text-red-300 text-xs mt-1">{apiError}</div>
+                  <div className="text-red-400 text-xs mt-2">
+                    Check that ANTHROPIC_API_KEY is set in Vercel environment variables.
+                  </div>
+                </div>
+                <button onClick={() => setApiError(null)} className="text-red-400 ml-auto">
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+          )}
+          
           {/* Evaluation Result */}
           {evaluatingItem && !analyzing && (
             <div className="bg-gray-800 rounded-xl overflow-hidden">
@@ -3322,41 +3445,163 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
               {evaluatingItem.notPreciousMetal && (
                 <div className="p-4">
                   <div className="flex items-center justify-center mb-4">
-                    <div className="bg-red-900 text-red-200 px-4 py-2 rounded-lg flex items-center gap-2">
-                      <X size={20} />
-                      <span className="font-medium">Not a Precious Metal</span>
+                    <div className="bg-amber-900 text-amber-200 px-4 py-2 rounded-lg flex items-center gap-2">
+                      <Package size={20} />
+                      <span className="font-medium">Non-Metal Item Detected</span>
                     </div>
                   </div>
                   
                   <div className="text-center mb-4">
                     <h3 className="text-white font-bold text-lg mb-2">{evaluatingItem.description}</h3>
                     <p className="text-gray-400 text-sm">
-                      {evaluatingItem.notes || 'This item cannot be appraised for precious metal value.'}
+                      This item is not a precious metal, but may still have resale value.
                     </p>
                   </div>
                   
-                  <div className="bg-gray-700 p-3 rounded-lg mb-4">
-                    <p className="text-gray-300 text-sm text-center">
-                      This item does not appear to contain precious metals (gold, silver, platinum, or palladium). 
-                      We cannot provide a melt value appraisal.
-                    </p>
-                  </div>
+                  {/* eBay Search for Non-PM Items */}
+                  {evaluatingItem.ebayResults ? (
+                    <div className="bg-blue-900 rounded-lg p-3 mb-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-blue-200 text-sm font-medium">eBay Sold Prices</span>
+                        <span className="text-blue-300 text-xs">{evaluatingItem.ebayResults.count || 0} results</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div>
+                          <div className="text-gray-400 text-xs">Low</div>
+                          <div className="text-white font-medium">${evaluatingItem.ebayResults.lowPrice || 0}</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-400 text-xs">Avg</div>
+                          <div className="text-green-400 font-bold">${evaluatingItem.ebayResults.avgPrice || 0}</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-400 text-xs">High</div>
+                          <div className="text-white font-medium">${evaluatingItem.ebayResults.highPrice || 0}</div>
+                        </div>
+                      </div>
+                      {evaluatingItem.ebayResults.items?.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-blue-700 max-h-32 overflow-y-auto">
+                          {evaluatingItem.ebayResults.items.slice(0, 5).map((item, idx) => (
+                            <a 
+                              key={idx} 
+                              href={item.itemUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block bg-gray-800 rounded p-2 mb-1 hover:bg-gray-700"
+                            >
+                              <div className="flex justify-between items-center">
+                                <span className="text-gray-300 text-xs truncate flex-1 mr-2">{item.title?.slice(0, 40)}...</span>
+                                <span className="text-green-400 font-bold text-sm">${item.price}</span>
+                              </div>
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2 mb-4">
+                      <button
+                        onClick={async () => {
+                          setEvaluatingItem({ ...evaluatingItem, ebayLoading: true });
+                          const results = await EbayPricingService.searchSoldListings(evaluatingItem.description);
+                          setEvaluatingItem({ ...evaluatingItem, ebayResults: results, ebayLoading: false });
+                        }}
+                        disabled={evaluatingItem.ebayLoading}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg flex items-center justify-center gap-2"
+                      >
+                        {evaluatingItem.ebayLoading ? (
+                          <><Loader size={18} className="animate-spin" /> Searching eBay...</>
+                        ) : (
+                          <><Search size={18} /> Search eBay for "{evaluatingItem.description}"</>
+                        )}
+                      </button>
+                      
+                      {/* Manual search input */}
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Or enter custom search..."
+                          className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm"
+                          onKeyDown={async (e) => {
+                            if (e.key === 'Enter' && e.target.value.trim()) {
+                              setEvaluatingItem({ ...evaluatingItem, ebayLoading: true, customSearch: e.target.value });
+                              const results = await EbayPricingService.searchSoldListings(e.target.value);
+                              setEvaluatingItem({ ...evaluatingItem, ebayResults: results, ebayLoading: false });
+                            }
+                          }}
+                        />
+                        <button
+                          onClick={async () => {
+                            const input = document.querySelector('input[placeholder="Or enter custom search..."]');
+                            if (input?.value?.trim()) {
+                              setEvaluatingItem({ ...evaluatingItem, ebayLoading: true });
+                              const results = await EbayPricingService.searchSoldListings(input.value);
+                              setEvaluatingItem({ ...evaluatingItem, ebayResults: results, ebayLoading: false });
+                            }
+                          }}
+                          className="bg-gray-600 hover:bg-gray-500 text-white px-4 rounded-lg"
+                        >
+                          <Search size={18} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Value Entry for Non-PM */}
+                  {evaluatingItem.ebayResults && (
+                    <div className="bg-gray-700 rounded-lg p-3 mb-4">
+                      <label className="text-gray-400 text-sm block mb-2">Your Buy Price:</label>
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-400">$</span>
+                        <input
+                          type="number"
+                          value={evaluatingItem.manualBuyPrice || ''}
+                          onChange={(e) => setEvaluatingItem({ ...evaluatingItem, manualBuyPrice: e.target.value })}
+                          className="flex-1 bg-gray-600 border border-gray-500 rounded px-3 py-2 text-white"
+                          placeholder={`Suggested: $${Math.round((evaluatingItem.ebayResults.avgPrice || 0) * 0.4)}-${Math.round((evaluatingItem.ebayResults.avgPrice || 0) * 0.5)}`}
+                        />
+                      </div>
+                      <p className="text-gray-500 text-xs mt-1">Typical buy: 40-50% of eBay sold average</p>
+                    </div>
+                  )}
                   
                   <div className="flex gap-3">
                     <button
                       onClick={() => setEvaluatingItem(null)}
                       className="flex-1 bg-gray-600 text-white py-3 rounded-lg font-medium"
                     >
-                      Dismiss
+                      Pass
                     </button>
+                    {evaluatingItem.ebayResults && evaluatingItem.manualBuyPrice && (
+                      <button
+                        onClick={() => {
+                          // Add as non-PM item to session
+                          addToOffer({
+                            id: `eval-${Date.now()}`,
+                            description: evaluatingItem.description,
+                            photo: evaluatingItem.photo,
+                            buyPrice: parseFloat(evaluatingItem.manualBuyPrice) || 0,
+                            meltValue: 0,
+                            marketValue: evaluatingItem.ebayResults.avgPrice || 0,
+                            category: 'Resale Items',
+                            metalType: 'None',
+                            notes: `Non-PM item. eBay avg: $${evaluatingItem.ebayResults.avgPrice}`
+                          });
+                        }}
+                        className="flex-1 bg-teal-600 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2"
+                      >
+                        <Plus size={20} /> Add ${evaluatingItem.manualBuyPrice}
+                      </button>
+                    )}
                     <button
                       onClick={() => {
                         setEvaluatingItem({ ...evaluatingItem, notPreciousMetal: false, needsManualEntry: true });
                         setShowManualEntry(true);
                       }}
-                      className="flex-1 bg-amber-600 text-white py-3 rounded-lg font-medium"
+                      className="bg-amber-600 text-white px-4 py-3 rounded-lg font-medium"
+                      title="Mark as precious metal"
                     >
-                      Actually, It's PM...
+                      It's PM
                     </button>
                   </div>
                 </div>
