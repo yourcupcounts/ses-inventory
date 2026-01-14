@@ -8892,6 +8892,7 @@ export default function SESInventoryApp() {
   const [lots, setLots] = useState(null);
   const [dataLoaded, setDataLoaded] = useState(false); // Track if initial load is complete
   const [kpiExpanded, setKpiExpanded] = useState(true); // KPI dashboard expanded by default
+  const [kpiFilter, setKpiFilter] = useState(null); // Filter for KPI drill-down: 'stash', 'hold', 'sell', 'available', 'silver', 'gold', 'platinum', 'sold'
   const [view, setView] = useState('list');
   const [selectedItem, setSelectedItem] = useState(null);
   const [pendingListing, setPendingListing] = useState(null); // Store generated listing for eBay
@@ -9090,7 +9091,41 @@ export default function SESInventoryApp() {
   const filteredInventory = (inventory || []).filter(item => {
     const matchesSearch = item.description.toLowerCase().includes(searchTerm.toLowerCase()) || item.id.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = filter === 'all' || (filter === 'available' && item.status === 'Available') || (filter === 'sold' && item.status === 'Sold');
-    return matchesSearch && matchesFilter;
+    
+    // KPI filter from dashboard drill-down
+    let matchesKpiFilter = true;
+    if (kpiFilter) {
+      switch (kpiFilter) {
+        case 'stash':
+          matchesKpiFilter = item.status === 'Stash';
+          break;
+        case 'hold':
+          matchesKpiFilter = item.plannedDisposition === 'hold';
+          break;
+        case 'sell':
+          matchesKpiFilter = item.plannedDisposition === 'sell';
+          break;
+        case 'available':
+          matchesKpiFilter = item.status === 'Available' && !item.plannedDisposition;
+          break;
+        case 'sold':
+          matchesKpiFilter = item.status === 'Sold';
+          break;
+        case 'silver':
+          matchesKpiFilter = item.metalType?.toLowerCase() === 'silver' && item.status !== 'Sold';
+          break;
+        case 'gold':
+          matchesKpiFilter = item.metalType?.toLowerCase() === 'gold' && item.status !== 'Sold';
+          break;
+        case 'platinum':
+          matchesKpiFilter = item.metalType?.toLowerCase() === 'platinum' && item.status !== 'Sold';
+          break;
+        default:
+          matchesKpiFilter = true;
+      }
+    }
+    
+    return matchesSearch && matchesFilter && matchesKpiFilter;
   });
 
   const getNextId = (prefix) => {
@@ -9578,10 +9613,13 @@ export default function SESInventoryApp() {
           <div className="p-4 space-y-4">
             {/* Portfolio by Disposition */}
             <div>
-              <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Portfolio by Status</h4>
+              <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Portfolio by Status <span className="text-gray-400 font-normal">(tap to filter)</span></h4>
               <div className="grid grid-cols-2 gap-2">
                 {/* Stash */}
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <button 
+                  onClick={() => { setKpiFilter(kpiFilter === 'stash' ? null : 'stash'); setKpiExpanded(false); }}
+                  className={`bg-amber-50 border rounded-lg p-3 text-left transition-all ${kpiFilter === 'stash' ? 'border-amber-500 ring-2 ring-amber-300' : 'border-amber-200'}`}
+                >
                   <div className="flex items-center gap-2 text-amber-700 mb-1">
                     <Star size={16} />
                     <span className="font-medium text-sm">Stash</span>
@@ -9591,10 +9629,13 @@ export default function SESInventoryApp() {
                   <div className={`text-xs ${kpis.stashValue - kpis.stashCost >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                     {kpis.stashValue - kpis.stashCost >= 0 ? '+' : ''}${(kpis.stashValue - kpis.stashCost).toFixed(0)} P&L
                   </div>
-                </div>
+                </button>
                 
                 {/* Hold */}
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <button 
+                  onClick={() => { setKpiFilter(kpiFilter === 'hold' ? null : 'hold'); setKpiExpanded(false); }}
+                  className={`bg-blue-50 border rounded-lg p-3 text-left transition-all ${kpiFilter === 'hold' ? 'border-blue-500 ring-2 ring-blue-300' : 'border-blue-200'}`}
+                >
                   <div className="flex items-center gap-2 text-blue-700 mb-1">
                     <Archive size={16} />
                     <span className="font-medium text-sm">Hold</span>
@@ -9604,10 +9645,13 @@ export default function SESInventoryApp() {
                   <div className={`text-xs ${kpis.holdValue - kpis.holdCost >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                     {kpis.holdValue - kpis.holdCost >= 0 ? '+' : ''}${(kpis.holdValue - kpis.holdCost).toFixed(0)} P&L
                   </div>
-                </div>
+                </button>
                 
                 {/* Sell */}
-                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <button 
+                  onClick={() => { setKpiFilter(kpiFilter === 'sell' ? null : 'sell'); setKpiExpanded(false); }}
+                  className={`bg-green-50 border rounded-lg p-3 text-left transition-all ${kpiFilter === 'sell' ? 'border-green-500 ring-2 ring-green-300' : 'border-green-200'}`}
+                >
                   <div className="flex items-center gap-2 text-green-700 mb-1">
                     <DollarSign size={16} />
                     <span className="font-medium text-sm">Sell</span>
@@ -9617,10 +9661,13 @@ export default function SESInventoryApp() {
                   <div className={`text-xs ${kpis.sellValue - kpis.sellCost >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                     {kpis.sellValue - kpis.sellCost >= 0 ? '+' : ''}${(kpis.sellValue - kpis.sellCost).toFixed(0)} P&L
                   </div>
-                </div>
+                </button>
                 
                 {/* Available (untagged) */}
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                <button 
+                  onClick={() => { setKpiFilter(kpiFilter === 'available' ? null : 'available'); setKpiExpanded(false); }}
+                  className={`bg-gray-50 border rounded-lg p-3 text-left transition-all ${kpiFilter === 'available' ? 'border-gray-500 ring-2 ring-gray-300' : 'border-gray-200'}`}
+                >
                   <div className="flex items-center gap-2 text-gray-700 mb-1">
                     <Package size={16} />
                     <span className="font-medium text-sm">Available</span>
@@ -9630,7 +9677,7 @@ export default function SESInventoryApp() {
                   <div className={`text-xs ${kpis.availableValue - kpis.availableCost >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                     {kpis.availableValue - kpis.availableCost >= 0 ? '+' : ''}${(kpis.availableValue - kpis.availableCost).toFixed(0)} P&L
                   </div>
-                </div>
+                </button>
               </div>
             </div>
             
@@ -9658,7 +9705,10 @@ export default function SESInventoryApp() {
             {kpis.soldCount > 0 && (
               <div>
                 <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Realized Performance</h4>
-                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <button 
+                  onClick={() => { setKpiFilter(kpiFilter === 'sold' ? null : 'sold'); setKpiExpanded(false); }}
+                  className={`w-full bg-green-50 border rounded-lg p-3 text-left transition-all ${kpiFilter === 'sold' ? 'border-green-500 ring-2 ring-green-300' : 'border-green-200'}`}
+                >
                   <div className="grid grid-cols-4 gap-2 text-center text-sm">
                     <div>
                       <div className="text-gray-500 text-xs">Sold</div>
@@ -9681,29 +9731,38 @@ export default function SESInventoryApp() {
                       </div>
                     </div>
                   </div>
-                </div>
+                </button>
               </div>
             )}
             
             {/* Metal Breakdown */}
             <div>
-              <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">By Metal</h4>
+              <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">By Metal <span className="text-gray-400 font-normal">(tap to filter)</span></h4>
               <div className="grid grid-cols-3 gap-2">
-                <div className="bg-gray-100 rounded-lg p-2 text-center">
+                <button 
+                  onClick={() => { setKpiFilter(kpiFilter === 'silver' ? null : 'silver'); setKpiExpanded(false); }}
+                  className={`rounded-lg p-2 text-center transition-all ${kpiFilter === 'silver' ? 'bg-gray-300 ring-2 ring-gray-400' : 'bg-gray-100'}`}
+                >
                   <div className="text-gray-500 text-xs">Silver</div>
                   <div className="font-bold text-gray-700">${kpis.silverValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                   <div className="text-xs text-gray-400">{kpis.silverCount} items</div>
-                </div>
-                <div className="bg-yellow-50 rounded-lg p-2 text-center">
+                </button>
+                <button 
+                  onClick={() => { setKpiFilter(kpiFilter === 'gold' ? null : 'gold'); setKpiExpanded(false); }}
+                  className={`rounded-lg p-2 text-center transition-all ${kpiFilter === 'gold' ? 'bg-yellow-200 ring-2 ring-yellow-400' : 'bg-yellow-50'}`}
+                >
                   <div className="text-yellow-600 text-xs">Gold</div>
                   <div className="font-bold text-yellow-700">${kpis.goldValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                   <div className="text-xs text-yellow-500">{kpis.goldCount} items</div>
-                </div>
-                <div className="bg-gray-200 rounded-lg p-2 text-center">
+                </button>
+                <button 
+                  onClick={() => { setKpiFilter(kpiFilter === 'platinum' ? null : 'platinum'); setKpiExpanded(false); }}
+                  className={`rounded-lg p-2 text-center transition-all ${kpiFilter === 'platinum' ? 'bg-gray-400 ring-2 ring-gray-500' : 'bg-gray-200'}`}
+                >
                   <div className="text-gray-600 text-xs">Platinum</div>
                   <div className="font-bold text-gray-700">${kpis.platinumValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                   <div className="text-xs text-gray-400">{kpis.platinumCount} items</div>
-                </div>
+                </button>
               </div>
             </div>
             
@@ -9745,7 +9804,27 @@ export default function SESInventoryApp() {
         
         {/* Inventory Count */}
         <div className="flex justify-between items-center mb-2 text-sm text-gray-500">
-          <span>{filteredInventory.length} items</span>
+          <div className="flex items-center gap-2">
+            <span>{filteredInventory.length} items</span>
+            {kpiFilter && (
+              <button 
+                onClick={() => setKpiFilter(null)}
+                className={`px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1 ${
+                  kpiFilter === 'stash' ? 'bg-amber-100 text-amber-700' :
+                  kpiFilter === 'hold' ? 'bg-blue-100 text-blue-700' :
+                  kpiFilter === 'sell' ? 'bg-green-100 text-green-700' :
+                  kpiFilter === 'sold' ? 'bg-green-100 text-green-700' :
+                  kpiFilter === 'silver' ? 'bg-gray-200 text-gray-700' :
+                  kpiFilter === 'gold' ? 'bg-yellow-100 text-yellow-700' :
+                  kpiFilter === 'platinum' ? 'bg-gray-300 text-gray-700' :
+                  'bg-gray-100 text-gray-700'
+                }`}
+              >
+                {kpiFilter.charAt(0).toUpperCase() + kpiFilter.slice(1)}
+                <X size={12} />
+              </button>
+            )}
+          </div>
           {lots.filter(l => l.status !== 'sold' && l.status !== 'broken').length > 0 && (
             <button onClick={() => setView('lots')} className="text-purple-600 flex items-center gap-1">
               <Layers size={14} /> {lots.filter(l => l.status !== 'sold' && l.status !== 'broken').length} Lots
