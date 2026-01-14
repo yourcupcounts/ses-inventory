@@ -3406,6 +3406,17 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                           <div className="text-white font-medium">${evaluatingItem.ebayResults.highPrice}</div>
                         </div>
                       </div>
+                      {/* View Sold on eBay button */}
+                      <button
+                        onClick={() => {
+                          const query = `${evaluatingItem.description} ${evaluatingItem.year || ''} ${evaluatingItem.grade || ''}`.trim();
+                          const ebayUrl = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&_sacat=11116&LH_Sold=1&LH_Complete=1&_sop=13`;
+                          window.open(ebayUrl, '_blank');
+                        }}
+                        className="w-full mt-3 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg flex items-center justify-center gap-2 text-sm"
+                      >
+                        <ExternalLink size={16} /> View Sold on eBay
+                      </button>
                       {evaluatingItem.ebayResults.items?.length > 0 && (
                         <div className="mt-2 pt-2 border-t border-blue-700">
                           <div className="text-xs text-gray-400 mb-1">
@@ -3437,26 +3448,42 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                       )}
                     </div>
                   ) : (
-                    <button
-                      onClick={async () => {
-                        const query = `${evaluatingItem.description} ${evaluatingItem.year || ''} ${evaluatingItem.grade || ''}`.trim();
-                        setEvaluatingItem({ ...evaluatingItem, ebayLoading: true });
-                        const results = await EbayPricingService.searchSoldListings(query);
-                        setEvaluatingItem({ ...evaluatingItem, ebayResults: results, ebayLoading: false });
-                      }}
-                      disabled={evaluatingItem.ebayLoading}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg mb-4 flex items-center justify-center gap-2 text-sm"
-                    >
-                      {evaluatingItem.ebayLoading ? (
-                        <>
-                          <Loader size={16} className="animate-spin" /> Searching eBay...
-                        </>
-                      ) : (
-                        <>
-                          <Search size={16} /> Check eBay Sold Prices
-                        </>
-                      )}
-                    </button>
+                    <div className="space-y-2 mb-4">
+                      {/* Prepopulated search bar */}
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={evaluatingItem.ebaySearchQuery || `${evaluatingItem.description} ${evaluatingItem.year || ''} ${evaluatingItem.grade || ''}`.trim()}
+                          onChange={(e) => setEvaluatingItem({ ...evaluatingItem, ebaySearchQuery: e.target.value })}
+                          className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm"
+                          placeholder="eBay search query..."
+                          onKeyDown={async (e) => {
+                            if (e.key === 'Enter' && e.target.value.trim()) {
+                              setEvaluatingItem({ ...evaluatingItem, ebayLoading: true, ebaySearchQuery: e.target.value });
+                              const results = await EbayPricingService.searchSoldListings(e.target.value);
+                              setEvaluatingItem({ ...evaluatingItem, ebayResults: results, ebayLoading: false, ebaySearchQuery: e.target.value });
+                            }
+                          }}
+                        />
+                        <button
+                          onClick={async () => {
+                            const query = evaluatingItem.ebaySearchQuery || `${evaluatingItem.description} ${evaluatingItem.year || ''} ${evaluatingItem.grade || ''}`.trim();
+                            setEvaluatingItem({ ...evaluatingItem, ebayLoading: true, ebaySearchQuery: query });
+                            const results = await EbayPricingService.searchSoldListings(query);
+                            setEvaluatingItem({ ...evaluatingItem, ebayResults: results, ebayLoading: false, ebaySearchQuery: query });
+                          }}
+                          disabled={evaluatingItem.ebayLoading}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-lg flex items-center gap-2"
+                        >
+                          {evaluatingItem.ebayLoading ? (
+                            <Loader size={16} className="animate-spin" />
+                          ) : (
+                            <Search size={16} />
+                          )}
+                        </button>
+                      </div>
+                      <p className="text-gray-500 text-xs text-center">Edit search terms above, then press Enter or click Search</p>
+                    </div>
                   )}
                   
                   {/* Quantity Selector */}
@@ -3573,50 +3600,42 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                     </div>
                   ) : (
                     <div className="space-y-2 mb-4">
-                      <button
-                        onClick={async () => {
-                          setEvaluatingItem({ ...evaluatingItem, ebayLoading: true });
-                          const results = await EbayPricingService.searchSoldListings(evaluatingItem.description);
-                          setEvaluatingItem({ ...evaluatingItem, ebayResults: results, ebayLoading: false });
-                        }}
-                        disabled={evaluatingItem.ebayLoading}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg flex items-center justify-center gap-2"
-                      >
-                        {evaluatingItem.ebayLoading ? (
-                          <><Loader size={18} className="animate-spin" /> Searching eBay...</>
-                        ) : (
-                          <><Search size={18} /> Search eBay for "{evaluatingItem.description}"</>
-                        )}
-                      </button>
-                      
-                      {/* Manual search input */}
+                      {/* Prepopulated search bar based on description */}
                       <div className="flex gap-2">
                         <input
                           type="text"
-                          placeholder="Or enter custom search..."
+                          value={evaluatingItem.ebaySearchQuery || evaluatingItem.description || ''}
+                          onChange={(e) => setEvaluatingItem({ ...evaluatingItem, ebaySearchQuery: e.target.value })}
                           className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm"
+                          placeholder="eBay search query..."
                           onKeyDown={async (e) => {
                             if (e.key === 'Enter' && e.target.value.trim()) {
-                              setEvaluatingItem({ ...evaluatingItem, ebayLoading: true, customSearch: e.target.value });
+                              setEvaluatingItem({ ...evaluatingItem, ebayLoading: true, ebaySearchQuery: e.target.value });
                               const results = await EbayPricingService.searchSoldListings(e.target.value);
-                              setEvaluatingItem({ ...evaluatingItem, ebayResults: results, ebayLoading: false });
+                              setEvaluatingItem({ ...evaluatingItem, ebayResults: results, ebayLoading: false, ebaySearchQuery: e.target.value });
                             }
                           }}
                         />
                         <button
                           onClick={async () => {
-                            const input = document.querySelector('input[placeholder="Or enter custom search..."]');
-                            if (input?.value?.trim()) {
-                              setEvaluatingItem({ ...evaluatingItem, ebayLoading: true });
-                              const results = await EbayPricingService.searchSoldListings(input.value);
-                              setEvaluatingItem({ ...evaluatingItem, ebayResults: results, ebayLoading: false });
+                            const query = evaluatingItem.ebaySearchQuery || evaluatingItem.description || '';
+                            if (query.trim()) {
+                              setEvaluatingItem({ ...evaluatingItem, ebayLoading: true, ebaySearchQuery: query });
+                              const results = await EbayPricingService.searchSoldListings(query);
+                              setEvaluatingItem({ ...evaluatingItem, ebayResults: results, ebayLoading: false, ebaySearchQuery: query });
                             }
                           }}
-                          className="bg-gray-600 hover:bg-gray-500 text-white px-4 rounded-lg"
+                          disabled={evaluatingItem.ebayLoading}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-lg flex items-center gap-2"
                         >
-                          <Search size={18} />
+                          {evaluatingItem.ebayLoading ? (
+                            <Loader size={18} className="animate-spin" />
+                          ) : (
+                            <Search size={18} />
+                          )}
                         </button>
                       </div>
+                      <p className="text-gray-500 text-xs text-center">Edit search terms above, then press Enter or click Search</p>
                     </div>
                   )}
                   
