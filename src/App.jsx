@@ -7545,39 +7545,59 @@ function AddItemView({ onSave, onCancel, calculateMelt, clients }) {
 
 CRITICAL - READ ALL TEXT IN THE IMAGE:
 1. Look for HANDWRITTEN text (prices, notes, grades)
-2. Look for PRINTED LABELS or STICKERS (price tags, inventory labels)
+2. Look for PRINTED LABELS or STICKERS (price tags, inventory labels, maker's marks)
 3. Look for HOLDER/SLAB information (PCGS, NGC, ANACS grades, certification numbers)
 4. Look for 2x2 FLIP text (handwritten or typed descriptions)
+5. Look for HALLMARKS on jewelry (14K, 18K, 925, 750, maker stamps)
+6. Look for MINT MARKS or SERIAL NUMBERS on bullion bars
 
-IMPORTANT: For coins, use BOTH sides to determine:
-- Year (usually on obverse/front, or written on holder/flip)
+FOR COINS (if two images provided):
+- Year (on coin or written on holder/flip)
 - Mint mark (on coin OR written on holder/flip)
-- Grade (ESPECIALLY if written on holder, slab, or flip - e.g., "PR69", "MS65", "Proof", "BU")
-- Purchase price (often handwritten on flip or sticker - e.g., "$5", "$12.50")
+- Grade (from holder, slab, or flip - e.g., "PR69", "MS65", "Proof", "BU")
+- Purchase price (often handwritten on flip or sticker)
+
+FOR JEWELRY:
+- Metal type and purity from hallmarks (14K, 18K, 10K, 925, STERLING)
+- Style description (Cuban link, rope chain, tennis bracelet, etc.)
+- Approximate weight category (light, medium, heavy)
+- Any gemstones or diamonds visible
+- Maker's marks or designer stamps
+
+FOR BULLION BARS/ROUNDS:
+- Manufacturer (Engelhard, Johnson Matthey, PAMP, Sunshine, etc.)
+- Weight marking (1oz, 10oz, 100oz, etc.)
+- Serial number if visible
+- Purity marking (.999, .9999)
+
+FOR FLATWARE/STERLING:
+- Pattern name if identifiable
+- Manufacturer (Gorham, Reed & Barton, Wallace, etc.)
+- Sterling marks (925, STERLING, Lion hallmark)
+- Piece type (fork, spoon, serving piece)
 
 Return ONLY a valid JSON object (no markdown, no explanation) with these fields:
 {
-  "description": "Full description (e.g., '1976-S Washington Quarter Proof', '14K Gold Cuban Link Bracelet')",
+  "description": "Full description (e.g., '1976-S Washington Quarter Proof', '14K Yellow Gold Cuban Link Bracelet 7 inch', '10oz Engelhard Silver Bar')",
   "category": "One of: Coins - Silver, Coins - Gold, Silver - Sterling, Silver - Bullion, Gold - Jewelry, Gold - Bullion, Gold - Scrap, Platinum, Palladium, Other",
   "metalType": "Gold, Silver, Platinum, Palladium, or Other",
   "purity": "e.g., 999, 925, 14K, 10K, 18K, 90%, 40%",
-  "estimatedWeightOz": number or null,
-  "year": "year if visible on coin or written on holder" or null,
+  "estimatedWeightOz": number or null (estimate based on item type/size if possible),
+  "year": "year if visible or applicable" or null,
   "mint": "mint mark if visible (P, D, S, O, CC, W)" or null,
-  "grade": "grade from holder/flip/slab (Proof, PR69, MS65, BU, etc.) or estimated grade" or null,
+  "grade": "grade from holder/flip/slab or condition assessment" or null,
   "purchasePrice": number or null (if a price is written/labeled, extract just the number),
-  "notes": "condition notes, certification number if slabbed, or other details",
+  "notes": "maker's marks, serial numbers, hallmarks, condition details, certification info",
   "confidence": "high, medium, or low"
 }
 
-Common silver coin weights (90% silver, ASW = Actual Silver Weight):
-- Morgan/Peace Dollar: 0.7734 oz ASW
-- Walking Liberty/Franklin/Kennedy Half (pre-1971): 0.3617 oz ASW  
+Common weights reference:
+- Morgan/Peace Dollar: 0.7734 oz ASW (90% silver)
 - Washington Quarter (pre-1965): 0.1808 oz ASW
-- Standing Liberty Quarter: 0.1808 oz ASW
-- Roosevelt/Mercury Dime (pre-1965): 0.0723 oz ASW
-- American Silver Eagle: 1.0 oz (999 fine)
 - 1976 Bicentennial Quarter (40% silver S-mint): 0.0739 oz ASW
+- American Silver Eagle: 1.0 oz (999 fine)
+- Average men's 14K gold chain (20"): 0.5-1.5 oz total weight
+- Average women's 14K bracelet: 0.2-0.5 oz total weight
 
 Return ONLY the JSON object.`
       });
@@ -7715,8 +7735,8 @@ Return ONLY the JSON object.`
             <div className="bg-teal-50 border border-teal-200 rounded-lg p-4 flex items-center gap-3">
               <div className="w-6 h-6 border-2 border-teal-500 border-t-transparent rounded-full animate-spin"></div>
               <div>
-                <span className="text-teal-700 font-medium">AI analyzing your photos...</span>
-                <p className="text-teal-600 text-sm">Identifying coin type, year, mint mark, and grade</p>
+                <span className="text-teal-700 font-medium">AI analyzing your photo(s)...</span>
+                <p className="text-teal-600 text-sm">Identifying item, reading labels, estimating value</p>
               </div>
             </div>
           )}
@@ -7730,12 +7750,12 @@ Return ONLY the JSON object.`
           {/* Photo Section */}
           <div>
             <label className="block text-sm font-medium mb-1">Photos</label>
-            <p className="text-xs text-teal-600 mb-2">📸 Take front + back photos for AI to identify (year, mint, grade)</p>
+            <p className="text-xs text-teal-600 mb-2">📸 Coins: take front + back | Jewelry/Bullion: one photo is fine</p>
             
             <div className="grid grid-cols-2 gap-3">
               {/* Front Photo */}
               <div>
-                <div className="text-xs text-gray-500 mb-1">① Front (Obverse)</div>
+                <div className="text-xs text-gray-500 mb-1">① Main Photo</div>
                 {form.photo ? (
                   <div className="relative">
                     <img src={`data:image/jpeg;base64,${form.photo}`} className="w-full h-28 object-cover rounded-lg border-2 border-green-400" />
@@ -7757,7 +7777,7 @@ Return ONLY the JSON object.`
               
               {/* Back Photo */}
               <div>
-                <div className="text-xs text-gray-500 mb-1">② Back (Reverse)</div>
+                <div className="text-xs text-gray-500 mb-1">② Back (optional)</div>
                 {form.photoBack ? (
                   <div className="relative">
                     <img src={`data:image/jpeg;base64,${form.photoBack}`} className="w-full h-28 object-cover rounded-lg border-2 border-green-400" />
@@ -7771,13 +7791,13 @@ Return ONLY the JSON object.`
                     disabled={isAnalyzing || !form.photo}
                     className={`w-full h-28 border-2 border-dashed rounded-lg flex flex-col items-center justify-center disabled:opacity-50 ${
                       form.photo 
-                        ? 'border-teal-400 bg-teal-50 text-teal-700 hover:bg-teal-100 animate-pulse' 
+                        ? 'border-gray-300 bg-gray-50 text-gray-500 hover:bg-gray-100' 
                         : 'border-gray-300 bg-gray-50 text-gray-400'
                     }`}
                   >
                     <Camera size={24} />
                     <span className="text-xs font-medium mt-1">
-                      {form.photo ? 'Tap to capture' : 'Take front first'}
+                      {form.photo ? 'Add back (coins)' : 'Take main first'}
                     </span>
                   </button>
                 )}
@@ -7785,22 +7805,23 @@ Return ONLY the JSON object.`
             </div>
             
             {/* Action buttons */}
-            <div className="flex gap-2 mt-2">
+            <div className="flex flex-wrap gap-2 mt-2">
               {(form.photo || form.photoBack) && (
                 <button 
                   onClick={clearPhotos}
                   className="text-sm text-red-600 flex items-center gap-1"
                 >
-                  <X size={14} /> Clear & retake
+                  <X size={14} /> Clear
                 </button>
               )}
               
-              {form.photo && form.photoBack && !isAnalyzing && (
+              {/* Analyze button - available after just the front photo */}
+              {form.photo && !isAnalyzing && (
                 <button 
                   onClick={() => analyzePhotosWithAI(form.photo, form.photoBack)}
                   className="ml-auto text-sm bg-teal-600 text-white px-3 py-1 rounded flex items-center gap-1"
                 >
-                  <Zap size={14} /> Analyze with AI
+                  <Zap size={14} /> {form.photoBack ? 'Analyze with AI' : 'Analyze (1 photo)'}
                 </button>
               )}
             </div>
