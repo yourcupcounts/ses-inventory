@@ -7520,7 +7520,22 @@ function AddItemView({ onSave, onCancel, calculateMelt, clients }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: `You are an expert numismatist and precious metals appraiser. Analyze this image and identify the item.
+          max_tokens: 1024,
+          system: `You are an expert numismatist and precious metals appraiser. Analyze images and identify precious metal items accurately.`,
+          messages: [{
+            role: 'user',
+            content: [
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: 'image/jpeg',
+                  data: base64Image
+                }
+              },
+              {
+                type: 'text',
+                text: `Analyze this image and identify the precious metal item.
 
 Return ONLY a valid JSON object (no markdown, no explanation) with these fields:
 {
@@ -7528,57 +7543,63 @@ Return ONLY a valid JSON object (no markdown, no explanation) with these fields:
   "category": "One of: Coins - Silver, Coins - Gold, Silver - Sterling, Silver - Bullion, Gold - Jewelry, Gold - Bullion, Gold - Scrap, Platinum, Palladium, Other",
   "metalType": "Gold, Silver, Platinum, Palladium, or Other",
   "purity": "e.g., 999, 925, 14K, 10K, 18K, 90%",
-  "estimatedWeightOz": number or null (e.g., 0.7734 for Morgan dollar, 1.0 for 1oz round),
+  "estimatedWeightOz": number or null (e.g., 0.7734 for Morgan dollar, 1.0 for 1oz round, 0.1808 for Washington quarter),
   "year": "year if visible" or null,
   "mint": "mint mark if visible (P, D, S, O, CC, W)" or null,
-  "grade": "estimated grade for coins (G, VG, F, VF, XF, AU, MS60-MS70)" or null,
+  "grade": "estimated grade for coins (G, VG, F, VF, XF, AU, BU, MS60-MS70)" or null,
   "notes": "condition notes, identifying marks, or other details",
   "confidence": "high, medium, or low"
 }
 
-Common weights to know:
+Common silver coin weights (90% silver, ASW = Actual Silver Weight):
 - Morgan/Peace Dollar: 0.7734 oz ASW
-- American Silver Eagle: 1.0 oz
-- Walking Liberty Half: 0.3617 oz ASW
+- Walking Liberty/Franklin/Kennedy Half (pre-1971): 0.3617 oz ASW
 - Washington Quarter (pre-1965): 0.1808 oz ASW
-- Mercury/Roosevelt Dime (pre-1965): 0.0723 oz ASW
-- Gold Eagle 1oz: 1.0 oz, 1/2oz: 0.5 oz, 1/4oz: 0.25 oz, 1/10oz: 0.1 oz
+- Roosevelt/Mercury Dime (pre-1965): 0.0723 oz ASW
+- American Silver Eagle: 1.0 oz (999 fine)
 
-Return ONLY the JSON.`,
-          image: base64Image
+Return ONLY the JSON object.`
+              }
+            ]
+          }]
         })
       });
       
-      if (response.ok) {
-        const data = await response.json();
-        let aiResult = data.response;
-        
-        // Clean up response
-        if (typeof aiResult === 'string') {
-          aiResult = aiResult.replace(/```json\n?|\n?```/g, '').trim();
-          aiResult = JSON.parse(aiResult);
-        }
-        
-        // Update form with AI results
-        setForm(prev => ({
-          ...prev,
-          description: aiResult.description || prev.description,
-          category: aiResult.category || prev.category,
-          metalType: aiResult.metalType || prev.metalType,
-          purity: aiResult.purity || prev.purity,
-          weight: aiResult.estimatedWeightOz ? (aiResult.estimatedWeightOz * GRAMS_PER_OZ).toFixed(2) : prev.weight,
-          year: aiResult.year || prev.year,
-          mint: aiResult.mint || prev.mint,
-          grade: aiResult.grade || prev.grade,
-          notes: aiResult.notes || prev.notes
-        }));
-        
-      } else {
-        setAiError('AI analysis failed - please fill in details manually');
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error('API error:', errText);
+        throw new Error('API request failed');
       }
+      
+      const data = await response.json();
+      
+      // Extract text from response
+      let aiText = data.content?.[0]?.text || data.response;
+      if (!aiText) {
+        throw new Error('No response from AI');
+      }
+      
+      // Clean up and parse JSON
+      aiText = aiText.replace(/```json\n?|\n?```/g, '').trim();
+      const aiResult = JSON.parse(aiText);
+      
+      // Update form with AI results
+      setForm(prev => ({
+        ...prev,
+        description: aiResult.description || prev.description,
+        category: aiResult.category || prev.category,
+        metalType: aiResult.metalType || prev.metalType,
+        purity: aiResult.purity || prev.purity,
+        weight: aiResult.estimatedWeightOz ? (aiResult.estimatedWeightOz * GRAMS_PER_OZ).toFixed(2) : prev.weight,
+        year: aiResult.year || prev.year,
+        mint: aiResult.mint || prev.mint,
+        grade: aiResult.grade || prev.grade,
+        notes: aiResult.notes || prev.notes
+      }));
+      
     } catch (err) {
       console.error('AI analysis error:', err);
-      setAiError('Could not analyze image - please fill in details manually');
+      setAiError('AI analysis failed - please fill in details manually');
     } finally {
       setIsAnalyzing(false);
     }
