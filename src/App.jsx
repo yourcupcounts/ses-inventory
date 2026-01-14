@@ -4626,7 +4626,7 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
             <span className="font-bold text-lg">Total Offer:</span>
             <span className="font-bold text-2xl text-teal-600">${finalOffer.toFixed(2)}</span>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 mb-3">
             <button
               onClick={() => setCurrentView('evaluate')}
               className="flex-1 border border-gray-300 py-3 rounded-lg font-medium"
@@ -4640,6 +4640,51 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
               Present Offer
             </button>
           </div>
+          
+          {/* Save Offer Without Purchase */}
+          <button
+            onClick={() => {
+              // Save to client's appraisal history without adding to inventory
+              const appraisalRecord = {
+                id: `APR-${Date.now()}`,
+                date: new Date().toISOString(),
+                status: 'declined',
+                items: sessionItems.map(item => ({
+                  description: item.description,
+                  year: item.year,
+                  mint: item.mint,
+                  grade: item.grade,
+                  quantity: item.quantity || 1,
+                  offeredPrice: item.buyPrice,
+                  meltValue: item.meltValue,
+                  marketValue: item.marketValue
+                })),
+                totalOffered: finalOffer,
+                discount: discountAmount,
+                notes: sessionNotes,
+                clientId: sessionClient?.id,
+                clientName: sessionClient?.name
+              };
+              
+              // Call onComplete with declined status (won't add to inventory)
+              onComplete({
+                client: sessionClient,
+                items: [], // Empty - don't add to inventory
+                totalPaid: 0,
+                discount: 0,
+                notes: sessionNotes,
+                sessionDate: new Date().toISOString(),
+                status: 'declined',
+                appraisalRecord: appraisalRecord
+              });
+            }}
+            className="w-full border-2 border-amber-500 text-amber-600 py-3 rounded-lg font-medium flex items-center justify-center gap-2"
+          >
+            <FileText size={18} /> Save Offer (Client Declined)
+          </button>
+          <p className="text-xs text-gray-500 text-center mt-2">
+            Saves to client file for reference - items won't be added to inventory
+          </p>
         </div>
       </div>
     );
@@ -6902,6 +6947,66 @@ function ClientDetailView({ client, transactions, onEdit, onBack }) {
             </div>
           )}
         </div>
+        
+        {/* Appraisal History - including declined offers */}
+        <div className="bg-white rounded-lg shadow p-4">
+          <h3 className="font-bold mb-3">Appraisal History</h3>
+          {(!client.appraisals || client.appraisals.length === 0) ? (
+            <p className="text-gray-400 text-sm">No appraisals on file</p>
+          ) : (
+            <div className="space-y-3">
+              {client.appraisals.sort((a, b) => new Date(b.date) - new Date(a.date)).map(apr => (
+                <details key={apr.id} className="border rounded-lg overflow-hidden">
+                  <summary className={`p-3 cursor-pointer flex items-center justify-between ${
+                    apr.status === 'declined' ? 'bg-amber-50' : 'bg-green-50'
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                        apr.status === 'declined' 
+                          ? 'bg-amber-200 text-amber-800' 
+                          : 'bg-green-200 text-green-800'
+                      }`}>
+                        {apr.status === 'declined' ? 'DECLINED' : 'PURCHASED'}
+                      </span>
+                      <span className="text-sm font-medium">
+                        {new Date(apr.date).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <span className={`font-bold ${apr.status === 'declined' ? 'text-amber-600' : 'text-green-600'}`}>
+                      ${apr.status === 'declined' ? (apr.totalOffered || 0).toFixed(2) : (apr.totalPaid || 0).toFixed(2)}
+                    </span>
+                  </summary>
+                  <div className="p-3 bg-gray-50 border-t">
+                    <div className="text-xs text-gray-500 mb-2">
+                      {apr.items?.length || apr.itemCount || 0} items
+                      {apr.status === 'declined' && ' • Client declined this offer'}
+                    </div>
+                    {apr.items && apr.items.length > 0 && (
+                      <div className="space-y-1">
+                        {apr.items.map((item, idx) => (
+                          <div key={idx} className="flex justify-between text-sm py-1 border-b border-gray-200 last:border-0">
+                            <span className="text-gray-700">
+                              {item.description}
+                              {item.quantity > 1 && <span className="text-gray-400"> ×{item.quantity}</span>}
+                            </span>
+                            <span className="text-gray-600">
+                              ${(item.offeredPrice || item.purchasePrice || 0).toFixed(2)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {apr.notes && (
+                      <div className="mt-2 text-xs text-gray-500 italic">
+                        Notes: {apr.notes}
+                      </div>
+                    )}
+                  </div>
+                </details>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -8789,6 +8894,37 @@ export default function SESInventoryApp() {
   
   // Handle appraisal session completion
   const handleAppraisalComplete = (sessionData) => {
+    // Check if this is a declined offer (save for reference only)
+    if (sessionData.status === 'declined') {
+      // Save appraisal record to client WITHOUT adding inventory
+      const appraisalRecord = sessionData.appraisalRecord || {
+        id: `APR-${Date.now()}`,
+        date: sessionData.sessionDate,
+        status: 'declined',
+        itemCount: 0,
+        totalOffered: sessionData.appraisalRecord?.totalOffered || 0,
+        totalPaid: 0,
+        notes: sessionData.notes,
+        items: sessionData.appraisalRecord?.items || []
+      };
+      
+      // Update client with declined appraisal record
+      setClients(clients.map(c => {
+        if (c.id === sessionData.client.id) {
+          return {
+            ...c,
+            appraisals: [...(c.appraisals || []), appraisalRecord],
+            lastContact: sessionData.sessionDate.split('T')[0]
+          };
+        }
+        return c;
+      }));
+      
+      setView('list');
+      return;
+    }
+    
+    // Regular purchase flow below...
     // Generate lot ID
     const lotId = getNextId('LOT');
     
