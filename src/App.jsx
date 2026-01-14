@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Package, Plus, X, Trash2, Search, Settings, Download, Upload, Camera, Loader, BarChart3, TrendingUp, TrendingDown, Clock, AlertTriangle, AlertCircle, FileText, Filter, Users, UserPlus, Edit2, Check, MapPin, Calendar, CreditCard, Building, User, Lock, Unlock, ShieldCheck, DollarSign, RefreshCw, Calculator, Layers, Star, ExternalLink } from 'lucide-react';
+import { Package, Plus, X, Trash2, Search, Settings, Download, Upload, Camera, Loader, BarChart3, TrendingUp, TrendingDown, Clock, AlertTriangle, AlertCircle, FileText, Filter, Users, UserPlus, Edit2, Check, MapPin, Calendar, CreditCard, Building, User, Lock, Unlock, ShieldCheck, DollarSign, RefreshCw, Calculator, Layers, Star, ExternalLink, Flame, Archive } from 'lucide-react';
 
 // ============ CONFIGURATION - ADD YOUR API KEYS HERE ============
 const CONFIG = {
@@ -3890,7 +3890,8 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                     </div>
                   </div>
                   
-                  <div className="flex gap-3">
+                  {/* PRIMARY ACTIONS - Pass or Add to running list */}
+                  <div className="flex gap-3 mb-4">
                     <button
                       onClick={() => setEvaluatingItem(null)}
                       className="flex-1 bg-gray-700 text-gray-300 py-3 rounded-lg font-medium"
@@ -3904,6 +3905,140 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                       <Plus size={20} /> Add ${evaluatingItem.buyPrice?.toFixed(2)}
                     </button>
                   </div>
+                  
+                  {/* COLLAPSIBLE ANALYSIS - Available but not blocking */}
+                  <details className="bg-gray-700 rounded-lg overflow-hidden">
+                    <summary className="p-3 cursor-pointer text-gray-300 text-sm font-medium flex items-center gap-2 hover:bg-gray-600">
+                      <TrendingUp size={16} className="text-teal-400" />
+                      View Analysis & Options
+                    </summary>
+                    <div className="p-4 pt-0 space-y-4 border-t border-gray-600">
+                      {/* PROFIT ANALYSIS */}
+                      <div>
+                        <h4 className="text-teal-400 text-sm font-bold mb-2 flex items-center gap-2">
+                          <TrendingUp size={16} /> Profit Analysis
+                        </h4>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div className="bg-gray-800 p-2 rounded">
+                            <div className="text-gray-400 text-xs">If Melt</div>
+                            <div className={`font-medium ${((evaluatingItem.meltValue || evaluatingItem.spotValue) - evaluatingItem.buyPrice) > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              ${(((evaluatingItem.meltValue || evaluatingItem.spotValue) * 0.98) - evaluatingItem.buyPrice).toFixed(2)}
+                              <span className="text-xs text-gray-500 ml-1">
+                                ({((((evaluatingItem.meltValue || evaluatingItem.spotValue) * 0.98) - evaluatingItem.buyPrice) / evaluatingItem.buyPrice * 100).toFixed(0)}%)
+                              </span>
+                            </div>
+                            <div className="text-gray-500 text-xs">@ 98% refiner</div>
+                          </div>
+                          <div className="bg-gray-800 p-2 rounded">
+                            <div className="text-gray-400 text-xs">If Sell Retail</div>
+                            <div className={`font-medium ${(evaluatingItem.marketValue - evaluatingItem.buyPrice) > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              ${(evaluatingItem.marketValue - evaluatingItem.buyPrice).toFixed(2)}
+                              <span className="text-xs text-gray-500 ml-1">
+                                ({((evaluatingItem.marketValue - evaluatingItem.buyPrice) / evaluatingItem.buyPrice * 100).toFixed(0)}%)
+                              </span>
+                            </div>
+                            <div className="text-gray-500 text-xs">@ market value</div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* PRICE FACTORS */}
+                      <div>
+                        <h4 className="text-amber-400 text-sm font-bold mb-2 flex items-center gap-2">
+                          <Star size={16} /> Price Factors
+                        </h4>
+                        <div className="space-y-1 text-sm">
+                          {evaluatingItem.year && (
+                            <div className="flex items-start gap-2">
+                              <span className="text-gray-500">📅</span>
+                              <div>
+                                <span className="text-gray-300">{evaluatingItem.year}{evaluatingItem.mint ? `-${evaluatingItem.mint}` : ''}</span>
+                                {evaluatingItem.coinKey === 'mercury-dime' && evaluatingItem.year === '1916' && evaluatingItem.mint === 'D' && (
+                                  <span className="ml-2 text-yellow-400 text-xs">🔥 KEY DATE!</span>
+                                )}
+                                {evaluatingItem.mint === 'CC' && (
+                                  <span className="ml-2 text-yellow-400 text-xs">🏆 Carson City!</span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-500">🎯</span>
+                            <span className="text-gray-300">
+                              {evaluatingItem.grade?.toUpperCase()}
+                              {['cull', 'ag'].includes(evaluatingItem.grade) && <span className="text-gray-400 text-xs ml-2">→ melt candidate</span>}
+                              {['au', 'bu'].includes(evaluatingItem.grade) && <span className="text-green-400 text-xs ml-2">→ collector grade</span>}
+                            </span>
+                          </div>
+                          {evaluatingItem.notes && (
+                            <div className="flex items-start gap-2">
+                              <span className="text-gray-500">📝</span>
+                              <span className="text-gray-400 text-xs">{evaluatingItem.notes}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* RECOMMENDATION */}
+                      <div className="bg-gray-800 rounded p-3">
+                        <h4 className="text-white text-sm font-bold mb-1">💡 Recommendation</h4>
+                        {(() => {
+                          const meltProfit = ((evaluatingItem.meltValue || evaluatingItem.spotValue) * 0.98) - evaluatingItem.buyPrice;
+                          const retailProfit = evaluatingItem.marketValue - evaluatingItem.buyPrice;
+                          const profitMargin = retailProfit / evaluatingItem.buyPrice;
+                          const isKeyDate = (evaluatingItem.coinKey === 'mercury-dime' && evaluatingItem.year === '1916' && evaluatingItem.mint === 'D') ||
+                                           (evaluatingItem.mint === 'CC');
+                          
+                          if (isKeyDate) {
+                            return <div className="text-yellow-400 text-sm">⚠️ <strong>VERIFY KEY DATE</strong> - Worth significantly more if authentic.</div>;
+                          } else if (profitMargin > 0.5) {
+                            return <div className="text-green-400 text-sm">📈 <strong>SELL RETAIL</strong> - Good margin ({(profitMargin * 100).toFixed(0)}%).</div>;
+                          } else if (['cull', 'ag'].includes(evaluatingItem.grade) && meltProfit > 0) {
+                            return <div className="text-amber-400 text-sm">🔥 <strong>MELT</strong> - Low grade, ${meltProfit.toFixed(2)} profit @ refiner.</div>;
+                          } else if (profitMargin > 0.25) {
+                            return <div className="text-teal-400 text-sm">📦 <strong>HOLD</strong> - Decent margin, wait for right buyer.</div>;
+                          } else {
+                            return <div className="text-gray-400 text-sm">🤔 <strong>TIGHT</strong> - Only {(profitMargin * 100).toFixed(0)}% margin.</div>;
+                          }
+                        })()}
+                      </div>
+                      
+                      {/* DISPOSITION OPTIONS */}
+                      <div>
+                        <h4 className="text-gray-400 text-xs font-medium mb-2">Add with planned disposition:</h4>
+                        <div className="grid grid-cols-4 gap-2">
+                          <button
+                            onClick={() => addToOffer({ ...evaluatingItem, plannedDisposition: 'melt' })}
+                            className="bg-amber-700 hover:bg-amber-600 text-white py-2 px-2 rounded-lg text-xs flex flex-col items-center gap-1"
+                          >
+                            <Flame size={16} />
+                            <span>Melt</span>
+                          </button>
+                          <button
+                            onClick={() => addToOffer({ ...evaluatingItem, plannedDisposition: 'stash' })}
+                            className="bg-purple-700 hover:bg-purple-600 text-white py-2 px-2 rounded-lg text-xs flex flex-col items-center gap-1"
+                          >
+                            <Lock size={16} />
+                            <span>Stash</span>
+                          </button>
+                          <button
+                            onClick={() => addToOffer({ ...evaluatingItem, plannedDisposition: 'sell' })}
+                            className="bg-green-700 hover:bg-green-600 text-white py-2 px-2 rounded-lg text-xs flex flex-col items-center gap-1"
+                          >
+                            <DollarSign size={16} />
+                            <span>Sell</span>
+                          </button>
+                          <button
+                            onClick={() => addToOffer({ ...evaluatingItem, plannedDisposition: 'hold' })}
+                            className="bg-blue-700 hover:bg-blue-600 text-white py-2 px-2 rounded-lg text-xs flex flex-col items-center gap-1"
+                          >
+                            <Archive size={16} />
+                            <span>Hold</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </details>
                 </div>
               )}
               
