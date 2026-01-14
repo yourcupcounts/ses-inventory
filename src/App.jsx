@@ -816,7 +816,7 @@ const ImageUtils = {
 };
 
 // Default spot prices (will be updated by SpotPriceService)
-const spotPrices = { gold: 2685.50, silver: 30.25, platinum: 985.00, palladium: 945.00 };
+const spotPrices = { gold: 4600.00, silver: 90.00, platinum: 985.00, palladium: 945.00 };
 
 const categories = [
   'Gold - Jewelry', 'Gold - Coins', 'Gold - Bullion', 'Gold - Scrap',
@@ -3038,7 +3038,9 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                   {evaluatingItem.ebayResults ? (
                     <div className="bg-blue-900 border border-blue-700 rounded-lg p-3 mb-4">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-blue-300 text-sm font-medium">eBay Sold ({evaluatingItem.ebayResults.count} sales)</span>
+                        <span className="text-blue-300 text-sm font-medium">
+                          eBay {evaluatingItem.ebayResults.source === 'sold' ? 'Sold' : 'Active'} ({evaluatingItem.ebayResults.count})
+                        </span>
                         <button 
                           onClick={() => setEvaluatingItem({ ...evaluatingItem, ebayResults: null })}
                           className="text-blue-400 text-xs"
@@ -3062,7 +3064,9 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                       </div>
                       {evaluatingItem.ebayResults.items?.length > 0 && (
                         <div className="mt-2 pt-2 border-t border-blue-700">
-                          <div className="text-xs text-gray-400 mb-1">Recent sold listings:</div>
+                          <div className="text-xs text-gray-400 mb-1">
+                            {evaluatingItem.ebayResults.source === 'sold' ? 'Recent sold:' : 'Active listings:'}
+                          </div>
                           <div className="max-h-40 overflow-y-auto space-y-2">
                             {evaluatingItem.ebayResults.items.slice(0, 10).map((item, idx) => (
                               <a 
@@ -3078,7 +3082,7 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                                 </div>
                                 <div className="flex justify-between items-center mt-1 text-xs">
                                   <span className="text-gray-500">
-                                    Sold {item.soldDate} • {item.listingType || 'BIN'}
+                                    {item.status === 'Sold' ? `Sold ${item.soldDate}` : 'Active'} • {item.listingType || 'BIN'}
                                   </span>
                                   <span className="text-blue-400 text-xs">{item.shortUrl}</span>
                                 </div>
@@ -4133,8 +4137,8 @@ function LotPurchaseView({ clients, onSave, onCancel }) {
 
 // ============ SCRAP CALCULATOR VIEW ============
 function ScrapCalculatorView({ spotPrices: propSpotPrices, onRefresh, isLoading: propIsLoading, onBack }) {
-  const [goldSpot, setGoldSpot] = useState(propSpotPrices?.gold || 2685.50);
-  const [silverSpot, setSilverSpot] = useState(propSpotPrices?.silver || 30.25);
+  const [goldSpot, setGoldSpot] = useState(propSpotPrices?.gold || 4600.00);
+  const [silverSpot, setSilverSpot] = useState(propSpotPrices?.silver || 90.00);
   const [platinumSpot, setPlatinumSpot] = useState(propSpotPrices?.platinum || 985.00);
   const [palladiumSpot, setPalladiumSpot] = useState(propSpotPrices?.palladium || 945.00);
   
@@ -4597,8 +4601,10 @@ function ScrapCalculatorView({ spotPrices: propSpotPrices, onRefresh, isLoading:
 }
 
 // ============ SPOT VALUE VIEW ============
-function SpotValueView({ inventory, onBack }) {
-  const spotValues = calculateSpotValues(inventory, spotPrices);
+function SpotValueView({ inventory, onBack, liveSpotPrices }) {
+  // Use live prices if available, otherwise fall back to defaults
+  const currentPrices = liveSpotPrices || spotPrices;
+  const spotValues = calculateSpotValues(inventory, currentPrices);
   const available = inventory.filter(i => i.status === 'Available');
   
   const totalSpotValue = Object.values(spotValues).reduce((sum, m) => sum + m.spotValue, 0);
@@ -4625,22 +4631,22 @@ function SpotValueView({ inventory, onBack }) {
           <div className="grid grid-cols-2 gap-2">
             <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
               <div className="text-xs text-yellow-700">Gold</div>
-              <div className="text-xl font-bold text-yellow-700">${spotPrices.gold.toLocaleString()}<span className="text-sm font-normal">/oz</span></div>
+              <div className="text-xl font-bold text-yellow-700">${currentPrices.gold.toLocaleString()}<span className="text-sm font-normal">/oz</span></div>
             </div>
             <div className="bg-gray-100 p-3 rounded-lg border border-gray-200">
               <div className="text-xs text-gray-600">Silver</div>
-              <div className="text-xl font-bold text-gray-700">${spotPrices.silver.toFixed(2)}<span className="text-sm font-normal">/oz</span></div>
+              <div className="text-xl font-bold text-gray-700">${currentPrices.silver.toFixed(2)}<span className="text-sm font-normal">/oz</span></div>
             </div>
             <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
               <div className="text-xs text-gray-600">Platinum</div>
-              <div className="text-xl font-bold text-gray-700">${spotPrices.platinum.toLocaleString()}<span className="text-sm font-normal">/oz</span></div>
+              <div className="text-xl font-bold text-gray-700">${currentPrices.platinum.toLocaleString()}<span className="text-sm font-normal">/oz</span></div>
             </div>
             <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
               <div className="text-xs text-gray-600">Palladium</div>
-              <div className="text-xl font-bold text-gray-700">${spotPrices.palladium.toLocaleString()}<span className="text-sm font-normal">/oz</span></div>
+              <div className="text-xl font-bold text-gray-700">${currentPrices.palladium.toLocaleString()}<span className="text-sm font-normal">/oz</span></div>
             </div>
           </div>
-          <p className="text-xs text-gray-400 mt-2 text-center">Demo prices - production will fetch live rates</p>
+          <p className="text-xs text-gray-400 mt-2 text-center">Live prices from goldprice.org</p>
         </div>
         
         {/* Total Summary */}
@@ -4727,7 +4733,7 @@ function SpotValueView({ inventory, onBack }) {
                     <tr key={metal} className="border-b last:border-0">
                       <td className="py-2 font-medium">{metal}</td>
                       <td className="py-2 text-right">{data.weightOz.toFixed(3)}</td>
-                      <td className="py-2 text-right">${spotPrices[metal.toLowerCase()].toLocaleString()}</td>
+                      <td className="py-2 text-right">${currentPrices[metal.toLowerCase()].toLocaleString()}</td>
                       <td className="py-2 text-right font-bold">${data.spotValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                     </tr>
                   );
@@ -6022,9 +6028,11 @@ function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay })
                       <div className="text-xs text-green-600">5% below average for quick sale</div>
                     </div>
                     
-                    {/* Recent Sold Listings */}
+                    {/* Listings */}
                     <div className="space-y-2 max-h-64 overflow-y-auto">
-                      <div className="text-xs text-gray-500 mb-1">Recent sold listings:</div>
+                      <div className="text-xs text-gray-500 mb-1">
+                        {ebayPrices.source === 'sold' ? 'Recent sold:' : 'Active listings:'}
+                      </div>
                       {ebayPrices.items.slice(0, 10).map((listing, idx) => (
                         <a 
                           key={idx}
@@ -6039,7 +6047,7 @@ function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay })
                               <div className="text-xs truncate font-medium">{listing.title}</div>
                               <div className="flex justify-between items-center mt-1">
                                 <span className="text-xs text-gray-500">
-                                  Sold {listing.soldDate} • {listing.listingType || 'BIN'}
+                                  {listing.status === 'Sold' ? `Sold ${listing.soldDate}` : 'Active'} • {listing.listingType || 'BIN'}
                                 </span>
                                 <span className="font-bold text-green-600">${listing.price}</span>
                               </div>
@@ -6468,7 +6476,7 @@ export default function SESInventoryApp() {
   if (view === 'stash') return (
     <PersonalStashView 
       inventory={inventory} 
-      spotPrices={spotPrices}
+      spotPrices={liveSpotPrices}
       onBack={() => setView('list')}
       onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }}
       onMoveToStash={handleMoveToStash}
@@ -6481,7 +6489,7 @@ export default function SESInventoryApp() {
   if (view === 'lotPurchase') return <LotPurchaseView clients={clients} onSave={handleLotSave} onCancel={() => setView('list')} />;
   if (view === 'calculator') return <ScrapCalculatorView spotPrices={liveSpotPrices} onRefresh={refreshSpotPrices} isLoading={isLoadingPrices} onBack={() => setView('list')} />;
   if (view === 'holdStatus') return <HoldStatusView inventory={inventory} onBack={() => setView('list')} onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }} />;
-  if (view === 'spotValue') return <SpotValueView inventory={inventory} onBack={() => setView('list')} />;
+  if (view === 'spotValue') return <SpotValueView inventory={inventory} onBack={() => setView('list')} liveSpotPrices={liveSpotPrices} />;
   if (view === 'dashboard') return <DashboardView inventory={inventory} onBack={() => setView('list')} />;
   if (view === 'tax') return <TaxReportView inventory={inventory} onBack={() => setView('list')} />;
   if (view === 'ebayListings') return <EbayListingsView inventory={inventory} onBack={() => setView('list')} onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }} onListItem={(item) => { setSelectedItem(item); setView('ebayListing'); }} />;
@@ -6543,7 +6551,7 @@ export default function SESInventoryApp() {
             else if (item.purity?.includes('%')) purityDecimal = parseInt(item.purity) / 100;
             else if (item.purity === '925') purityDecimal = 0.925;
             else if (item.purity === '999' || item.purity === '9999') purityDecimal = 0.999;
-            return sum + (weight * purityDecimal * (spotPrices[item.metalType?.toLowerCase()] || 0));
+            return sum + (weight * purityDecimal * (liveSpotPrices[item.metalType?.toLowerCase()] || 0));
           }, 0);
           return (
             <button 
