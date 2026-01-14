@@ -3045,12 +3045,22 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
   
   // ============ EVALUATE VIEW ============
   if (currentView === 'evaluate') {
+    const handleBackFromEvaluate = () => {
+      if (sessionItems.length > 0) {
+        if (confirm(`You have ${sessionItems.length} items ($${totalOffer.toFixed(2)}) in this session. Go back and lose these items?`)) {
+          setCurrentView('setup');
+        }
+      } else {
+        setCurrentView('setup');
+      }
+    };
+    
     return (
       <div className="min-h-screen bg-gray-900">
         {/* Header with running total */}
         <div className="bg-gray-800 text-white p-3">
           <div className="flex items-center justify-between">
-            <button onClick={() => setCurrentView('setup')} className="text-gray-300">← Back</button>
+            <button onClick={handleBackFromEvaluate} className="text-gray-300">← Back</button>
             <div className="text-center">
               <div className="text-xs text-gray-400">Session with {sessionClient?.name}</div>
               <div className="font-bold">{sessionItems.length} items • ${totalOffer.toFixed(2)}</div>
@@ -3406,10 +3416,10 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                           <div className="text-white font-medium">${evaluatingItem.ebayResults.highPrice}</div>
                         </div>
                       </div>
-                      {/* View Sold on eBay button */}
+                      {/* View Sold on eBay button - OUTSIDE accordion */}
                       <button
                         onClick={() => {
-                          const query = `${evaluatingItem.description} ${evaluatingItem.year || ''} ${evaluatingItem.grade || ''}`.trim();
+                          const query = evaluatingItem.ebaySearchQuery || `${evaluatingItem.description} ${evaluatingItem.year || ''} ${evaluatingItem.grade || ''}`.trim();
                           const ebayUrl = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&_sacat=11116&LH_Sold=1&LH_Complete=1&_sop=13`;
                           window.open(ebayUrl, '_blank');
                         }}
@@ -3417,12 +3427,13 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                       >
                         <ExternalLink size={16} /> View Sold on eBay
                       </button>
+                      {/* Collapsible active listings */}
                       {evaluatingItem.ebayResults.items?.length > 0 && (
-                        <div className="mt-2 pt-2 border-t border-blue-700">
-                          <div className="text-xs text-gray-400 mb-1">
-                            {evaluatingItem.ebayResults.source === 'sold' ? 'Recent sold:' : 'Active listings:'}
-                          </div>
-                          <div className="max-h-40 overflow-y-auto space-y-2">
+                        <details className="mt-2 pt-2 border-t border-blue-700">
+                          <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-300">
+                            View {evaluatingItem.ebayResults.items.length} active listings...
+                          </summary>
+                          <div className="max-h-40 overflow-y-auto space-y-2 mt-2">
                             {evaluatingItem.ebayResults.items.slice(0, 10).map((item, idx) => (
                               <a 
                                 key={idx} 
@@ -3439,12 +3450,11 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                                   <span className="text-gray-500">
                                     {item.status === 'Sold' ? `Sold ${item.soldDate}` : 'Active'} • {item.listingType || 'BIN'}
                                   </span>
-                                  <span className="text-blue-400 text-xs">{item.shortUrl}</span>
                                 </div>
                               </a>
                             ))}
                           </div>
-                        </div>
+                        </details>
                       )}
                     </div>
                   ) : (
@@ -8120,6 +8130,39 @@ export default function SESInventoryApp() {
       createdAt: sessionData.sessionDate
     };
     setLots([...lots, newLot]);
+    
+    // Save appraisal record to client
+    const appraisalRecord = {
+      id: `APR-${Date.now()}`,
+      date: sessionData.sessionDate,
+      itemCount: sessionData.items.reduce((sum, i) => sum + (i.quantity || 1), 0),
+      totalPaid: sessionData.totalPaid,
+      discount: sessionData.discount,
+      notes: sessionData.notes,
+      items: sessionData.items.map(item => ({
+        description: item.description,
+        grade: item.grade,
+        year: item.year,
+        purchasePrice: item.purchasePrice,
+        meltValue: item.meltValue,
+        quantity: item.quantity || 1
+      })),
+      lotId: lotId
+    };
+    
+    // Update client with appraisal record and totals
+    setClients(clients.map(c => {
+      if (c.id === sessionData.client.id) {
+        return {
+          ...c,
+          appraisals: [...(c.appraisals || []), appraisalRecord],
+          totalTransactions: (c.totalTransactions || 0) + 1,
+          totalPurchased: (c.totalPurchased || 0) + sessionData.totalPaid,
+          lastTransaction: sessionData.sessionDate.split('T')[0]
+        };
+      }
+      return c;
+    }));
     
     // Generate inventory items
     let currentMax = inventory.length > 0 
