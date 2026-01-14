@@ -992,6 +992,18 @@ function isExemptFromHold(category) {
 
 // Get hold status for an item
 function getHoldStatus(item) {
+  // Check if manually released first
+  if (item.holdReleased) {
+    return { 
+      status: 'released', 
+      message: `Released Early: ${item.holdReleaseReason || 'Manual'}`, 
+      daysLeft: 0, 
+      canSell: true,
+      manuallyReleased: true,
+      releaseReason: item.holdReleaseReason
+    };
+  }
+  
   if (isExemptFromHold(item.category)) {
     return { status: 'exempt', message: 'Coins/Bullion - No Hold Required', daysLeft: 0, canSell: true };
   }
@@ -5437,14 +5449,12 @@ function HoldStatusView({ inventory, onBack, onSelectItem, onReleaseFromHold }) 
   
   available.forEach(item => {
     const holdStatus = getHoldStatus(item);
-    // Check if manually released
-    if (item.holdReleased) {
-      readyToSell.push({ ...item, holdStatus: { status: 'released', message: `Released Early: ${item.holdReleaseReason}`, daysLeft: 0, canSell: true } });
-    } else if (holdStatus.status === 'exempt') {
+    if (holdStatus.status === 'exempt') {
       exempt.push({ ...item, holdStatus });
     } else if (holdStatus.status === 'hold') {
       onHold.push({ ...item, holdStatus });
     } else {
+      // 'released' status - either naturally or manually
       readyToSell.push({ ...item, holdStatus });
     }
   });
