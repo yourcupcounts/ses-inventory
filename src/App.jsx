@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Package, Plus, X, Trash2, Search, Settings, Download, Upload, Camera, Loader, BarChart3, TrendingUp, TrendingDown, Clock, AlertTriangle, AlertCircle, FileText, Filter, Users, UserPlus, Edit2, Check, MapPin, Calendar, CreditCard, Building, User, Lock, Unlock, ShieldCheck, DollarSign, RefreshCw, Calculator, Layers, Star, ExternalLink, Flame, Archive } from 'lucide-react';
+import { Package, Plus, X, Trash2, Search, Settings, Download, Upload, Camera, Loader, BarChart3, TrendingUp, TrendingDown, Clock, AlertTriangle, AlertCircle, FileText, Filter, Users, UserPlus, Edit2, Check, MapPin, Calendar, CreditCard, Building, User, Lock, Unlock, ShieldCheck, DollarSign, RefreshCw, Calculator, Layers, Star, ExternalLink, Flame, Archive, Zap } from 'lucide-react';
 
 // ============ CONFIGURATION - ADD YOUR API KEYS HERE ============
 const CONFIG = {
@@ -7646,27 +7646,7 @@ Return ONLY the JSON object.`
     }
   };
   
-  // Start the two-photo capture flow
-  const startPhotoCapture = (useCamera = true) => {
-    // Reset for new capture
-    setForm(prev => ({...prev, photo: null, photoBack: null}));
-    setAiError(null);
-    setCaptureStep('front');
-    
-    // Small delay to ensure state is updated
-    setTimeout(() => {
-      if (useCamera) {
-        cameraRef.current?.click();
-      } else {
-        galleryRef.current?.click();
-      }
-    }, 100);
-  };
-  
-  // Track which input method was used
-  const [useCamera, setUseCamera] = useState(true);
-  
-  // Handle photo capture - two-photo flow
+  // Handle photo capture - simple handler that uses captureStep state
   const handlePhotoCapture = async (e) => {
     const file = e.target.files?.[0];
     if (!file) {
@@ -7674,52 +7654,26 @@ Return ONLY the JSON object.`
       return;
     }
     
-    // Track if this was camera or gallery
-    const wasCamera = e.target.hasAttribute('capture');
-    
     const reader = new FileReader();
     reader.onload = async (event) => {
       const base64 = event.target.result.split(',')[1];
-      console.log('Photo captured, step:', captureStep, 'size:', base64.length);
+      console.log('Photo captured, step:', captureStep, 'size:', Math.round(base64.length/1024), 'KB');
       
       if (captureStep === 'front') {
-        // Got front photo, save it and prompt for back
-        console.log('Front photo captured, prompting for back...');
         setForm(prev => ({...prev, photo: base64}));
-        setCaptureStep('back');
-        setUseCamera(wasCamera);
-        
-        // Clear the input so it can be used again
-        e.target.value = '';
-        
-        // Auto-trigger back photo capture after a short delay
-        setTimeout(() => {
-          console.log('Triggering back photo capture...');
-          if (wasCamera) {
-            cameraRef.current?.click();
-          } else {
-            galleryRef.current?.click();
-          }
-        }, 500);
-        
+        setCaptureStep('idle');
       } else if (captureStep === 'back') {
-        // Got back photo, now analyze both
-        console.log('Back photo captured, starting AI analysis...');
-        const frontPhoto = form.photo; // Capture current front photo
         setForm(prev => ({...prev, photoBack: base64}));
-        setCaptureStep('done');
-        e.target.value = '';
-        
-        // Analyze both photos
+        setCaptureStep('idle');
+        // Auto-analyze after both photos captured
+        const frontPhoto = form.photo;
         if (frontPhoto) {
           await analyzePhotosWithAI(frontPhoto, base64);
-        } else {
-          console.error('Front photo was lost!');
-          setAiError('Photo capture error - please try again');
         }
       }
     };
     reader.readAsDataURL(file);
+    e.target.value = ''; // Reset input
   };
   
   // Handle unit change - convert the current value
@@ -7770,85 +7724,83 @@ Return ONLY the JSON object.`
             </div>
           )}
           
-          {/* Capture Step Indicator */}
-          {captureStep === 'back' && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center font-bold">2</div>
-                <div>
-                  <p className="font-medium text-blue-800">Now capture the BACK</p>
-                  <p className="text-sm text-blue-600">Flip the item over for the reverse side</p>
-                </div>
-              </div>
-            </div>
-          )}
-          
           {/* Photo Section */}
           <div>
             <label className="block text-sm font-medium mb-1">Photos</label>
             <p className="text-xs text-teal-600 mb-2">📸 Take front + back photos for AI to identify (year, mint, grade)</p>
             
-            {/* Show photos if captured */}
-            {(form.photo || form.photoBack) ? (
-              <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <div className="text-xs text-gray-500 mb-1">Front (Obverse)</div>
-                    {form.photo ? (
-                      <img src={`data:image/jpeg;base64,${form.photo}`} className="w-full h-24 object-cover rounded-lg border" />
-                    ) : (
-                      <div className="w-full h-24 bg-gray-100 rounded-lg border flex items-center justify-center text-gray-400">
-                        <Camera size={24} />
-                      </div>
-                    )}
+            <div className="grid grid-cols-2 gap-3">
+              {/* Front Photo */}
+              <div>
+                <div className="text-xs text-gray-500 mb-1">① Front (Obverse)</div>
+                {form.photo ? (
+                  <div className="relative">
+                    <img src={`data:image/jpeg;base64,${form.photo}`} className="w-full h-28 object-cover rounded-lg border-2 border-green-400" />
+                    <div className="absolute top-1 right-1 bg-green-500 text-white rounded-full w-5 h-5 flex items-center justify-center">
+                      <Check size={12} />
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-xs text-gray-500 mb-1">Back (Reverse)</div>
-                    {form.photoBack ? (
-                      <img src={`data:image/jpeg;base64,${form.photoBack}`} className="w-full h-24 object-cover rounded-lg border" />
-                    ) : (
-                      <div className="w-full h-24 bg-gray-100 rounded-lg border flex items-center justify-center text-gray-400">
-                        {captureStep === 'back' ? (
-                          <div className="text-center">
-                            <Camera size={24} className="mx-auto animate-pulse" />
-                            <span className="text-xs">Waiting...</span>
-                          </div>
-                        ) : (
-                          <Camera size={24} />
-                        )}
-                      </div>
-                    )}
+                ) : (
+                  <button 
+                    onClick={() => { setCaptureStep('front'); cameraRef.current?.click(); }}
+                    disabled={isAnalyzing}
+                    className="w-full h-28 border-2 border-dashed border-teal-400 bg-teal-50 rounded-lg flex flex-col items-center justify-center text-teal-700 hover:bg-teal-100 disabled:opacity-50"
+                  >
+                    <Camera size={24} />
+                    <span className="text-xs font-medium mt-1">Tap to capture</span>
+                  </button>
+                )}
+              </div>
+              
+              {/* Back Photo */}
+              <div>
+                <div className="text-xs text-gray-500 mb-1">② Back (Reverse)</div>
+                {form.photoBack ? (
+                  <div className="relative">
+                    <img src={`data:image/jpeg;base64,${form.photoBack}`} className="w-full h-28 object-cover rounded-lg border-2 border-green-400" />
+                    <div className="absolute top-1 right-1 bg-green-500 text-white rounded-full w-5 h-5 flex items-center justify-center">
+                      <Check size={12} />
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <button 
+                    onClick={() => { setCaptureStep('back'); cameraRef.current?.click(); }}
+                    disabled={isAnalyzing || !form.photo}
+                    className={`w-full h-28 border-2 border-dashed rounded-lg flex flex-col items-center justify-center disabled:opacity-50 ${
+                      form.photo 
+                        ? 'border-teal-400 bg-teal-50 text-teal-700 hover:bg-teal-100 animate-pulse' 
+                        : 'border-gray-300 bg-gray-50 text-gray-400'
+                    }`}
+                  >
+                    <Camera size={24} />
+                    <span className="text-xs font-medium mt-1">
+                      {form.photo ? 'Tap to capture' : 'Take front first'}
+                    </span>
+                  </button>
+                )}
+              </div>
+            </div>
+            
+            {/* Action buttons */}
+            <div className="flex gap-2 mt-2">
+              {(form.photo || form.photoBack) && (
                 <button 
                   onClick={clearPhotos}
                   className="text-sm text-red-600 flex items-center gap-1"
                 >
-                  <X size={14} /> Clear photos and retake
+                  <X size={14} /> Clear & retake
                 </button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
+              )}
+              
+              {form.photo && form.photoBack && !isAnalyzing && (
                 <button 
-                  onClick={() => startPhotoCapture(true)}
-                  disabled={isAnalyzing}
-                  className="flex-1 border-2 border-dashed border-teal-400 bg-teal-50 rounded-lg p-4 flex flex-col items-center text-teal-700 hover:bg-teal-100 disabled:opacity-50"
+                  onClick={() => analyzePhotosWithAI(form.photo, form.photoBack)}
+                  className="ml-auto text-sm bg-teal-600 text-white px-3 py-1 rounded flex items-center gap-1"
                 >
-                  <Camera size={28} />
-                  <span className="font-medium mt-1">Take Photos</span>
-                  <span className="text-xs text-teal-600">Front then Back</span>
+                  <Zap size={14} /> Analyze with AI
                 </button>
-                <button 
-                  onClick={() => startPhotoCapture(false)}
-                  disabled={isAnalyzing}
-                  className="flex-1 border-2 border-dashed border-teal-400 bg-teal-50 rounded-lg p-4 flex flex-col items-center text-teal-700 hover:bg-teal-100 disabled:opacity-50"
-                >
-                  <Upload size={28} />
-                  <span className="font-medium mt-1">Upload Photos</span>
-                  <span className="text-xs text-teal-600">Front then Back</span>
-                </button>
-              </div>
-            )}
+              )}
+            </div>
             
             {/* Hidden file inputs */}
             <input type="file" accept="image/*" capture="environment" ref={cameraRef} onChange={handlePhotoCapture} className="hidden" />
