@@ -5424,8 +5424,11 @@ function SpotValueView({ inventory, onBack, liveSpotPrices }) {
 }
 
 // ============ HOLD STATUS VIEW ============
-function HoldStatusView({ inventory, onBack, onSelectItem }) {
+function HoldStatusView({ inventory, onBack, onSelectItem, onReleaseFromHold }) {
   const available = inventory.filter(i => i.status === 'Available');
+  const [showReleaseModal, setShowReleaseModal] = useState(null); // holds item to release
+  const [releaseReason, setReleaseReason] = useState('');
+  const [otherReason, setOtherReason] = useState('');
   
   // Group items by hold status
   const onHold = [];
@@ -5434,7 +5437,10 @@ function HoldStatusView({ inventory, onBack, onSelectItem }) {
   
   available.forEach(item => {
     const holdStatus = getHoldStatus(item);
-    if (holdStatus.status === 'exempt') {
+    // Check if manually released
+    if (item.holdReleased) {
+      readyToSell.push({ ...item, holdStatus: { status: 'released', message: `Released Early: ${item.holdReleaseReason}`, daysLeft: 0, canSell: true } });
+    } else if (holdStatus.status === 'exempt') {
       exempt.push({ ...item, holdStatus });
     } else if (holdStatus.status === 'hold') {
       onHold.push({ ...item, holdStatus });
@@ -5445,6 +5451,16 @@ function HoldStatusView({ inventory, onBack, onSelectItem }) {
   
   // Sort on-hold items by days remaining
   onHold.sort((a, b) => a.holdStatus.daysLeft - b.holdStatus.daysLeft);
+  
+  const handleReleaseConfirm = () => {
+    if (!showReleaseModal || !releaseReason) return;
+    
+    const reason = releaseReason === 'Other' ? (otherReason || 'Other') : releaseReason;
+    onReleaseFromHold(showReleaseModal.id, reason);
+    setShowReleaseModal(null);
+    setReleaseReason('');
+    setOtherReason('');
+  };
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -5494,24 +5510,105 @@ function HoldStatusView({ inventory, onBack, onSelectItem }) {
             </div>
             <div className="divide-y">
               {onHold.map(item => (
-                <div key={item.id} onClick={() => onSelectItem(item)} className="p-3 cursor-pointer hover:bg-gray-50">
+                <div key={item.id} className="p-3">
                   <div className="flex justify-between items-start">
-                    <div>
+                    <div onClick={() => onSelectItem(item)} className="cursor-pointer hover:text-amber-700 flex-1">
                       <div className="font-medium">{item.description}</div>
                       <div className="text-sm text-gray-500">{item.category}</div>
                       <div className="text-xs text-gray-400">Acquired: {item.dateAcquired}</div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex flex-col items-end gap-2">
                       <div className="bg-red-100 text-red-700 px-2 py-1 rounded text-sm font-bold">
                         {item.holdStatus.daysLeft} day{item.holdStatus.daysLeft > 1 ? 's' : ''}
                       </div>
-                      <div className="text-xs text-gray-400 mt-1">
+                      <div className="text-xs text-gray-400">
                         Release: {item.holdStatus.releaseDate?.toLocaleDateString()}
                       </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowReleaseModal(item);
+                        }}
+                        className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded hover:bg-amber-200 flex items-center gap-1"
+                      >
+                        <Unlock size={12} /> Release Early
+                      </button>
                     </div>
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+        
+        {/* Release from Hold Modal */}
+        {showReleaseModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg max-w-md w-full p-4">
+              <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
+                <Unlock size={20} className="text-amber-600" /> Release from Hold
+              </h3>
+              <p className="text-gray-600 text-sm mb-4">
+                Release <strong>{showReleaseModal.description}</strong> from hold early?
+              </p>
+              
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                <p className="text-amber-800 text-sm">
+                  <strong>Note:</strong> NC law requires a 10-day hold on secondhand goods from the public. 
+                  Only release early if you have a valid reason.
+                </p>
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Reason for Early Release:</label>
+                <select
+                  value={releaseReason}
+                  onChange={(e) => setReleaseReason(e.target.value)}
+                  className="w-full border rounded-lg p-2 bg-white"
+                >
+                  <option value="">Select a reason...</option>
+                  <option value="Hold Not Required">Hold Not Required (exempt item type)</option>
+                  <option value="Already Met Hold">Already Met Hold (acquired earlier than recorded)</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              
+              {releaseReason === 'Other' && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-2">Specify Reason:</label>
+                  <input
+                    type="text"
+                    value={otherReason}
+                    onChange={(e) => setOtherReason(e.target.value)}
+                    className="w-full border rounded-lg p-2"
+                    placeholder="Enter reason..."
+                  />
+                </div>
+              )}
+              
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setShowReleaseModal(null);
+                    setReleaseReason('');
+                    setOtherReason('');
+                  }}
+                  className="flex-1 py-2 border rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleReleaseConfirm}
+                  disabled={!releaseReason || (releaseReason === 'Other' && !otherReason.trim())}
+                  className={`flex-1 py-2 rounded-lg font-medium ${
+                    releaseReason && (releaseReason !== 'Other' || otherReason.trim())
+                      ? 'bg-amber-600 text-white hover:bg-amber-700'
+                      : 'bg-gray-200 text-gray-400'
+                  }`}
+                >
+                  Release from Hold
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -7488,7 +7585,18 @@ export default function SESInventoryApp() {
     onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }}
   />;
   if (view === 'calculator') return <ScrapCalculatorView spotPrices={liveSpotPrices} onRefresh={refreshSpotPrices} isLoading={isLoadingPrices} onBack={() => setView('list')} />;
-  if (view === 'holdStatus') return <HoldStatusView inventory={inventory} onBack={() => setView('list')} onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }} />;
+  if (view === 'holdStatus') return <HoldStatusView 
+    inventory={inventory} 
+    onBack={() => setView('list')} 
+    onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }}
+    onReleaseFromHold={(itemId, reason) => {
+      setInventory(inventory.map(i => 
+        i.id === itemId 
+          ? { ...i, holdReleased: true, holdReleaseReason: reason, holdReleaseDate: new Date().toISOString() }
+          : i
+      ));
+    }}
+  />;
   if (view === 'spotValue') return <SpotValueView inventory={inventory} onBack={() => setView('list')} liveSpotPrices={liveSpotPrices} />;
   if (view === 'dashboard') return <DashboardView inventory={inventory} onBack={() => setView('list')} />;
   if (view === 'tax') return <TaxReportView inventory={inventory} onBack={() => setView('list')} />;
