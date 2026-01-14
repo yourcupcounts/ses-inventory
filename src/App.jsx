@@ -7600,16 +7600,29 @@ Return ONLY the JSON object.`
       }
       
       const data = await response.json();
+      console.log('AI Response received:', JSON.stringify(data).substring(0, 500));
       
       // Extract text from response
       let aiText = data.content?.[0]?.text || data.response;
       if (!aiText) {
+        console.error('No text in response:', data);
         throw new Error('No response from AI');
       }
       
+      console.log('AI text:', aiText.substring(0, 300));
+      
       // Clean up and parse JSON
       aiText = aiText.replace(/```json\n?|\n?```/g, '').trim();
-      const aiResult = JSON.parse(aiText);
+      
+      let aiResult;
+      try {
+        aiResult = JSON.parse(aiText);
+      } catch (parseErr) {
+        console.error('JSON parse failed:', parseErr, 'Text was:', aiText);
+        throw new Error('Failed to parse AI response');
+      }
+      
+      console.log('Parsed AI result:', aiResult);
       
       // Update form with AI results
       setForm(prev => ({
@@ -7626,8 +7639,8 @@ Return ONLY the JSON object.`
       }));
       
     } catch (err) {
-      console.error('AI analysis error:', err);
-      setAiError('AI analysis failed - please fill in details manually');
+      console.error('AI analysis error:', err.message, err);
+      setAiError(`AI analysis failed: ${err.message}. Please fill in details manually.`);
     } finally {
       setIsAnalyzing(false);
     }
@@ -7635,45 +7648,78 @@ Return ONLY the JSON object.`
   
   // Start the two-photo capture flow
   const startPhotoCapture = (useCamera = true) => {
+    // Reset for new capture
+    setForm(prev => ({...prev, photo: null, photoBack: null}));
+    setAiError(null);
     setCaptureStep('front');
-    if (useCamera) {
-      cameraRef.current?.click();
-    } else {
-      galleryRef.current?.click();
-    }
+    
+    // Small delay to ensure state is updated
+    setTimeout(() => {
+      if (useCamera) {
+        cameraRef.current?.click();
+      } else {
+        galleryRef.current?.click();
+      }
+    }, 100);
   };
+  
+  // Track which input method was used
+  const [useCamera, setUseCamera] = useState(true);
   
   // Handle photo capture - two-photo flow
   const handlePhotoCapture = async (e) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      console.log('No file selected');
+      return;
+    }
+    
+    // Track if this was camera or gallery
+    const wasCamera = e.target.hasAttribute('capture');
     
     const reader = new FileReader();
     reader.onload = async (event) => {
       const base64 = event.target.result.split(',')[1];
+      console.log('Photo captured, step:', captureStep, 'size:', base64.length);
       
       if (captureStep === 'front') {
-        // Got front photo, now get back
+        // Got front photo, save it and prompt for back
+        console.log('Front photo captured, prompting for back...');
         setForm(prev => ({...prev, photo: base64}));
         setCaptureStep('back');
-        // Small delay then trigger next capture
+        setUseCamera(wasCamera);
+        
+        // Clear the input so it can be used again
+        e.target.value = '';
+        
+        // Auto-trigger back photo capture after a short delay
         setTimeout(() => {
-          if (e.target.hasAttribute('capture')) {
+          console.log('Triggering back photo capture...');
+          if (wasCamera) {
             cameraRef.current?.click();
           } else {
             galleryRef.current?.click();
           }
-        }, 300);
+        }, 500);
+        
       } else if (captureStep === 'back') {
         // Got back photo, now analyze both
+        console.log('Back photo captured, starting AI analysis...');
+        const frontPhoto = form.photo; // Capture current front photo
         setForm(prev => ({...prev, photoBack: base64}));
         setCaptureStep('done');
+        e.target.value = '';
+        
         // Analyze both photos
-        await analyzePhotosWithAI(form.photo, base64);
+        if (frontPhoto) {
+          await analyzePhotosWithAI(frontPhoto, base64);
+        } else {
+          console.error('Front photo was lost!');
+          setAiError('Photo capture error - please try again');
+        }
       }
     };
     reader.readAsDataURL(file);
-    e.target.value = '';
   };
   
   // Handle unit change - convert the current value
