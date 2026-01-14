@@ -7320,7 +7320,7 @@ Thanks for looking! Feel free to check out my other listings for more coins.`;
   );
 }
 
-function SettingsView({ onBack, onExport, onImport, onReset, fileInputRef, coinBuyPercents, onUpdateCoinBuyPercent }) {
+function SettingsView({ onBack, onExport, onImport, onReset, fileInputRef, coinBuyPercents, onUpdateCoinBuyPercent, ebayConnected, onEbayDisconnect, onViewEbaySync }) {
   const [showCoinSettings, setShowCoinSettings] = useState(false);
   
   // Get all percentage-based coins
@@ -7332,6 +7332,46 @@ function SettingsView({ onBack, onExport, onImport, onReset, fileInputRef, coinB
     <div className="min-h-screen bg-amber-50">
       <div className="bg-amber-700 text-white p-4 flex items-center"><button onClick={onBack} className="mr-4">← Back</button><h1 className="text-xl font-bold">Settings</h1></div>
       <div className="p-4 space-y-4">
+        
+        {/* eBay Connection */}
+        <div className="bg-white p-4 rounded-lg shadow">
+          <h3 className="font-medium mb-3 flex items-center gap-2">
+            <ExternalLink size={18} /> eBay Integration
+          </h3>
+          {ebayConnected ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-green-600 bg-green-50 p-2 rounded">
+                <Check size={18} />
+                <span className="font-medium">eBay Account Connected</span>
+              </div>
+              <button
+                onClick={onViewEbaySync}
+                className="w-full bg-blue-600 text-white py-2 rounded flex items-center justify-center gap-2"
+              >
+                <RefreshCw size={18} /> Sync Active Listings
+              </button>
+              <button
+                onClick={onEbayDisconnect}
+                className="w-full border border-red-300 text-red-600 py-2 rounded text-sm"
+              >
+                Disconnect eBay
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600">
+                Connect your eBay seller account to import active listings and keep your inventory synced.
+              </p>
+              <a
+                href="/api/ebay-auth"
+                className="block w-full bg-blue-600 text-white py-3 rounded text-center font-medium hover:bg-blue-700"
+              >
+                Connect eBay Account
+              </a>
+            </div>
+          )}
+        </div>
+        
         {/* Spot Prices */}
         <div className="bg-white p-4 rounded-lg shadow">
           <h3 className="font-medium mb-3">Spot Prices</h3>
@@ -7401,6 +7441,272 @@ function SettingsView({ onBack, onExport, onImport, onReset, fileInputRef, coinB
   );
 }
 
+// ============ EBAY SYNC VIEW ============
+function EbaySyncView({ onBack, onImportListings, inventory }) {
+  const [listings, setListings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [selectedListings, setSelectedListings] = useState([]);
+  
+  // Get eBay tokens from localStorage
+  const getEbayToken = () => localStorage.getItem('ebay_access_token');
+  
+  useEffect(() => {
+    fetchListings();
+  }, []);
+  
+  const fetchListings = async () => {
+    setLoading(true);
+    setError(null);
+    
+    const token = getEbayToken();
+    if (!token) {
+      setError('eBay not connected. Please connect your eBay account in Settings.');
+      setLoading(false);
+      return;
+    }
+    
+    try {
+      const response = await fetch('/api/ebay-listings', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        if (data.needsRefresh) {
+          // Try to refresh token
+          const refreshed = await refreshToken();
+          if (refreshed) {
+            fetchListings(); // Retry
+            return;
+          }
+        }
+        throw new Error(data.error || 'Failed to fetch listings');
+      }
+      
+      setListings(data.listings || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const refreshToken = async () => {
+    const refreshToken = localStorage.getItem('ebay_refresh_token');
+    if (!refreshToken) return false;
+    
+    try {
+      const response = await fetch('/api/ebay-refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken })
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        localStorage.setItem('ebay_access_token', data.access_token);
+        localStorage.setItem('ebay_token_time', data.token_time.toString());
+        return true;
+      }
+    } catch (err) {
+      console.error('Token refresh failed:', err);
+    }
+    return false;
+  };
+  
+  // Check if listing already exists in inventory (by title match)
+  const isAlreadyImported = (listing) => {
+    const title = (listing.title || listing.sku || '').toLowerCase();
+    return inventory.some(item => 
+      item.description?.toLowerCase().includes(title) || 
+      item.ebayListingId === listing.listingId ||
+      item.ebayOfferId === listing.offerId
+    );
+  };
+  
+  const toggleSelection = (listing) => {
+    setSelectedListings(prev => {
+      const exists = prev.find(l => l.sku === listing.sku);
+      if (exists) {
+        return prev.filter(l => l.sku !== listing.sku);
+      } else {
+        return [...prev, listing];
+      }
+    });
+  };
+  
+  const handleImportSelected = () => {
+    const itemsToImport = selectedListings.map(listing => ({
+      description: listing.title || listing.sku,
+      category: 'eBay Import',
+      metalType: 'Unknown',
+      purity: '',
+      weightOz: 0,
+      purchasePrice: 0,
+      meltValue: 0,
+      status: 'Listed',
+      source: 'eBay',
+      dateAcquired: new Date().toISOString().split('T')[0],
+      ebayListingId: listing.listingId,
+      ebayOfferId: listing.offerId,
+      ebayPrice: listing.price,
+      ebayQuantity: listing.quantity,
+      ebayStatus: listing.status,
+      notes: `Imported from eBay. Price: $${listing.price || 0}`,
+      photo: listing.imageUrls?.[0] || null
+    }));
+    
+    onImportListings(itemsToImport);
+  };
+  
+  const newListings = listings.filter(l => !isAlreadyImported(l));
+  const existingListings = listings.filter(l => isAlreadyImported(l));
+  
+  return (
+    <div className="min-h-screen bg-gray-100">
+      <div className="bg-blue-700 text-white p-4">
+        <div className="flex items-center justify-between">
+          <button onClick={onBack} className="flex items-center gap-1">
+            ← Back
+          </button>
+          <h1 className="text-xl font-bold flex items-center gap-2">
+            <RefreshCw size={20} /> eBay Sync
+          </h1>
+          <button onClick={fetchListings} disabled={loading} className="p-2">
+            <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      </div>
+      
+      <div className="p-4 space-y-4">
+        {/* Status Summary */}
+        <div className="bg-white rounded-lg shadow p-4">
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <div className="text-2xl font-bold text-blue-600">{listings.length}</div>
+              <div className="text-xs text-gray-500">Total on eBay</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-green-600">{newListings.length}</div>
+              <div className="text-xs text-gray-500">New to Import</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-gray-400">{existingListings.length}</div>
+              <div className="text-xs text-gray-500">Already Tracked</div>
+            </div>
+          </div>
+        </div>
+        
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg">
+            {error}
+          </div>
+        )}
+        
+        {loading ? (
+          <div className="bg-white rounded-lg shadow p-8 text-center">
+            <Loader className="animate-spin mx-auto mb-2" size={32} />
+            <p className="text-gray-500">Loading your eBay listings...</p>
+          </div>
+        ) : (
+          <>
+            {/* New Listings to Import */}
+            {newListings.length > 0 && (
+              <div className="bg-white rounded-lg shadow">
+                <div className="p-3 border-b bg-green-50">
+                  <h3 className="font-bold text-green-700 flex items-center gap-2">
+                    <Plus size={18} /> New Listings to Import ({newListings.length})
+                  </h3>
+                </div>
+                <div className="divide-y max-h-96 overflow-y-auto">
+                  {newListings.map(listing => (
+                    <div 
+                      key={listing.sku || listing.listingId} 
+                      className={`p-3 flex items-center gap-3 cursor-pointer hover:bg-gray-50 ${
+                        selectedListings.find(l => l.sku === listing.sku) ? 'bg-blue-50' : ''
+                      }`}
+                      onClick={() => toggleSelection(listing)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!selectedListings.find(l => l.sku === listing.sku)}
+                        onChange={() => {}}
+                        className="w-5 h-5"
+                      />
+                      {listing.imageUrls?.[0] && (
+                        <img src={listing.imageUrls[0]} alt="" className="w-12 h-12 object-cover rounded" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">{listing.title || listing.sku}</div>
+                        <div className="text-xs text-gray-500">
+                          {listing.status} • Qty: {listing.quantity || 1}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-green-600">${listing.price || 0}</div>
+                        <div className="text-xs text-gray-400">{listing.format || 'Fixed'}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                {selectedListings.length > 0 && (
+                  <div className="p-3 border-t bg-gray-50">
+                    <button
+                      onClick={handleImportSelected}
+                      className="w-full bg-green-600 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2"
+                    >
+                      <Download size={18} /> Import {selectedListings.length} Selected Listing{selectedListings.length > 1 ? 's' : ''}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Already Tracked */}
+            {existingListings.length > 0 && (
+              <div className="bg-white rounded-lg shadow">
+                <div className="p-3 border-b bg-gray-50">
+                  <h3 className="font-bold text-gray-600 flex items-center gap-2">
+                    <Check size={18} /> Already in Inventory ({existingListings.length})
+                  </h3>
+                </div>
+                <div className="divide-y max-h-48 overflow-y-auto">
+                  {existingListings.map(listing => (
+                    <div key={listing.sku || listing.listingId} className="p-3 flex items-center gap-3 opacity-60">
+                      {listing.imageUrls?.[0] && (
+                        <img src={listing.imageUrls[0]} alt="" className="w-10 h-10 object-cover rounded" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">{listing.title || listing.sku}</div>
+                      </div>
+                      <div className="text-green-600 text-sm">✓ Tracked</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {listings.length === 0 && !error && (
+              <div className="bg-white rounded-lg shadow p-8 text-center">
+                <Package size={48} className="mx-auto mb-4 text-gray-300" />
+                <p className="text-gray-500">No active listings found on eBay</p>
+                <p className="text-sm text-gray-400 mt-1">
+                  List items on eBay, then sync to track them here
+                </p>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ============ MAIN APP ============
 export default function SESInventoryApp() {
   const [inventory, setInventory] = useState(starterInventory);
@@ -7415,6 +7721,7 @@ export default function SESInventoryApp() {
   const [spotLastUpdate, setSpotLastUpdate] = useState(null);
   const [isLoadingPrices, setIsLoadingPrices] = useState(false);
   const [firebaseReady, setFirebaseReady] = useState(false);
+  const [ebayConnected, setEbayConnected] = useState(false);
   const [coinBuyPercents, setCoinBuyPercents] = useState(() => {
     // Load from localStorage or use defaults from coinReference
     const saved = localStorage.getItem('ses-coin-buy-percents');
@@ -7429,6 +7736,70 @@ export default function SESInventoryApp() {
     return defaults;
   });
   const fileInputRef = useRef(null);
+  
+  // Check for eBay connection on mount and handle OAuth callback
+  useEffect(() => {
+    // Check if we have a valid eBay token
+    const token = localStorage.getItem('ebay_access_token');
+    const tokenTime = localStorage.getItem('ebay_token_time');
+    if (token && tokenTime) {
+      // Check if token is less than 2 hours old
+      const tokenAge = Date.now() - parseInt(tokenTime);
+      if (tokenAge < 7200000) { // 2 hours in ms
+        setEbayConnected(true);
+      }
+    }
+    
+    // Handle OAuth callback params
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('ebay_connected') === 'true') {
+      const accessToken = params.get('ebay_access_token');
+      const refreshToken = params.get('ebay_refresh_token');
+      const expiresIn = params.get('ebay_expires_in');
+      const tokenTime = params.get('ebay_token_time');
+      
+      if (accessToken) {
+        localStorage.setItem('ebay_access_token', accessToken);
+        localStorage.setItem('ebay_refresh_token', refreshToken || '');
+        localStorage.setItem('ebay_expires_in', expiresIn || '7200');
+        localStorage.setItem('ebay_token_time', tokenTime || Date.now().toString());
+        setEbayConnected(true);
+        
+        // Clean up URL
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
+    
+    if (params.get('ebay_error')) {
+      alert('eBay connection failed: ' + params.get('ebay_error'));
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+  
+  // eBay disconnect handler
+  const handleEbayDisconnect = () => {
+    localStorage.removeItem('ebay_access_token');
+    localStorage.removeItem('ebay_refresh_token');
+    localStorage.removeItem('ebay_expires_in');
+    localStorage.removeItem('ebay_token_time');
+    setEbayConnected(false);
+  };
+  
+  // Import eBay listings to inventory
+  const handleImportEbayListings = (items) => {
+    let currentMax = inventory.length > 0 
+      ? Math.max(...inventory.map(i => parseInt(i.id.replace('SES-', '')) || 0))
+      : 0;
+    
+    const newItems = items.map((item, index) => ({
+      ...item,
+      id: `SES-${String(currentMax + index + 1).padStart(3, '0')}`
+    }));
+    
+    setInventory([...inventory, ...newItems]);
+    setView('list');
+    alert(`Imported ${newItems.length} listing(s) from eBay`);
+  };
   
   // Save coin buy percents to localStorage when they change
   useEffect(() => {
@@ -7769,7 +8140,8 @@ export default function SESInventoryApp() {
     }}
   />;
   if (view === 'ebayListing' && selectedItem) return <EbayListingView item={selectedItem} onBack={() => setView('detail')} onListingCreated={(listing) => { setInventory(inventory.map(i => i.id === selectedItem.id ? { ...i, ebayListingId: listing.listingId, ebayUrl: listing.ebayUrl, status: 'Listed' } : i)); setSelectedItem({ ...selectedItem, ebayListingId: listing.listingId, ebayUrl: listing.ebayUrl, status: 'Listed' }); setView('detail'); }} />;
-  if (view === 'settings') return <SettingsView onBack={() => setView('list')} onExport={handleExport} onImport={handleImport} onReset={() => { setInventory(starterInventory); setClients(starterClients); setLots(starterLots); }} fileInputRef={fileInputRef} coinBuyPercents={coinBuyPercents} onUpdateCoinBuyPercent={handleUpdateCoinBuyPercent} />;
+  if (view === 'settings') return <SettingsView onBack={() => setView('list')} onExport={handleExport} onImport={handleImport} onReset={() => { setInventory(starterInventory); setClients(starterClients); setLots(starterLots); }} fileInputRef={fileInputRef} coinBuyPercents={coinBuyPercents} onUpdateCoinBuyPercent={handleUpdateCoinBuyPercent} ebayConnected={ebayConnected} onEbayDisconnect={handleEbayDisconnect} onViewEbaySync={() => setView('ebaySync')} />;
+  if (view === 'ebaySync') return <EbaySyncView onBack={() => setView('settings')} onImportListings={handleImportEbayListings} inventory={inventory} />;
 
   // LIST VIEW
   return (
