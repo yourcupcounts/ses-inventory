@@ -1333,7 +1333,9 @@ function EbayListingView({ item, generatedListing, onBack, onListingCreated }) {
   const [showPreview, setShowPreview] = useState(false);
   
   const photoInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
   const videoInputRef = useRef(null);
+  const videoGalleryRef = useRef(null);
   
   // Use generatedListing if provided, otherwise generate basic title/desc
   useEffect(() => {
@@ -1744,21 +1746,42 @@ Ships securely in protective packaging. Thanks for looking!`;
             ))}
             
             {photos.length < 12 && (
-              <button
-                onClick={() => photoInputRef.current?.click()}
-                className="aspect-square border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-400"
-              >
-                <Camera size={24} />
-                <span className="text-xs mt-1">Add</span>
-              </button>
+              <div className="aspect-square border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-400 gap-1">
+                <button
+                  onClick={() => photoInputRef.current?.click()}
+                  className="flex flex-col items-center text-gray-500 hover:text-teal-600"
+                  title="Take photo"
+                >
+                  <Camera size={20} />
+                  <span className="text-xs">Camera</span>
+                </button>
+                <button
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="flex flex-col items-center text-gray-500 hover:text-teal-600"
+                  title="Choose from gallery"
+                >
+                  <Upload size={16} />
+                  <span className="text-xs">Gallery</span>
+                </button>
+              </div>
             )}
           </div>
           
+          {/* Camera input (captures new photo) */}
           <input
             type="file"
             accept="image/*"
             capture="environment"
             ref={photoInputRef}
+            onChange={handleAddPhoto}
+            className="hidden"
+          />
+          
+          {/* Gallery input (choose existing photo) */}
+          <input
+            type="file"
+            accept="image/*"
+            ref={galleryInputRef}
             onChange={handleAddPhoto}
             className="hidden"
           />
@@ -1801,23 +1824,41 @@ Ships securely in protective packaging. Thanks for looking!`;
             </div>
           ) : (
             <div>
-              <button
-                onClick={() => videoInputRef.current?.click()}
-                className="w-full border-2 border-dashed border-gray-300 rounded-lg p-6 flex flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-400 transition-colors"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="m22 8-6 4 6 4V8Z"/>
-                  <rect width="14" height="12" x="2" y="6" rx="2" ry="2"/>
-                </svg>
-                <span className="mt-2 font-medium">Add Video</span>
-                <span className="text-xs mt-1">Record or upload (under 60 sec)</span>
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => videoInputRef.current?.click()}
+                  className="flex-1 border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-400 transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m22 8-6 4 6 4V8Z"/>
+                    <rect width="14" height="12" x="2" y="6" rx="2" ry="2"/>
+                  </svg>
+                  <span className="mt-1 font-medium text-sm">Record</span>
+                </button>
+                <button
+                  onClick={() => videoGalleryRef.current?.click()}
+                  className="flex-1 border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-400 transition-colors"
+                >
+                  <Upload size={28} />
+                  <span className="mt-1 font-medium text-sm">Choose</span>
+                </button>
+              </div>
               
+              {/* Camera video input */}
               <input
                 type="file"
                 accept="video/*"
                 capture="environment"
                 ref={videoInputRef}
+                onChange={handleVideoCapture}
+                className="hidden"
+              />
+              
+              {/* Gallery video input */}
+              <input
+                type="file"
+                accept="video/*"
+                ref={videoGalleryRef}
                 onChange={handleVideoCapture}
                 className="hidden"
               />
