@@ -6647,62 +6647,85 @@ function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay, l
   const holdStatus = getHoldStatus(item);
   const profit = item.status === 'Sold' ? (item.salePrice - item.purchasePrice) : (item.meltValue - item.purchasePrice);
   
-  // Generate optimized eBay listing
+  // Generate optimized eBay listing - personal, human style
   const generateListing = (ebayData) => {
     const coinInfo = item.coinKey ? coinReference[item.coinKey] : null;
     
-    // Build optimized title (max 80 chars, keyword-rich)
+    // Build optimized title (max 80 chars, keyword-rich but natural)
     let title = '';
     if (item.year) title += `${item.year} `;
     if (item.mint) title += `${item.mint} `;
     title += item.description;
     if (item.grade) {
       const gradeUpper = item.grade.toUpperCase();
-      if (gradeUpper.startsWith('MS') || gradeUpper.startsWith('PF')) {
-        title += ` ${gradeUpper} PCGS NGC`;
-      } else {
-        title += ` ${gradeUpper}`;
-      }
+      title += ` ${gradeUpper}`;
     }
     if (item.purity && !title.includes(item.purity)) title += ` ${item.purity}`;
     if (item.metalType === 'Silver' && !title.toLowerCase().includes('silver')) title += ' Silver';
     if (item.metalType === 'Gold' && !title.toLowerCase().includes('gold')) title += ' Gold';
     title = title.slice(0, 80);
     
-    // Generate detailed description
-    const description = `
-${item.description}${item.year ? ` - ${item.year}` : ''}${item.mint ? `-${item.mint}` : ''}
+    // Determine item type for description style
+    const isCoin = item.category?.includes('Coin') || item.coinKey;
+    const isJewelry = item.category?.includes('Sterling') || item.category?.includes('Jewelry');
+    const isGraded = item.grade?.toUpperCase().startsWith('MS') || item.grade?.toUpperCase().startsWith('PF');
+    
+    // Generate human, conversational description
+    let description = '';
+    
+    // Opening line - warm and direct
+    if (isCoin) {
+      if (isGraded) {
+        description = `Up for sale is a beautiful ${item.year || ''} ${item.description}${item.mint ? ` from the ${item.mint} mint` : ''}, professionally graded ${item.grade?.toUpperCase()}.`;
+      } else {
+        description = `Up for sale is a ${item.year || ''} ${item.description}${item.mint ? ` (${item.mint} mint)` : ''} in ${item.grade?.toUpperCase() || 'nice circulated'} condition.`;
+      }
+    } else if (isJewelry) {
+      description = `Up for sale is ${item.description}. A nice piece with good weight and classic styling.`;
+    } else {
+      description = `Up for sale is ${item.description}.`;
+    }
+    
+    // Item Details section - conversational bullet style
+    description += `
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📋 ITEM DETAILS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• Metal: ${item.metalType || 'Silver'}
-• Purity: ${item.purity || 'N/A'}
-• Weight: ${item.weightOz || 'N/A'} troy oz
-${item.year ? `• Year: ${item.year}` : ''}
-${item.mint ? `• Mint: ${item.mint}` : ''}
-${item.grade ? `• Grade/Condition: ${item.grade.toUpperCase()}` : ''}
-${coinInfo ? `• Actual Silver Weight: ${coinInfo.aswOz || coinInfo.agwOz || 'N/A'} oz` : ''}
+**Item Details:**
+* Metal: ${item.metalType || 'Silver'}
+* Purity: ${item.purity || 'N/A'}${coinInfo ? ` (${((coinInfo.purity || 0.9) * 100).toFixed(0)}% ${item.metalType?.toLowerCase() || 'silver'})` : ''}
+* Weight: ${item.weightOz || coinInfo?.aswOz || coinInfo?.agwOz || 'N/A'} troy oz actual ${item.metalType?.toLowerCase() || 'silver'} weight`;
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📦 SHIPPING & HANDLING
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• Ships within 1 business day of cleared payment
-• Securely packaged in protective flip/holder
-• USPS First Class with tracking included
-• Insurance available upon request
+    if (item.year) description += `
+* Year: ${item.year}`;
+    if (item.mint) description += `
+* Mint: ${item.mint}`;
+    if (item.grade) description += `
+* Condition: ${item.grade.toUpperCase()}${isGraded ? ' (third-party graded, encapsulated)' : ''}`;
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ SELLER GUARANTEE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• 100% authentic guaranteed
-• What you see is what you get
-• 30-day return policy for any reason
+    // Notes/condition details if available
+    if (item.notes) {
+      description += `
 
-${item.notes ? `\nNotes: ${item.notes}` : ''}
+**Condition Notes:**
+${item.notes}`;
+    }
+    
+    // What you get section
+    description += `
 
-Thanks for looking! Check out our other listings for more great coins and precious metals.
-`.trim();
+**What you get:** Exactly what's pictured - please examine photos carefully as they are part of the description.`;
+
+    // Shipping section - friendly and clear
+    description += `
+
+**Shipping:**
+Ships within 1 business day of cleared payment. Securely packaged in a protective flip or holder, sent USPS First Class with tracking. Insurance available on request for higher value items.`;
+
+    // Closing - personal touch
+    description += `
+
+Thanks for looking! Feel free to check out my other listings for more coins.`;
+
+    description = description.trim();
 
     // Pricing strategy based on eBay data
     let pricingStrategy = {
