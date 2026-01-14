@@ -3063,12 +3063,26 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                       {evaluatingItem.ebayResults.items?.length > 0 && (
                         <div className="mt-2 pt-2 border-t border-blue-700">
                           <div className="text-xs text-gray-400 mb-1">Recent sales:</div>
-                          <div className="max-h-24 overflow-y-auto space-y-1">
-                            {evaluatingItem.ebayResults.items.slice(0, 5).map((item, idx) => (
-                              <div key={idx} className="flex justify-between text-xs">
-                                <span className="text-gray-300 truncate flex-1 mr-2">{item.title?.slice(0, 40)}...</span>
-                                <span className="text-green-400 font-medium">${item.price}</span>
-                              </div>
+                          <div className="max-h-40 overflow-y-auto space-y-2">
+                            {evaluatingItem.ebayResults.items.slice(0, 8).map((item, idx) => (
+                              <a 
+                                key={idx} 
+                                href={item.itemUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block bg-gray-800 rounded p-2 hover:bg-gray-700"
+                              >
+                                <div className="flex justify-between items-start">
+                                  <span className="text-gray-300 text-xs truncate flex-1 mr-2">{item.title?.slice(0, 50)}...</span>
+                                  <span className="text-green-400 font-bold">${item.price}</span>
+                                </div>
+                                <div className="flex justify-between items-center mt-1 text-xs">
+                                  <span className="text-gray-500">
+                                    {item.soldDate || 'Active'} • {item.listingType || 'BIN'}
+                                  </span>
+                                  <span className="text-blue-400 text-xs">{item.shortUrl}</span>
+                                </div>
+                              </a>
                             ))}
                           </div>
                         </div>
@@ -6009,21 +6023,28 @@ function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay })
                     </div>
                     
                     {/* Recent Sold Items */}
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
-                      {ebayPrices.items.slice(0, 5).map((sold, idx) => (
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {ebayPrices.items.slice(0, 8).map((sold, idx) => (
                         <a 
                           key={idx}
                           href={sold.itemUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-2 p-2 bg-white rounded hover:bg-gray-50"
+                          className="block p-2 bg-white rounded hover:bg-gray-50 border border-gray-200"
                         >
-                          {sold.imageUrl && <img src={sold.imageUrl} className="w-10 h-10 object-cover rounded" />}
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs truncate">{sold.title}</div>
-                            <div className="text-xs text-gray-500">{sold.condition}</div>
+                          <div className="flex items-start gap-2">
+                            {sold.imageUrl && <img src={sold.imageUrl} className="w-12 h-12 object-cover rounded" />}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs truncate font-medium">{sold.title}</div>
+                              <div className="flex justify-between items-center mt-1">
+                                <span className="text-xs text-gray-500">
+                                  {sold.soldDate || 'Active'} • {sold.listingType || 'BIN'}
+                                </span>
+                                <span className="font-bold text-green-600">${sold.price}</span>
+                              </div>
+                              <div className="text-xs text-blue-500 mt-1">{sold.shortUrl}</div>
+                            </div>
                           </div>
-                          <div className="font-bold text-green-600">${sold.price}</div>
                         </a>
                       ))}
                     </div>

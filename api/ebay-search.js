@@ -37,6 +37,28 @@ async function getAccessToken() {
   return cachedToken;
 }
 
+// Shorten eBay URL to just the item ID portion
+function shortenEbayUrl(url) {
+  if (!url) return null;
+  // Extract item ID from URL like https://www.ebay.com/itm/123456789
+  const match = url.match(/\/itm\/(\d+)/);
+  if (match) {
+    return `ebay.com/itm/${match[1]}`;
+  }
+  return url;
+}
+
+// Format date to readable string
+function formatDate(dateString) {
+  if (!dateString) return null;
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  } catch {
+    return null;
+  }
+}
+
 export default async function handler(req, res) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -100,7 +122,13 @@ export default async function handler(req, res) {
         price: parseFloat(item.price?.value || 0),
         condition: item.condition,
         imageUrl: item.image?.imageUrl,
-        itemUrl: item.itemWebUrl
+        itemUrl: item.itemWebUrl,
+        shortUrl: shortenEbayUrl(item.itemWebUrl),
+        itemId: item.itemId,
+        soldDate: formatDate(item.itemEndDate),
+        listingType: item.buyingOptions?.includes('AUCTION') ? 'Auction' : 'BIN',
+        seller: item.seller?.username,
+        location: item.itemLocation?.postalCode || item.itemLocation?.country
       })),
       avgPrice: Math.round(avgPrice * 100) / 100,
       lowPrice: Math.round(lowPrice * 100) / 100,
