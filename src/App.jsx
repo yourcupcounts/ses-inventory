@@ -3203,6 +3203,7 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
         purchasePrice: Math.round(adjustedPrice * 100) / 100,
         meltValue: Math.round((item.meltValue || 0) * 100) / 100,
         photo: item.photo,
+        photoBack: item.photoBack,
         grade: item.grade,
         year: item.year,
         mint: item.mint,
@@ -7553,9 +7554,43 @@ function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay, l
   const [showCreateLot, setShowCreateLot] = useState(false);
   const [lotDescription, setLotDescription] = useState(item.description);
   const [lotNotes, setLotNotes] = useState(item.notes || '');
+  const [showPhotoManager, setShowPhotoManager] = useState(false);
+  
+  // Photo management refs
+  const photoCameraRef = useRef(null);
+  const photoGalleryRef = useRef(null);
+  const backPhotoCameraRef = useRef(null);
+  const backPhotoGalleryRef = useRef(null);
+  
   const client = clients.find(c => c.id === item.clientId);
   const holdStatus = getHoldStatus(item);
   const profit = item.status === 'Sold' ? (item.salePrice - item.purchasePrice) : (item.meltValue - item.purchasePrice);
+  
+  // Handle adding/updating photos
+  const handlePhotoCapture = (side) => async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target.result.split(',')[1];
+      if (side === 'front') {
+        onUpdate({ ...item, photo: base64 });
+      } else {
+        onUpdate({ ...item, photoBack: base64 });
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = ''; // Reset input
+  };
+  
+  const removePhoto = (side) => {
+    if (side === 'front') {
+      onUpdate({ ...item, photo: null });
+    } else {
+      onUpdate({ ...item, photoBack: null });
+    }
+  };
   
   // Generate casual, human eBay listing - NO cost info, conversational tone
   const generateListing = (ebayData) => {
@@ -7897,6 +7932,184 @@ Ships fast and packed well. Questions? Just ask.`;
       <div className="p-4"><div className="bg-white rounded-lg shadow p-4">
         <h2 className="text-xl font-bold">{item.description}</h2>
         <div className="text-gray-500">{item.id} • {item.category}</div>
+        
+        {/* Photo Section */}
+        <div className="mt-4 mb-4">
+          {(item.photo || item.photoBack) ? (
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                {/* Front Photo */}
+                <div className="flex-1">
+                  {item.photo ? (
+                    <div className="relative">
+                      <img 
+                        src={`data:image/jpeg;base64,${item.photo}`} 
+                        className="w-full h-32 object-cover rounded-lg"
+                        alt="Front"
+                      />
+                      <span className="absolute top-1 left-1 bg-black bg-opacity-50 text-white text-xs px-2 py-0.5 rounded">Front</span>
+                      <button
+                        onClick={() => removePhoto('front')}
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div 
+                      onClick={() => setShowPhotoManager(true)}
+                      className="h-32 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-400 cursor-pointer hover:border-teal-400"
+                    >
+                      <Camera size={24} />
+                      <span className="text-xs mt-1">Add Front</span>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Back Photo */}
+                <div className="flex-1">
+                  {item.photoBack ? (
+                    <div className="relative">
+                      <img 
+                        src={`data:image/jpeg;base64,${item.photoBack}`} 
+                        className="w-full h-32 object-cover rounded-lg"
+                        alt="Back"
+                      />
+                      <span className="absolute top-1 left-1 bg-black bg-opacity-50 text-white text-xs px-2 py-0.5 rounded">Back</span>
+                      <button
+                        onClick={() => removePhoto('back')}
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div 
+                      onClick={() => setShowPhotoManager(true)}
+                      className="h-32 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-400 cursor-pointer hover:border-teal-400"
+                    >
+                      <Camera size={24} />
+                      <span className="text-xs mt-1">Add Back</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <button
+                onClick={() => setShowPhotoManager(true)}
+                className="w-full text-teal-600 text-sm py-1"
+              >
+                Manage Photos
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowPhotoManager(true)}
+              className="w-full border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center text-gray-400 hover:border-teal-400 hover:text-teal-500"
+            >
+              <Camera size={32} />
+              <span className="mt-2 font-medium">Add Photos</span>
+              <span className="text-xs">Front & Back</span>
+            </button>
+          )}
+        </div>
+        
+        {/* Photo Manager Modal */}
+        {showPhotoManager && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl w-full max-w-md overflow-hidden">
+              <div className="bg-teal-600 text-white p-4 flex justify-between items-center">
+                <h3 className="font-bold">Manage Photos</h3>
+                <button onClick={() => setShowPhotoManager(false)}><X size={24} /></button>
+              </div>
+              
+              <div className="p-4 space-y-4">
+                {/* Front Photo */}
+                <div>
+                  <h4 className="font-medium text-gray-700 mb-2">Front (Obverse)</h4>
+                  {item.photo ? (
+                    <div className="relative">
+                      <img 
+                        src={`data:image/jpeg;base64,${item.photo}`} 
+                        className="w-full h-48 object-contain bg-gray-100 rounded-lg"
+                      />
+                      <button
+                        onClick={() => removePhoto('front')}
+                        className="absolute top-2 right-2 bg-red-500 text-white px-3 py-1 rounded text-sm"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => photoCameraRef.current?.click()}
+                        className="flex-1 border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center text-gray-500 hover:border-teal-400 hover:text-teal-500"
+                      >
+                        <Camera size={24} />
+                        <span className="text-sm mt-1">Camera</span>
+                      </button>
+                      <button
+                        onClick={() => photoGalleryRef.current?.click()}
+                        className="flex-1 border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center text-gray-500 hover:border-teal-400 hover:text-teal-500"
+                      >
+                        <Upload size={24} />
+                        <span className="text-sm mt-1">Gallery</span>
+                      </button>
+                    </div>
+                  )}
+                  <input type="file" accept="image/*" capture="environment" ref={photoCameraRef} onChange={handlePhotoCapture('front')} className="hidden" />
+                  <input type="file" accept="image/*" ref={photoGalleryRef} onChange={handlePhotoCapture('front')} className="hidden" />
+                </div>
+                
+                {/* Back Photo */}
+                <div>
+                  <h4 className="font-medium text-gray-700 mb-2">Back (Reverse)</h4>
+                  {item.photoBack ? (
+                    <div className="relative">
+                      <img 
+                        src={`data:image/jpeg;base64,${item.photoBack}`} 
+                        className="w-full h-48 object-contain bg-gray-100 rounded-lg"
+                      />
+                      <button
+                        onClick={() => removePhoto('back')}
+                        className="absolute top-2 right-2 bg-red-500 text-white px-3 py-1 rounded text-sm"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => backPhotoCameraRef.current?.click()}
+                        className="flex-1 border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center text-gray-500 hover:border-teal-400 hover:text-teal-500"
+                      >
+                        <Camera size={24} />
+                        <span className="text-sm mt-1">Camera</span>
+                      </button>
+                      <button
+                        onClick={() => backPhotoGalleryRef.current?.click()}
+                        className="flex-1 border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center text-gray-500 hover:border-teal-400 hover:text-teal-500"
+                      >
+                        <Upload size={24} />
+                        <span className="text-sm mt-1">Gallery</span>
+                      </button>
+                    </div>
+                  )}
+                  <input type="file" accept="image/*" capture="environment" ref={backPhotoCameraRef} onChange={handlePhotoCapture('back')} className="hidden" />
+                  <input type="file" accept="image/*" ref={backPhotoGalleryRef} onChange={handlePhotoCapture('back')} className="hidden" />
+                </div>
+                
+                <button
+                  onClick={() => setShowPhotoManager(false)}
+                  className="w-full bg-teal-600 text-white py-3 rounded-lg font-medium"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         
         {/* eBay Listed Badge */}
         {item.ebayListingId && (
@@ -9043,6 +9256,7 @@ export default function SESInventoryApp() {
           notes: sessionData.notes ? `Session: ${sessionData.notes}` : '',
           lotId: lotId,
           photo: item.photo,
+          photoBack: item.photoBack,
           grade: item.grade,
           year: item.year,
           mint: item.mint
