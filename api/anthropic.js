@@ -33,7 +33,7 @@ export default async function handler(req, res) {
     console.log('Calling Anthropic API with', messages.length, 'messages');
     
     const requestBody = {
-      model: 'claude-3-sonnet-20240229',
+      model: 'claude-sonnet-4-20250514',
       max_tokens,
       system: system || 'You are a helpful assistant for a precious metals dealer.',
       messages
