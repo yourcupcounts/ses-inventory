@@ -3122,6 +3122,69 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                     )}
                   </div>
                   
+                  {/* eBay Price Lookup Button */}
+                  {evaluatingItem.ebayResults ? (
+                    <div className="bg-blue-900 border border-blue-700 rounded-lg p-3 mb-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-blue-300 text-sm font-medium">eBay Sold ({evaluatingItem.ebayResults.count} listings)</span>
+                        <button 
+                          onClick={() => setEvaluatingItem({ ...evaluatingItem, ebayResults: null })}
+                          className="text-blue-400 text-xs"
+                        >
+                          Hide
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div>
+                          <div className="text-gray-400 text-xs">Low</div>
+                          <div className="text-white font-medium">${evaluatingItem.ebayResults.lowPrice}</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-400 text-xs">Avg</div>
+                          <div className="text-green-400 font-bold">${evaluatingItem.ebayResults.avgPrice}</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-400 text-xs">High</div>
+                          <div className="text-white font-medium">${evaluatingItem.ebayResults.highPrice}</div>
+                        </div>
+                      </div>
+                      {evaluatingItem.ebayResults.items?.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-blue-700">
+                          <div className="text-xs text-gray-400 mb-1">Recent sales:</div>
+                          <div className="max-h-24 overflow-y-auto space-y-1">
+                            {evaluatingItem.ebayResults.items.slice(0, 5).map((item, idx) => (
+                              <div key={idx} className="flex justify-between text-xs">
+                                <span className="text-gray-300 truncate flex-1 mr-2">{item.title?.slice(0, 40)}...</span>
+                                <span className="text-green-400 font-medium">${item.price}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={async () => {
+                        const query = `${evaluatingItem.description} ${evaluatingItem.year || ''} ${evaluatingItem.grade || ''}`.trim();
+                        setEvaluatingItem({ ...evaluatingItem, ebayLoading: true });
+                        const results = await EbayListingService.searchSoldListings(query);
+                        setEvaluatingItem({ ...evaluatingItem, ebayResults: results, ebayLoading: false });
+                      }}
+                      disabled={evaluatingItem.ebayLoading}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg mb-4 flex items-center justify-center gap-2 text-sm"
+                    >
+                      {evaluatingItem.ebayLoading ? (
+                        <>
+                          <Loader size={16} className="animate-spin" /> Searching eBay...
+                        </>
+                      ) : (
+                        <>
+                          <Search size={16} /> Check eBay Sold Prices
+                        </>
+                      )}
+                    </button>
+                  )}
+                  
                   {/* Quantity Selector */}
                   <div className="flex items-center justify-center gap-4 mb-4">
                     <span className="text-gray-400">Quantity:</span>
@@ -5665,6 +5728,148 @@ function TaxReportView({ inventory, onBack }) {
   );
 }
 
+// eBay Listings Management View
+function EbayListingsView({ inventory, onBack, onSelectItem, onListItem }) {
+  const [activeTab, setActiveTab] = useState('unlisted'); // 'listed' or 'unlisted'
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  const listedItems = inventory.filter(i => i.ebayListingId);
+  const unlistedItems = inventory.filter(i => i.status === 'Available' && !i.ebayListingId);
+  
+  const displayItems = activeTab === 'listed' ? listedItems : unlistedItems;
+  const filteredItems = displayItems.filter(item => 
+    item.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.id?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+  
+  return (
+    <div className="min-h-screen bg-gray-100">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4">
+        <div className="flex items-center justify-between mb-3">
+          <button onClick={onBack} className="flex items-center gap-1">
+            ← Back
+          </button>
+          <h1 className="text-xl font-bold flex items-center gap-2">
+            <ExternalLink size={24} /> eBay Listings
+          </h1>
+          <div className="w-16"></div>
+        </div>
+        
+        {/* Stats */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-blue-500 bg-opacity-50 p-3 rounded-lg text-center">
+            <div className="text-2xl font-bold">{listedItems.length}</div>
+            <div className="text-blue-200 text-sm">Listed on eBay</div>
+          </div>
+          <div className="bg-blue-500 bg-opacity-50 p-3 rounded-lg text-center">
+            <div className="text-2xl font-bold">{unlistedItems.length}</div>
+            <div className="text-blue-200 text-sm">Ready to List</div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Tabs */}
+      <div className="flex border-b bg-white">
+        <button
+          onClick={() => setActiveTab('unlisted')}
+          className={`flex-1 py-3 text-center font-medium ${
+            activeTab === 'unlisted' 
+              ? 'text-blue-600 border-b-2 border-blue-600' 
+              : 'text-gray-500'
+          }`}
+        >
+          Not Listed ({unlistedItems.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('listed')}
+          className={`flex-1 py-3 text-center font-medium ${
+            activeTab === 'listed' 
+              ? 'text-blue-600 border-b-2 border-blue-600' 
+              : 'text-gray-500'
+          }`}
+        >
+          Listed ({listedItems.length})
+        </button>
+      </div>
+      
+      {/* Search */}
+      <div className="p-3 bg-white border-b">
+        <div className="relative">
+          <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search items..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border rounded-lg"
+          />
+        </div>
+      </div>
+      
+      {/* Items List */}
+      <div className="p-3 space-y-2">
+        {filteredItems.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            {activeTab === 'listed' 
+              ? 'No items listed on eBay yet' 
+              : 'All items have been listed!'}
+          </div>
+        ) : (
+          filteredItems.map(item => (
+            <div 
+              key={item.id} 
+              className="bg-white rounded-lg shadow p-3 flex items-center gap-3"
+            >
+              {/* Thumbnail */}
+              {item.photo ? (
+                <img 
+                  src={`data:image/jpeg;base64,${item.photo}`} 
+                  className="w-16 h-16 object-cover rounded"
+                  alt={item.description}
+                />
+              ) : (
+                <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center">
+                  <Package size={24} className="text-gray-400" />
+                </div>
+              )}
+              
+              {/* Details */}
+              <div className="flex-1 min-w-0">
+                <div className="font-medium truncate">{item.description}</div>
+                <div className="text-sm text-gray-500">{item.id}</div>
+                {item.ebayListingId && (
+                  <a 
+                    href={item.ebayUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-xs text-blue-600 flex items-center gap-1"
+                  >
+                    <ExternalLink size={12} /> #{item.ebayListingId}
+                  </a>
+                )}
+              </div>
+              
+              {/* Price & Action */}
+              <div className="text-right">
+                <div className="font-bold text-amber-700">${item.meltValue}</div>
+                {!item.ebayListingId && (
+                  <button
+                    onClick={() => onListItem(item)}
+                    className="mt-1 text-xs bg-blue-600 text-white px-3 py-1 rounded"
+                  >
+                    List
+                  </button>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AddItemView({ onSave, onCancel, calculateMelt, clients }) {
   const [form, setForm] = useState({ 
     description: '', category: 'Silver - Sterling', metalType: 'Silver', purity: '925', 
@@ -6252,6 +6457,7 @@ export default function SESInventoryApp() {
   if (view === 'spotValue') return <SpotValueView inventory={inventory} onBack={() => setView('list')} />;
   if (view === 'dashboard') return <DashboardView inventory={inventory} onBack={() => setView('list')} />;
   if (view === 'tax') return <TaxReportView inventory={inventory} onBack={() => setView('list')} />;
+  if (view === 'ebayListings') return <EbayListingsView inventory={inventory} onBack={() => setView('list')} onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }} onListItem={(item) => { setSelectedItem(item); setView('ebayListing'); }} />;
   if (view === 'add') return <AddItemView clients={clients} onSave={(item) => { setInventory([...inventory, { ...item, id: getNextId('SES') }]); setView('list'); }} onCancel={() => setView('list')} calculateMelt={calculateMelt} />;
   if (view === 'detail' && selectedItem) return <DetailView item={selectedItem} clients={clients} onUpdate={(u) => { setInventory(inventory.map(i => i.id === u.id ? u : i)); setSelectedItem(u); }} onDelete={() => { setInventory(inventory.filter(i => i.id !== selectedItem.id)); setView('list'); }} onBack={() => { setView('list'); setSelectedItem(null); }} onListOnEbay={() => setView('ebayListing')} />;
   if (view === 'ebayListing' && selectedItem) return <EbayListingView item={selectedItem} onBack={() => setView('detail')} onListingCreated={(listing) => { setInventory(inventory.map(i => i.id === selectedItem.id ? { ...i, ebayListingId: listing.listingId, ebayUrl: listing.ebayUrl, status: 'Listed' } : i)); setSelectedItem({ ...selectedItem, ebayListingId: listing.listingId, ebayUrl: listing.ebayUrl, status: 'Listed' }); setView('detail'); }} />;
@@ -6345,6 +6551,27 @@ export default function SESInventoryApp() {
           <DollarSign size={18} /> 
           <span>Spot Value: <span className="font-bold">${Object.values(calculateSpotValues(inventory, spotPrices)).reduce((s, m) => s + m.spotValue, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span></span>
         </button>
+      </div>
+      
+      {/* eBay Listings Button */}
+      <div className="px-4 pt-2">
+        {(() => {
+          const listedItems = inventory.filter(i => i.ebayListingId);
+          const unlistedItems = inventory.filter(i => i.status === 'Available' && !i.ebayListingId);
+          return (
+            <button 
+              onClick={() => setView('ebayListings')} 
+              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-3 rounded-lg shadow flex items-center justify-center gap-4"
+            >
+              <ExternalLink size={18} />
+              <div className="flex items-center gap-4">
+                <div><span className="font-bold">{listedItems.length}</span> Listed</div>
+                <div className="text-blue-200">|</div>
+                <div><span className="font-bold">{unlistedItems.length}</span> Not Listed</div>
+              </div>
+            </button>
+          );
+        })()}
       </div>
       
       <div className="px-4 pt-3 grid grid-cols-3 gap-2">
