@@ -29,7 +29,7 @@ export default async function handler(req, res) {
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
+          'Content-Type': 'application/json'
         }
       }
     );
@@ -45,7 +45,7 @@ export default async function handler(req, res) {
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
+          'Content-Type': 'application/json'
         }
       }
     );
@@ -61,7 +61,7 @@ export default async function handler(req, res) {
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
+          'Content-Type': 'application/json'
         }
       }
     );
@@ -84,7 +84,7 @@ export default async function handler(req, res) {
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
+          'Content-Type': 'application/json'
         }
       }
     );
@@ -101,6 +101,31 @@ export default async function handler(req, res) {
       offersError = await offersResponse.json().catch(() => ({ error: 'Unknown error' }));
     }
     
+    // Try fulfillment API to see recent orders
+    const fulfillmentResponse = await fetch(
+      'https://api.ebay.com/sell/fulfillment/v1/order?limit=5',
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    let fulfillmentInfo = null;
+    if (fulfillmentResponse.ok) {
+      const fulData = await fulfillmentResponse.json();
+      fulfillmentInfo = {
+        total: fulData.total || fulData.orders?.length || 0,
+        hasOrders: (fulData.orders?.length || 0) > 0,
+        recentOrders: fulData.orders?.slice(0, 3).map(o => ({
+          orderId: o.orderId,
+          date: o.creationDate,
+          total: o.pricingSummary?.total?.value
+        }))
+      };
+    }
+    
     res.status(200).json({
       connected: true,
       tokenValid: true,
@@ -115,11 +140,13 @@ export default async function handler(req, res) {
       inventoryError,
       offers: offersInfo,
       offersError,
+      fulfillment: fulfillmentInfo,
       debug: {
         userStatus: userResponse.status,
         accountStatus: accountResponse.status,
         inventoryStatus: inventoryResponse.status,
-        offersStatus: offersResponse.status
+        offersStatus: offersResponse.status,
+        fulfillmentStatus: fulfillmentResponse.status
       }
     });
     

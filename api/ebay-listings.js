@@ -27,8 +27,7 @@ export default async function handler(req, res) {
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Content-Type': 'application/json'
         }
       }
     );
@@ -45,23 +44,23 @@ export default async function handler(req, res) {
         });
       }
       
-      return res.status(inventoryResponse.status).json({ 
-        error: 'Failed to fetch inventory',
-        details: errorData
-      });
+      // If inventory API fails, try the Browse API to get active listings
+      // Or fall back to returning empty
+      console.log('Inventory API failed:', inventoryResponse.status, errorData);
     }
     
-    const inventoryData = await inventoryResponse.json();
+    let inventoryData = { inventoryItems: [] };
+    if (inventoryResponse.ok) {
+      inventoryData = await inventoryResponse.json();
+    }
     
-    // Also get active listings via Trading API alternative - use Browse API for seller's items
-    // Or use getOffers to see what's actually listed
+    // Also get active listings via offers
     const offersResponse = await fetch(
       'https://api.ebay.com/sell/inventory/v1/offer?limit=100',
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Content-Type': 'application/json'
         }
       }
     );
@@ -69,6 +68,26 @@ export default async function handler(req, res) {
     let offersData = { offers: [] };
     if (offersResponse.ok) {
       offersData = await offersResponse.json();
+    }
+    
+    // If both inventory APIs fail, try the Trading API via Fulfillment
+    // Get active orders which indicates what's been listed/sold
+    let activeListings = [];
+    
+    // Try to get active listings via the Browse API (seller's view)
+    const fulfillmentResponse = await fetch(
+      'https://api.ebay.com/sell/fulfillment/v1/order?limit=50',
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    let fulfillmentData = { orders: [] };
+    if (fulfillmentResponse.ok) {
+      fulfillmentData = await fulfillmentResponse.json();
     }
     
     // Combine and format the data
@@ -123,34 +142,33 @@ export default async function handler(req, res) {
       }
     }
     
-    // If no inventory items found, try the Sell Feed API or Trading API as fallback
-    // For now, also try to get selling summary
-    let sellingSummary = null;
-    try {
-      const summaryResponse = await fetch(
-        'https://api.ebay.com/sell/analytics/v1/seller_standards_profile?marketplace_id=EBAY_US',
-        {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Accept': 'application/json'
-          }
-        }
-      );
-      if (summaryResponse.ok) {
-        sellingSummary = await summaryResponse.json();
-      }
-    } catch (e) {
-      // Analytics optional
-    }
+    // Add info from fulfillment/orders
+    const recentOrders = fulfillmentData.orders?.slice(0, 10).map(order => ({
+      orderId: order.orderId,
+      creationDate: order.creationDate,
+      orderTotal: order.pricingSummary?.total?.value,
+      items: order.lineItems?.map(li => ({
+        title: li.title,
+        sku: li.sku,
+        quantity: li.quantity,
+        price: li.lineItemCost?.value
+      }))
+    })) || [];
     
     res.status(200).json({
       success: true,
       totalListings: listings.length,
       listings,
-      sellingSummary,
+      recentOrders,
       raw: {
         inventoryCount: inventoryData.inventoryItems?.length || 0,
-        offersCount: offersData.offers?.length || 0
+        offersCount: offersData.offers?.length || 0,
+        ordersCount: fulfillmentData.orders?.length || 0
+      },
+      apiStatus: {
+        inventory: inventoryResponse.status,
+        offers: offersResponse.status,
+        fulfillment: fulfillmentResponse.status
       }
     });
     
