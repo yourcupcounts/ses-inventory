@@ -7485,10 +7485,22 @@ function EbayListingsView({ inventory, onBack, onSelectItem, onListItem }) {
 function AddItemView({ onSave, onCancel, calculateMelt, clients }) {
   const [form, setForm] = useState({ 
     description: '', category: 'Silver - Sterling', metalType: 'Silver', purity: '925', 
-    weightOz: '', source: '', clientId: '', purchasePrice: '', meltValue: '', notes: '', 
+    weight: '', source: '', clientId: '', purchasePrice: '', meltValue: '', notes: '', 
     status: 'Available', dateAcquired: new Date().toISOString().split('T')[0],
-    photo: null, photoBack: null
+    photo: null, photoBack: null, year: '', mint: '', grade: ''
   });
+  const [weightUnit, setWeightUnit] = useState('g'); // 'g' for grams, 'oz' for troy ounces
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiError, setAiError] = useState(null);
+  
+  // Conversion: 1 troy oz = 31.1035 grams
+  const GRAMS_PER_OZ = 31.1035;
+  
+  // Get weight in oz for calculations
+  const getWeightInOz = () => {
+    const w = parseFloat(form.weight) || 0;
+    return weightUnit === 'g' ? w / GRAMS_PER_OZ : w;
+  };
   
   // Photo refs
   const frontCameraRef = useRef(null);
@@ -7498,21 +7510,115 @@ function AddItemView({ onSave, onCancel, calculateMelt, clients }) {
   
   const holdStatus = getHoldStatus(form);
   
-  const handlePhotoCapture = (side) => (e) => {
+  // AI Photo Analysis
+  const analyzePhotoWithAI = async (base64Image) => {
+    setIsAnalyzing(true);
+    setAiError(null);
+    
+    try {
+      const response = await fetch('/api/anthropic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: `You are an expert numismatist and precious metals appraiser. Analyze this image and identify the item.
+
+Return ONLY a valid JSON object (no markdown, no explanation) with these fields:
+{
+  "description": "Full description (e.g., '1921 Morgan Silver Dollar', '14K Gold Cuban Link Bracelet', '10oz Engelhard Silver Bar')",
+  "category": "One of: Coins - Silver, Coins - Gold, Silver - Sterling, Silver - Bullion, Gold - Jewelry, Gold - Bullion, Gold - Scrap, Platinum, Palladium, Other",
+  "metalType": "Gold, Silver, Platinum, Palladium, or Other",
+  "purity": "e.g., 999, 925, 14K, 10K, 18K, 90%",
+  "estimatedWeightOz": number or null (e.g., 0.7734 for Morgan dollar, 1.0 for 1oz round),
+  "year": "year if visible" or null,
+  "mint": "mint mark if visible (P, D, S, O, CC, W)" or null,
+  "grade": "estimated grade for coins (G, VG, F, VF, XF, AU, MS60-MS70)" or null,
+  "notes": "condition notes, identifying marks, or other details",
+  "confidence": "high, medium, or low"
+}
+
+Common weights to know:
+- Morgan/Peace Dollar: 0.7734 oz ASW
+- American Silver Eagle: 1.0 oz
+- Walking Liberty Half: 0.3617 oz ASW
+- Washington Quarter (pre-1965): 0.1808 oz ASW
+- Mercury/Roosevelt Dime (pre-1965): 0.0723 oz ASW
+- Gold Eagle 1oz: 1.0 oz, 1/2oz: 0.5 oz, 1/4oz: 0.25 oz, 1/10oz: 0.1 oz
+
+Return ONLY the JSON.`,
+          image: base64Image
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        let aiResult = data.response;
+        
+        // Clean up response
+        if (typeof aiResult === 'string') {
+          aiResult = aiResult.replace(/```json\n?|\n?```/g, '').trim();
+          aiResult = JSON.parse(aiResult);
+        }
+        
+        // Update form with AI results
+        setForm(prev => ({
+          ...prev,
+          description: aiResult.description || prev.description,
+          category: aiResult.category || prev.category,
+          metalType: aiResult.metalType || prev.metalType,
+          purity: aiResult.purity || prev.purity,
+          weight: aiResult.estimatedWeightOz ? (aiResult.estimatedWeightOz * GRAMS_PER_OZ).toFixed(2) : prev.weight,
+          year: aiResult.year || prev.year,
+          mint: aiResult.mint || prev.mint,
+          grade: aiResult.grade || prev.grade,
+          notes: aiResult.notes || prev.notes
+        }));
+        
+      } else {
+        setAiError('AI analysis failed - please fill in details manually');
+      }
+    } catch (err) {
+      console.error('AI analysis error:', err);
+      setAiError('Could not analyze image - please fill in details manually');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+  
+  const handlePhotoCapture = (side) => async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const base64 = event.target.result.split(',')[1];
       if (side === 'front') {
-        setForm({...form, photo: base64});
+        setForm(prev => ({...prev, photo: base64}));
+        // Auto-analyze the front photo
+        await analyzePhotoWithAI(base64);
       } else {
-        setForm({...form, photoBack: base64});
+        setForm(prev => ({...prev, photoBack: base64}));
       }
     };
     reader.readAsDataURL(file);
     e.target.value = '';
+  };
+  
+  // Handle unit change - convert the current value
+  const handleUnitChange = (newUnit) => {
+    if (newUnit === weightUnit) return;
+    const currentWeight = parseFloat(form.weight) || 0;
+    if (currentWeight > 0) {
+      let newWeight;
+      if (newUnit === 'g') {
+        // Converting from oz to g
+        newWeight = (currentWeight * GRAMS_PER_OZ).toFixed(2);
+      } else {
+        // Converting from g to oz
+        newWeight = (currentWeight / GRAMS_PER_OZ).toFixed(4);
+      }
+      setForm({...form, weight: newWeight});
+    }
+    setWeightUnit(newUnit);
   };
   
   return (
@@ -7521,13 +7627,28 @@ function AddItemView({ onSave, onCancel, calculateMelt, clients }) {
       <div className="p-4">
         <div className="bg-white rounded-lg shadow p-4 space-y-4">
           
+          {/* AI Analysis Status */}
+          {isAnalyzing && (
+            <div className="bg-teal-50 border border-teal-200 rounded-lg p-3 flex items-center gap-3">
+              <div className="w-5 h-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin"></div>
+              <span className="text-teal-700 font-medium">AI analyzing your photo...</span>
+            </div>
+          )}
+          
+          {aiError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">
+              {aiError}
+            </div>
+          )}
+          
           {/* Photo Section */}
           <div>
-            <label className="block text-sm font-medium mb-2">Photos</label>
+            <label className="block text-sm font-medium mb-1">Photos</label>
+            <p className="text-xs text-teal-600 mb-2">📸 Take a front photo to auto-identify with AI</p>
             <div className="grid grid-cols-2 gap-3">
               {/* Front Photo */}
               <div>
-                <div className="text-xs text-gray-500 mb-1">Front</div>
+                <div className="text-xs text-gray-500 mb-1">Front (AI analyzes this)</div>
                 {form.photo ? (
                   <div className="relative">
                     <img src={`data:image/jpeg;base64,${form.photo}`} className="w-full h-24 object-cover rounded-lg" />
@@ -7542,17 +7663,17 @@ function AddItemView({ onSave, onCancel, calculateMelt, clients }) {
                   <div className="flex gap-2">
                     <button 
                       onClick={() => frontCameraRef.current?.click()}
-                      className="flex-1 border-2 border-dashed border-gray-300 rounded-lg p-3 flex flex-col items-center text-gray-400 hover:border-teal-400 hover:text-teal-500"
+                      className="flex-1 border-2 border-dashed border-teal-300 bg-teal-50 rounded-lg p-3 flex flex-col items-center text-teal-600 hover:border-teal-400 hover:bg-teal-100"
                     >
                       <Camera size={20} />
-                      <span className="text-xs">Camera</span>
+                      <span className="text-xs font-medium">Camera</span>
                     </button>
                     <button 
                       onClick={() => frontGalleryRef.current?.click()}
-                      className="flex-1 border-2 border-dashed border-gray-300 rounded-lg p-3 flex flex-col items-center text-gray-400 hover:border-teal-400 hover:text-teal-500"
+                      className="flex-1 border-2 border-dashed border-teal-300 bg-teal-50 rounded-lg p-3 flex flex-col items-center text-teal-600 hover:border-teal-400 hover:bg-teal-100"
                     >
                       <Upload size={20} />
-                      <span className="text-xs">Gallery</span>
+                      <span className="text-xs font-medium">Gallery</span>
                     </button>
                   </div>
                 )}
@@ -7628,16 +7749,114 @@ function AddItemView({ onSave, onCancel, calculateMelt, clients }) {
           </div>
           
           <div className="grid grid-cols-2 gap-4">
-            <div><label className="block text-sm font-medium mb-1">Purity</label><input type="text" value={form.purity} onChange={(e) => setForm({...form, purity: e.target.value})} className="w-full border rounded p-2" /></div>
-            <div><label className="block text-sm font-medium mb-1">Weight (oz)</label><input type="number" step="0.001" value={form.weightOz} onChange={(e) => setForm({...form, weightOz: e.target.value})} className="w-full border rounded p-2" /></div>
+            <div><label className="block text-sm font-medium mb-1">Purity</label><input type="text" value={form.purity} onChange={(e) => setForm({...form, purity: e.target.value})} className="w-full border rounded p-2" placeholder="925, 999, 14K..." /></div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Weight</label>
+              <div className="flex gap-1">
+                <input 
+                  type="number" 
+                  step="0.01" 
+                  value={form.weight} 
+                  onChange={(e) => setForm({...form, weight: e.target.value})} 
+                  className="flex-1 border rounded-l p-2" 
+                  placeholder={weightUnit === 'g' ? 'grams' : 'troy oz'}
+                />
+                <div className="flex border rounded-r overflow-hidden">
+                  <button 
+                    onClick={() => handleUnitChange('g')}
+                    className={`px-2 py-2 text-sm font-medium transition-colors ${weightUnit === 'g' ? 'bg-amber-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                  >
+                    g
+                  </button>
+                  <button 
+                    onClick={() => handleUnitChange('oz')}
+                    className={`px-2 py-2 text-sm font-medium transition-colors ${weightUnit === 'oz' ? 'bg-amber-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                  >
+                    oz
+                  </button>
+                </div>
+              </div>
+              {form.weight && (
+                <div className="text-xs text-gray-500 mt-1">
+                  = {weightUnit === 'g' 
+                    ? `${getWeightInOz().toFixed(4)} troy oz` 
+                    : `${(parseFloat(form.weight) * GRAMS_PER_OZ).toFixed(2)} grams`}
+                </div>
+              )}
+            </div>
           </div>
+          
+          {/* Year/Mint/Grade for coins */}
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-sm font-medium mb-1">Year</label>
+              <input type="text" value={form.year || ''} onChange={(e) => setForm({...form, year: e.target.value})} className="w-full border rounded p-2" placeholder="1921" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Mint</label>
+              <select value={form.mint || ''} onChange={(e) => setForm({...form, mint: e.target.value})} className="w-full border rounded p-2 bg-white">
+                <option value="">-</option>
+                <option value="P">P (Philadelphia)</option>
+                <option value="D">D (Denver)</option>
+                <option value="S">S (San Francisco)</option>
+                <option value="O">O (New Orleans)</option>
+                <option value="CC">CC (Carson City)</option>
+                <option value="W">W (West Point)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Grade</label>
+              <select value={form.grade || ''} onChange={(e) => setForm({...form, grade: e.target.value})} className="w-full border rounded p-2 bg-white">
+                <option value="">-</option>
+                <option value="AG">AG (About Good)</option>
+                <option value="G">G (Good)</option>
+                <option value="VG">VG (Very Good)</option>
+                <option value="F">F (Fine)</option>
+                <option value="VF">VF (Very Fine)</option>
+                <option value="XF">XF (Extremely Fine)</option>
+                <option value="AU">AU (About Uncirculated)</option>
+                <option value="BU">BU (Brilliant Uncirculated)</option>
+                <option value="MS60">MS60</option>
+                <option value="MS63">MS63</option>
+                <option value="MS65">MS65</option>
+                <option value="MS67">MS67</option>
+                <option value="MS69">MS69</option>
+                <option value="MS70">MS70</option>
+              </select>
+            </div>
+          </div>
+          
           <div><label className="block text-sm font-medium mb-1">Source</label><input type="text" value={form.source} onChange={(e) => setForm({...form, source: e.target.value})} className="w-full border rounded p-2" /></div>
           <div className="grid grid-cols-2 gap-4">
             <div><label className="block text-sm font-medium mb-1">Purchase $</label><input type="number" value={form.purchasePrice} onChange={(e) => setForm({...form, purchasePrice: e.target.value})} className="w-full border rounded p-2" /></div>
-            <div><label className="block text-sm font-medium mb-1">Melt Value</label><div className="flex gap-2"><input type="number" value={form.meltValue} onChange={(e) => setForm({...form, meltValue: e.target.value})} className="flex-1 border rounded p-2" /><button onClick={() => setForm({...form, meltValue: calculateMelt(form.metalType, form.purity, form.weightOz)})} className="bg-amber-100 px-2 rounded text-amber-700 text-sm">Calc</button></div></div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Melt Value</label>
+              <div className="flex gap-2">
+                <input type="number" value={form.meltValue} onChange={(e) => setForm({...form, meltValue: e.target.value})} className="flex-1 border rounded p-2" />
+                <button onClick={() => setForm({...form, meltValue: calculateMelt(form.metalType, form.purity, getWeightInOz())})} className="bg-amber-100 px-2 rounded text-amber-700 text-sm">Calc</button>
+              </div>
+            </div>
           </div>
           <div><label className="block text-sm font-medium mb-1">Notes</label><textarea value={form.notes} onChange={(e) => setForm({...form, notes: e.target.value})} className="w-full border rounded p-2" rows={2} /></div>
-          <div className="flex gap-2 pt-2"><button onClick={onCancel} className="flex-1 border py-2 rounded">Cancel</button><button onClick={() => { if (form.description) onSave({ ...form, weightOz: parseFloat(form.weightOz) || 0, purchasePrice: parseFloat(form.purchasePrice) || 0, meltValue: parseFloat(form.meltValue || calculateMelt(form.metalType, form.purity, form.weightOz)) || 0 }); }} className="flex-1 bg-amber-600 text-white py-2 rounded">Save</button></div>
+          <div className="flex gap-2 pt-2">
+            <button onClick={onCancel} className="flex-1 border py-2 rounded">Cancel</button>
+            <button 
+              onClick={() => { 
+                if (form.description) {
+                  const weightInOz = getWeightInOz();
+                  onSave({ 
+                    ...form, 
+                    weightOz: weightInOz, 
+                    purchasePrice: parseFloat(form.purchasePrice) || 0, 
+                    meltValue: parseFloat(form.meltValue || calculateMelt(form.metalType, form.purity, weightInOz)) || 0 
+                  }); 
+                }
+              }} 
+              className="flex-1 bg-amber-600 text-white py-2 rounded"
+            >
+              Save
+            </button>
+          </div>
         </div>
       </div>
     </div>
