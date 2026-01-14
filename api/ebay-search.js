@@ -1,20 +1,23 @@
 // Vercel serverless function to proxy eBay API requests (avoids CORS)
 
-const EBAY_CONFIG = {
-  appId: "SethStev-SESInven-PRD-9b467ee89-f21e0627",
-  certId: "PRD-b467ee899249-ec3d-43db-89b3-cd88",
-};
+// Use environment variables for credentials
+const EBAY_APP_ID = process.env.EBAY_APP_ID;
+const EBAY_CERT_ID = process.env.EBAY_CERT_ID;
 
 let cachedToken = null;
 let tokenExpiry = null;
 
 // Get OAuth token for Browse API
 async function getAccessToken() {
+  if (!EBAY_APP_ID || !EBAY_CERT_ID) {
+    throw new Error('eBay credentials not configured');
+  }
+  
   if (cachedToken && tokenExpiry && new Date() < tokenExpiry) {
     return cachedToken;
   }
 
-  const credentials = Buffer.from(`${EBAY_CONFIG.appId}:${EBAY_CONFIG.certId}`).toString('base64');
+  const credentials = Buffer.from(`${EBAY_APP_ID}:${EBAY_CERT_ID}`).toString('base64');
   
   const response = await fetch('https://api.ebay.com/identity/v1/oauth2/token', {
     method: 'POST',
@@ -59,12 +62,16 @@ function shortenUrl(url) {
 
 // Try Finding API for sold listings
 async function tryFindingApi(query, limit) {
+  if (!EBAY_APP_ID) {
+    throw new Error('eBay App ID not configured');
+  }
+  
   const findingApiUrl = 'https://svcs.ebay.com/services/search/FindingService/v1';
   
   const params = new URLSearchParams({
     'OPERATION-NAME': 'findCompletedItems',
     'SERVICE-VERSION': '1.0.0',
-    'SECURITY-APPNAME': EBAY_CONFIG.appId,
+    'SECURITY-APPNAME': EBAY_APP_ID,
     'RESPONSE-DATA-FORMAT': 'JSON',
     'REST-PAYLOAD': '',
     'keywords': query,

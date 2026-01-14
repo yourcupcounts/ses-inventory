@@ -14,18 +14,9 @@ const CONFIG = {
     appId: "1:869784219152:web:9631095f78c8098e87e495"
   },
   
-  // Anthropic API Key for AI Vision (coin identification)
-  // Get from: https://console.anthropic.com/ → API Keys
-  anthropicApiKey: "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",
-  
-  // eBay API Credentials for market price lookups
-  // Get from: https://developer.ebay.com/ → My Account → Application Keys
-  ebay: {
-    appId: "SethStev-SESInven-PRD-9b467ee89-f21e0627",
-    certId: "PRD-b467ee899249-ec3d-43db-89b3-cd88",
-    devId: "9188052b-0446-44ab-83a1-e529fc600d4f",
-    userToken: "v^1.1#i^1#p^1#f^0#I^3#r^0#t^H4sIAAAAAAAA/+VYe2wURRjvtddqhaKJKAahHttqAnp7u3t7r7V38eiDXumLXouFAGVud67ddm93szPX3rWB1MYiaNSAiQnykEQNCMSQKGhAkID4QKNRMWqiYoiKT+I/CLEanL1ey7USQHrEJt4/l/3mm2++32++x8ww/QWF89ZUrzlXZLkhd1s/059rsbBTmMKC/Hun5eXOzM9hMhQs2/pL+60DeT+UIRBTdKEJIl1TEbQlYoqKhJTQT8UNVdAAkpGgghhEAhaFcLCuVuBoRtANDWuiplC2UIWfYj2cl496RejhfNDN8USqjths1vwUD3ifj3NCIHmiHg8nkXGE4jCkIgxU7Kc4hnPbGdbO8s2sS+BdAuuivZx3KWVbDA0kaypRoRkqkHJXSM01Mny9vKsAIWhgYoQKhIJV4YZgqKKyvrnMkWErkOYhjAGOo7Ff5ZoEbYuBEoeXXwaltIVwXBQhQpQjMLzCWKNCcMSZa3A/RbXbw/tEiYvwXg8juaRoVqis0owYwJf3w5TIkj2aUhWgimWcvBKjhI1IJxRx+quemAhV2My/RXGgyFEZGn6qcn5wSbCxkQqEIe4IY9htD1eGQ2o3VO2NTRV2X4R3eyD0+uxRjoWMm/OkFxq2lqZ53ErlmirJJmnIVq/h+ZB4Dcdz48zghig1qA1GMIpNjzL1PCMcMkTPMbKLcdyhmvsKY4QIW+rzyjswOhtjQ47EMRy1MH4gRZGfArouS9T4wVQspsMngfxUB8a64HD09PTQPU5aM9odHMOwjta62rDYAWOAIrpmrg/ry1eeYJdTUERIZiJZwEmd+JIgsUocUNupgMvlZH18mvexbgXGS/8hyMDsGJsR2coQnveyPOv0uCQnFxHFrBSbQDpIHaYfMAKS9hgwuiDWFSBCu0jiLB6DhiyRoIpyTm8U2iW3L2rnfdGoPeKS3HY2CiEDYSQi+rz/p0S52lAPQ9GAOCuxnrU474jz3WKXUrXQ61rYLutiQpdRMiHVOctrPCobbKlsTyzkFrRUuzvr/FebDZcEX67IhJlmsn42CDBzPXskVGsIQ2lC8MKipsNGTZHF5OTaYKchNQIDJ8NQUYhgQiCDuh7KTq3OGrx/WSauDXf2etR/1J8uiQqZITu5UJnzETEAdJk2OxAtajGHmesaIMcPU9yW8tp2ScVxSg4iIw1LhDTpS1IEiF20QU7nmqokJ8SbTE6+k4o1gnOYBFkaPrLSKSZo1C0SxEiLEw4Q3WCe4Jq1LqiSfogNTVGgsZidcD2IxeIYRBQ42QpDFhJEBpOsWbMet5dnXC7WNSFcYqoVt022kmaWcuuABVz3ct4EgRKbXNh1Q5PionlGvQ5XDsfYB5BATurHDliOMAOWQ7kWC1PG3M2WMHMK8lqseVNnIhlDWgZRGsntKrnXG5DugkkdyEburTnHP/2ivvhAzY51387oHyx1bMiZlvH+sm05c8foC0xhHjsl4zmGmXVxJJ+9eUYR52ZYcolx8SSelzIlF0et7O3W6Zvn7dv/1f5Xf+xbvgaVbn+TOrvixmamaFTJYsnPIcGSUzxn7c77vLvODx54CbiPBh4a+vzkL30bi6vhu6+V3c9t/nXnh+8/Z/3mgxf5A2/X1G7S1x/Z/hHItYZ3ND25cubHbcfubC357XyOKry3aO3J5FmwtynWV3voxNwXkutvWX0uVv7sT4+ceN2xu3gX3fry7IOzZg31nl42feqq1VXOnvP7B4/7zvhmP/j4ytu47090KUOW7x449lfNU4ePFu1peBRu2npqcOOZuQOtr+zYvWTZE+uWfXkhvuGNdzotob4LP/fuDXU+tqXwngVfb1mRXHUw0YK6ep9f6nkmcHrrqd8LrHcd2XN4bk3nvtXW9sP9T+9p2/Vn6dBNvW8NfTLw8NBnW3HtH0kX09Rz8ELdHGl4L/8G509FfRkTAAA=",
-  },
+  // API Keys are now stored securely in Vercel environment variables
+  // See: https://vercel.com/s-stevens-projects/ses-inventory/settings/environment-variables
+  // Required env vars: ANTHROPIC_API_KEY, EBAY_APP_ID, EBAY_CERT_ID
   
   // Spot Price API (Metals.live is free, no key needed)
   // Alternative: GoldAPI.io - get key from https://www.goldapi.io/
@@ -311,24 +302,23 @@ const SpotPriceService = {
 
 // ============ AI VISION SERVICE (Anthropic Claude) ============
 const AIVisionService = {
-  // Analyze coin/metal image using Claude Vision
+  // Analyze coin/metal image using Claude Vision via secure proxy
   async analyzeImage(base64Image) {
-    if (!CONFIG.features.useAiVision || CONFIG.anthropicApiKey === "YOUR_ANTHROPIC_API_KEY") {
-      console.log('AI Vision not configured - returning mock data');
+    if (!CONFIG.features.useAiVision) {
+      console.log('AI Vision disabled - returning mock data');
       return this.getMockAnalysis();
     }
     
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      // Use server-side proxy to keep API key secure
+      const response = await fetch('/api/anthropic', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': CONFIG.anthropicApiKey,
-          'anthropic-version': '2023-06-01'
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
           max_tokens: 1024,
+          system: 'You are an expert numismatist and precious metals appraiser. Analyze images of coins and precious metal items accurately.',
           messages: [{
             role: 'user',
             content: [
@@ -366,6 +356,8 @@ If this is jewelry or scrap, set coinKey to null and describe the item.`
       });
       
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('AI Vision proxy error:', errorText);
         throw new Error(`API error: ${response.status}`);
       }
       
