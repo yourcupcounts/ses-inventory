@@ -818,6 +818,7 @@ const EbayPricingService = {
       
       // Map to expected format for compatibility
       return {
+        source: 'sold', // Mark as sold listings data
         count: data.stats?.count || 0,
         avgPrice: data.stats?.avgPrice || 0,
         medianPrice: data.stats?.medianPrice || 0,
