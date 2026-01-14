@@ -751,114 +751,26 @@ const EbayListingService = {
 
 // ============ EBAY PRICING SERVICE ============
 const EbayPricingService = {
-  accessToken: null,
-  tokenExpiry: null,
-  
-  // Get OAuth access token
-  async getAccessToken() {
-    if (!CONFIG.features.useEbayPricing) return null;
-    if (CONFIG.ebay.appId === "YOUR_EBAY_APP_ID") {
-      console.log('eBay API not configured');
-      return null;
-    }
-    
-    // Return cached token if still valid
-    if (this.accessToken && this.tokenExpiry && new Date() < this.tokenExpiry) {
-      return this.accessToken;
-    }
-    
-    try {
-      const credentials = btoa(`${CONFIG.ebay.appId}:${CONFIG.ebay.certId}`);
-      const response = await fetch('https://api.ebay.com/identity/v1/oauth2/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Authorization': `Basic ${credentials}`
-        },
-        body: 'grant_type=client_credentials&scope=https://api.ebay.com/oauth/api_scope'
-      });
-      
-      if (!response.ok) throw new Error('Token request failed');
-      
-      const data = await response.json();
-      this.accessToken = data.access_token;
-      this.tokenExpiry = new Date(Date.now() + (data.expires_in * 1000) - 60000); // Refresh 1 min early
-      return this.accessToken;
-    } catch (error) {
-      console.error('eBay token error:', error);
-      return null;
-    }
-  },
-  
-  // Search for sold listings
+  // Search for sold listings via Vercel API proxy (avoids CORS)
   async searchSoldListings(query, limit = 10) {
-    const token = await this.getAccessToken();
-    if (!token) return null;
-    
     try {
-      // Calculate date range (last 90 days)
-      const endDate = new Date().toISOString();
-      const startDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-      
       const params = new URLSearchParams({
-        q: query,
-        filter: `buyingOptions:{FIXED_PRICE|AUCTION},priceCurrency:USD`,
-        sort: 'endDate',
+        query: query,
         limit: limit.toString()
       });
       
-      const response = await fetch(
-        `https://api.ebay.com/buy/browse/v1/item_summary/search?${params}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
-            'Content-Type': 'application/json'
-          }
-        }
-      );
+      const response = await fetch(`/api/ebay-search?${params}`);
       
-      if (!response.ok) throw new Error('Search request failed');
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Search failed');
+      }
       
-      const data = await response.json();
-      return this.parseSearchResults(data);
+      return await response.json();
     } catch (error) {
       console.error('eBay search error:', error);
       return null;
     }
-  },
-  
-  // Parse and analyze search results
-  parseSearchResults(data) {
-    if (!data.itemSummaries || data.itemSummaries.length === 0) {
-      return { items: [], avgPrice: 0, lowPrice: 0, highPrice: 0, count: 0 };
-    }
-    
-    const prices = data.itemSummaries
-      .map(item => parseFloat(item.price?.value || 0))
-      .filter(price => price > 0);
-    
-    if (prices.length === 0) {
-      return { items: data.itemSummaries, avgPrice: 0, lowPrice: 0, highPrice: 0, count: 0 };
-    }
-    
-    const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
-    const lowPrice = Math.min(...prices);
-    const highPrice = Math.max(...prices);
-    
-    return {
-      items: data.itemSummaries.map(item => ({
-        title: item.title,
-        price: parseFloat(item.price?.value || 0),
-        condition: item.condition,
-        imageUrl: item.image?.imageUrl,
-        itemUrl: item.itemWebUrl
-      })),
-      avgPrice: Math.round(avgPrice * 100) / 100,
-      lowPrice: Math.round(lowPrice * 100) / 100,
-      highPrice: Math.round(highPrice * 100) / 100,
-      count: prices.length
-    };
   },
   
   // Get market price for a specific coin
