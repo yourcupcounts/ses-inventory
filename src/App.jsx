@@ -7492,6 +7492,7 @@ function AddItemView({ onSave, onCancel, calculateMelt, clients }) {
   const [weightUnit, setWeightUnit] = useState('g'); // 'g' for grams, 'oz' for troy ounces
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiError, setAiError] = useState(null);
+  const [captureStep, setCaptureStep] = useState('idle'); // idle, front, back, done
   
   // Conversion: 1 troy oz = 31.1035 grams
   const GRAMS_PER_OZ = 31.1035;
@@ -7503,64 +7504,91 @@ function AddItemView({ onSave, onCancel, calculateMelt, clients }) {
   };
   
   // Photo refs
-  const frontCameraRef = useRef(null);
-  const frontGalleryRef = useRef(null);
-  const backCameraRef = useRef(null);
-  const backGalleryRef = useRef(null);
+  const cameraRef = useRef(null);
+  const galleryRef = useRef(null);
   
   const holdStatus = getHoldStatus(form);
   
-  // AI Photo Analysis
-  const analyzePhotoWithAI = async (base64Image) => {
+  // AI Photo Analysis - analyzes both photos together
+  const analyzePhotosWithAI = async (frontBase64, backBase64) => {
     setIsAnalyzing(true);
     setAiError(null);
     
     try {
-      const response = await fetch('/api/anthropic', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          max_tokens: 1024,
-          system: `You are an expert numismatist and precious metals appraiser. Analyze images and identify precious metal items accurately.`,
-          messages: [{
-            role: 'user',
-            content: [
-              {
-                type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: 'image/jpeg',
-                  data: base64Image
-                }
-              },
-              {
-                type: 'text',
-                text: `Analyze this image and identify the precious metal item.
+      // Build content array with both images
+      const content = [
+        {
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: 'image/jpeg',
+            data: frontBase64
+          }
+        }
+      ];
+      
+      // Add back photo if provided
+      if (backBase64) {
+        content.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: 'image/jpeg',
+            data: backBase64
+          }
+        });
+      }
+      
+      content.push({
+        type: 'text',
+        text: `Analyze ${backBase64 ? 'these two images (front and back)' : 'this image'} and identify the precious metal item.
+
+IMPORTANT: For coins, use BOTH sides to determine:
+- Year (usually on obverse/front)
+- Mint mark (location varies - could be on obverse or reverse)
+- Type identification (design elements on both sides)
 
 Return ONLY a valid JSON object (no markdown, no explanation) with these fields:
 {
-  "description": "Full description (e.g., '1921 Morgan Silver Dollar', '14K Gold Cuban Link Bracelet', '10oz Engelhard Silver Bar')",
+  "description": "Full description (e.g., '1921-D Morgan Silver Dollar', '14K Gold Cuban Link Bracelet')",
   "category": "One of: Coins - Silver, Coins - Gold, Silver - Sterling, Silver - Bullion, Gold - Jewelry, Gold - Bullion, Gold - Scrap, Platinum, Palladium, Other",
   "metalType": "Gold, Silver, Platinum, Palladium, or Other",
   "purity": "e.g., 999, 925, 14K, 10K, 18K, 90%",
-  "estimatedWeightOz": number or null (e.g., 0.7734 for Morgan dollar, 1.0 for 1oz round, 0.1808 for Washington quarter),
-  "year": "year if visible" or null,
-  "mint": "mint mark if visible (P, D, S, O, CC, W)" or null,
-  "grade": "estimated grade for coins (G, VG, F, VF, XF, AU, BU, MS60-MS70)" or null,
+  "estimatedWeightOz": number or null,
+  "year": "year if visible on either side" or null,
+  "mint": "mint mark if visible on either side (P, D, S, O, CC, W)" or null,
+  "grade": "estimated grade (G, VG, F, VF, XF, AU, BU, MS60-MS70)" or null,
   "notes": "condition notes, identifying marks, or other details",
   "confidence": "high, medium, or low"
 }
 
 Common silver coin weights (90% silver, ASW = Actual Silver Weight):
 - Morgan/Peace Dollar: 0.7734 oz ASW
-- Walking Liberty/Franklin/Kennedy Half (pre-1971): 0.3617 oz ASW
+- Walking Liberty/Franklin/Kennedy Half (pre-1971): 0.3617 oz ASW  
 - Washington Quarter (pre-1965): 0.1808 oz ASW
+- Standing Liberty Quarter: 0.1808 oz ASW
 - Roosevelt/Mercury Dime (pre-1965): 0.0723 oz ASW
 - American Silver Eagle: 1.0 oz (999 fine)
 
+Mint mark locations:
+- Morgan Dollar: Reverse, below wreath
+- Peace Dollar: Reverse, below ONE
+- Washington Quarter: Reverse (pre-1968) or Obverse (1968+)
+- Walking Liberty Half: Obverse, below IN GOD WE TRUST
+- Mercury Dime: Reverse, left of fasces
+
 Return ONLY the JSON object.`
-              }
-            ]
+      });
+      
+      const response = await fetch('/api/anthropic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          max_tokens: 1024,
+          system: `You are an expert numismatist and precious metals appraiser. Analyze coin images carefully, using BOTH sides when provided to accurately identify year, mint mark, and type.`,
+          messages: [{
+            role: 'user',
+            content: content
           }]
         })
       });
@@ -7605,19 +7633,43 @@ Return ONLY the JSON object.`
     }
   };
   
-  const handlePhotoCapture = (side) => async (e) => {
+  // Start the two-photo capture flow
+  const startPhotoCapture = (useCamera = true) => {
+    setCaptureStep('front');
+    if (useCamera) {
+      cameraRef.current?.click();
+    } else {
+      galleryRef.current?.click();
+    }
+  };
+  
+  // Handle photo capture - two-photo flow
+  const handlePhotoCapture = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     
     const reader = new FileReader();
     reader.onload = async (event) => {
       const base64 = event.target.result.split(',')[1];
-      if (side === 'front') {
+      
+      if (captureStep === 'front') {
+        // Got front photo, now get back
         setForm(prev => ({...prev, photo: base64}));
-        // Auto-analyze the front photo
-        await analyzePhotoWithAI(base64);
-      } else {
+        setCaptureStep('back');
+        // Small delay then trigger next capture
+        setTimeout(() => {
+          if (e.target.hasAttribute('capture')) {
+            cameraRef.current?.click();
+          } else {
+            galleryRef.current?.click();
+          }
+        }, 300);
+      } else if (captureStep === 'back') {
+        // Got back photo, now analyze both
         setForm(prev => ({...prev, photoBack: base64}));
+        setCaptureStep('done');
+        // Analyze both photos
+        await analyzePhotosWithAI(form.photo, base64);
       }
     };
     reader.readAsDataURL(file);
@@ -7642,6 +7694,13 @@ Return ONLY the JSON object.`
     setWeightUnit(newUnit);
   };
   
+  // Clear photos and re-analyze
+  const clearPhotos = () => {
+    setForm(prev => ({...prev, photo: null, photoBack: null}));
+    setCaptureStep('idle');
+    setAiError(null);
+  };
+  
   return (
     <div className="min-h-screen bg-amber-50">
       <div className="bg-amber-700 text-white p-4 flex justify-between"><h1 className="text-xl font-bold">Add Item</h1><button onClick={onCancel}><X size={24} /></button></div>
@@ -7650,9 +7709,12 @@ Return ONLY the JSON object.`
           
           {/* AI Analysis Status */}
           {isAnalyzing && (
-            <div className="bg-teal-50 border border-teal-200 rounded-lg p-3 flex items-center gap-3">
-              <div className="w-5 h-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin"></div>
-              <span className="text-teal-700 font-medium">AI analyzing your photo...</span>
+            <div className="bg-teal-50 border border-teal-200 rounded-lg p-4 flex items-center gap-3">
+              <div className="w-6 h-6 border-2 border-teal-500 border-t-transparent rounded-full animate-spin"></div>
+              <div>
+                <span className="text-teal-700 font-medium">AI analyzing your photos...</span>
+                <p className="text-teal-600 text-sm">Identifying coin type, year, mint mark, and grade</p>
+              </div>
             </div>
           )}
           
@@ -7662,81 +7724,89 @@ Return ONLY the JSON object.`
             </div>
           )}
           
+          {/* Capture Step Indicator */}
+          {captureStep === 'back' && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center font-bold">2</div>
+                <div>
+                  <p className="font-medium text-blue-800">Now capture the BACK</p>
+                  <p className="text-sm text-blue-600">Flip the item over for the reverse side</p>
+                </div>
+              </div>
+            </div>
+          )}
+          
           {/* Photo Section */}
           <div>
             <label className="block text-sm font-medium mb-1">Photos</label>
-            <p className="text-xs text-teal-600 mb-2">📸 Take a front photo to auto-identify with AI</p>
-            <div className="grid grid-cols-2 gap-3">
-              {/* Front Photo */}
-              <div>
-                <div className="text-xs text-gray-500 mb-1">Front (AI analyzes this)</div>
-                {form.photo ? (
-                  <div className="relative">
-                    <img src={`data:image/jpeg;base64,${form.photo}`} className="w-full h-24 object-cover rounded-lg" />
-                    <button 
-                      onClick={() => setForm({...form, photo: null})}
-                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
-                    >
-                      <X size={14} />
-                    </button>
+            <p className="text-xs text-teal-600 mb-2">📸 Take front + back photos for AI to identify (year, mint, grade)</p>
+            
+            {/* Show photos if captured */}
+            {(form.photo || form.photoBack) ? (
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">Front (Obverse)</div>
+                    {form.photo ? (
+                      <img src={`data:image/jpeg;base64,${form.photo}`} className="w-full h-24 object-cover rounded-lg border" />
+                    ) : (
+                      <div className="w-full h-24 bg-gray-100 rounded-lg border flex items-center justify-center text-gray-400">
+                        <Camera size={24} />
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => frontCameraRef.current?.click()}
-                      className="flex-1 border-2 border-dashed border-teal-300 bg-teal-50 rounded-lg p-3 flex flex-col items-center text-teal-600 hover:border-teal-400 hover:bg-teal-100"
-                    >
-                      <Camera size={20} />
-                      <span className="text-xs font-medium">Camera</span>
-                    </button>
-                    <button 
-                      onClick={() => frontGalleryRef.current?.click()}
-                      className="flex-1 border-2 border-dashed border-teal-300 bg-teal-50 rounded-lg p-3 flex flex-col items-center text-teal-600 hover:border-teal-400 hover:bg-teal-100"
-                    >
-                      <Upload size={20} />
-                      <span className="text-xs font-medium">Gallery</span>
-                    </button>
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">Back (Reverse)</div>
+                    {form.photoBack ? (
+                      <img src={`data:image/jpeg;base64,${form.photoBack}`} className="w-full h-24 object-cover rounded-lg border" />
+                    ) : (
+                      <div className="w-full h-24 bg-gray-100 rounded-lg border flex items-center justify-center text-gray-400">
+                        {captureStep === 'back' ? (
+                          <div className="text-center">
+                            <Camera size={24} className="mx-auto animate-pulse" />
+                            <span className="text-xs">Waiting...</span>
+                          </div>
+                        ) : (
+                          <Camera size={24} />
+                        )}
+                      </div>
+                    )}
                   </div>
-                )}
-                <input type="file" accept="image/*" capture="environment" ref={frontCameraRef} onChange={handlePhotoCapture('front')} className="hidden" />
-                <input type="file" accept="image/*" ref={frontGalleryRef} onChange={handlePhotoCapture('front')} className="hidden" />
+                </div>
+                <button 
+                  onClick={clearPhotos}
+                  className="text-sm text-red-600 flex items-center gap-1"
+                >
+                  <X size={14} /> Clear photos and retake
+                </button>
               </div>
-              
-              {/* Back Photo */}
-              <div>
-                <div className="text-xs text-gray-500 mb-1">Back</div>
-                {form.photoBack ? (
-                  <div className="relative">
-                    <img src={`data:image/jpeg;base64,${form.photoBack}`} className="w-full h-24 object-cover rounded-lg" />
-                    <button 
-                      onClick={() => setForm({...form, photoBack: null})}
-                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => backCameraRef.current?.click()}
-                      className="flex-1 border-2 border-dashed border-gray-300 rounded-lg p-3 flex flex-col items-center text-gray-400 hover:border-teal-400 hover:text-teal-500"
-                    >
-                      <Camera size={20} />
-                      <span className="text-xs">Camera</span>
-                    </button>
-                    <button 
-                      onClick={() => backGalleryRef.current?.click()}
-                      className="flex-1 border-2 border-dashed border-gray-300 rounded-lg p-3 flex flex-col items-center text-gray-400 hover:border-teal-400 hover:text-teal-500"
-                    >
-                      <Upload size={20} />
-                      <span className="text-xs">Gallery</span>
-                    </button>
-                  </div>
-                )}
-                <input type="file" accept="image/*" capture="environment" ref={backCameraRef} onChange={handlePhotoCapture('back')} className="hidden" />
-                <input type="file" accept="image/*" ref={backGalleryRef} onChange={handlePhotoCapture('back')} className="hidden" />
+            ) : (
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => startPhotoCapture(true)}
+                  disabled={isAnalyzing}
+                  className="flex-1 border-2 border-dashed border-teal-400 bg-teal-50 rounded-lg p-4 flex flex-col items-center text-teal-700 hover:bg-teal-100 disabled:opacity-50"
+                >
+                  <Camera size={28} />
+                  <span className="font-medium mt-1">Take Photos</span>
+                  <span className="text-xs text-teal-600">Front then Back</span>
+                </button>
+                <button 
+                  onClick={() => startPhotoCapture(false)}
+                  disabled={isAnalyzing}
+                  className="flex-1 border-2 border-dashed border-teal-400 bg-teal-50 rounded-lg p-4 flex flex-col items-center text-teal-700 hover:bg-teal-100 disabled:opacity-50"
+                >
+                  <Upload size={28} />
+                  <span className="font-medium mt-1">Upload Photos</span>
+                  <span className="text-xs text-teal-600">Front then Back</span>
+                </button>
               </div>
-            </div>
+            )}
+            
+            {/* Hidden file inputs */}
+            <input type="file" accept="image/*" capture="environment" ref={cameraRef} onChange={handlePhotoCapture} className="hidden" />
+            <input type="file" accept="image/*" ref={galleryRef} onChange={handlePhotoCapture} className="hidden" />
           </div>
           
           <div><label className="block text-sm font-medium mb-1">Description *</label><input type="text" value={form.description} onChange={(e) => setForm({...form, description: e.target.value})} className="w-full border rounded p-2" /></div>
