@@ -9507,7 +9507,7 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
             <HardDrive size={18} /> App Information
           </h3>
           <div className="text-sm text-gray-600 space-y-1">
-            <p><strong>Version:</strong> 88</p>
+            <p><strong>Version:</strong> 90</p>
             <p><strong>Firebase Project:</strong> ses-inventory</p>
             <p><strong>Last Updated:</strong> January 2026</p>
           </div>
@@ -11726,18 +11726,28 @@ export default function SESInventoryApp() {
     const newInventory = [...currentInv, newItem];
     setInventory(newInventory); 
     // Save to Firebase with user feedback
+    alert('About to save ' + newInventory.length + ' items to Firebase...');
     console.log('ADD ITEM: Saving', newInventory.length, 'items');
-    FirebaseService.saveInventory(newInventory).then(success => {
-      console.log('ADD ITEM: Save result:', success);
-      // Also check what Firebase actually has
-      FirebaseService.loadInventory().then(loaded => {
-        const firebaseCount = loaded ? loaded.length : 0;
-        alert(`Save result: ${success}\nFirebase has: ${firebaseCount} items\nWe tried to save: ${newInventory.length} items`);
+    
+    try {
+      FirebaseService.saveInventory(newInventory).then(success => {
+        alert('Save completed! Result: ' + success);
+        console.log('ADD ITEM: Save result:', success);
+        // Also check what Firebase actually has
+        FirebaseService.loadInventory().then(loaded => {
+          const firebaseCount = loaded ? loaded.length : 0;
+          alert('Firebase verification: ' + firebaseCount + ' items in database');
+        }).catch(loadErr => {
+          alert('Load error: ' + loadErr.message);
+        });
+      }).catch(err => {
+        alert('Save error: ' + err.message);
+        console.error('ADD ITEM: Save error:', err);
       });
-    }).catch(err => {
-      console.error('ADD ITEM: Save error:', err);
-      alert('Save error: ' + err.message);
-    });
+    } catch (syncErr) {
+      alert('Sync error: ' + syncErr.message);
+    }
+    
     setView('list'); 
   }} onCancel={() => setView('list')} calculateMelt={calculateMelt} />;
   if (view === 'detail' && selectedItem) return <DetailView 
