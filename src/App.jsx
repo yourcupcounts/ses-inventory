@@ -8045,24 +8045,28 @@ Return ONLY the JSON object.`
             <button onClick={onCancel} className="flex-1 border py-2 rounded">Cancel</button>
             <button 
               onClick={() => { 
-                if (form.description) {
-                  const weightInOz = getWeightInOz();
-                  const meltAtPurchase = parseFloat(form.meltValue || calculateMelt(form.metalType, form.purity, weightInOz)) || 0;
-                  onSave({ 
-                    ...form, 
-                    weightOz: weightInOz, 
-                    purchasePrice: parseFloat(form.purchasePrice) || 0, 
-                    meltValue: meltAtPurchase,
-                    // Store spot prices at time of purchase for historical reference
-                    spotAtPurchase: {
-                      gold: liveSpotPrices?.gold || 0,
-                      silver: liveSpotPrices?.silver || 0,
-                      platinum: liveSpotPrices?.platinum || 0,
-                      palladium: liveSpotPrices?.palladium || 0,
-                      date: new Date().toISOString()
-                    }
-                  }); 
+                console.log('SAVE CLICKED, description:', form.description);
+                if (!form.description) {
+                  alert('Please enter a description');
+                  return;
                 }
+                const weightInOz = getWeightInOz();
+                const meltAtPurchase = parseFloat(form.meltValue || calculateMelt(form.metalType, form.purity, weightInOz)) || 0;
+                console.log('Calling onSave with data...');
+                onSave({ 
+                  ...form, 
+                  weightOz: weightInOz, 
+                  purchasePrice: parseFloat(form.purchasePrice) || 0, 
+                  meltValue: meltAtPurchase,
+                  // Store spot prices at time of purchase for historical reference
+                  spotAtPurchase: {
+                    gold: liveSpotPrices?.gold || 0,
+                    silver: liveSpotPrices?.silver || 0,
+                    platinum: liveSpotPrices?.platinum || 0,
+                    palladium: liveSpotPrices?.palladium || 0,
+                    date: new Date().toISOString()
+                  }
+                }); 
               }} 
               className="flex-1 bg-amber-600 text-white py-2 rounded"
             >
@@ -11693,18 +11697,24 @@ export default function SESInventoryApp() {
   if (view === 'tax') return <TaxReportView inventory={inventory} onBack={() => setView('list')} />;
   if (view === 'ebayListings') return <EbayListingsView inventory={inventory} onBack={() => setView('list')} onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }} onListItem={(item) => { setSelectedItem(item); setView('ebayListing'); }} />;
   if (view === 'add') return <AddItemView clients={clients} liveSpotPrices={liveSpotPrices} onSave={async (item) => { 
-    const newItem = { ...item, id: getNextId('SES') };
-    const newInventory = [...inventory, newItem];
-    setInventory(newInventory); 
-    // EXPLICIT SAVE - don't rely on useEffect
-    console.log('ADD ITEM: Explicitly saving after add...');
-    const success = await FirebaseService.saveInventory(newInventory);
-    if (success) {
-      console.log('ADD ITEM: Save confirmed!');
-      alert('Item saved to Firebase!');
-    } else {
-      console.error('ADD ITEM: Save FAILED!');
-      alert('WARNING: Save failed! Check connection.');
+    try {
+      const newItem = { ...item, id: getNextId('SES') };
+      const currentInv = inventory || [];
+      const newInventory = [...currentInv, newItem];
+      setInventory(newInventory); 
+      // EXPLICIT SAVE - don't rely on useEffect
+      console.log('ADD ITEM: Explicitly saving after add...', newInventory.length, 'items');
+      const success = await FirebaseService.saveInventory(newInventory);
+      if (success) {
+        console.log('ADD ITEM: Save confirmed!');
+        alert('Item saved to Firebase!');
+      } else {
+        console.error('ADD ITEM: Save FAILED!');
+        alert('WARNING: Save failed! Check connection.');
+      }
+    } catch (err) {
+      console.error('ADD ITEM ERROR:', err);
+      alert('ERROR: ' + err.message);
     }
     setView('list'); 
   }} onCancel={() => setView('list')} calculateMelt={calculateMelt} />;
