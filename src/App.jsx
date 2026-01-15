@@ -7482,7 +7482,7 @@ function EbayListingsView({ inventory, onBack, onSelectItem, onListItem }) {
   );
 }
 
-function AddItemView({ onSave, onCancel, calculateMelt, clients }) {
+function AddItemView({ onSave, onCancel, calculateMelt, clients, liveSpotPrices }) {
   const [form, setForm] = useState({ 
     description: '', category: 'Silver - Sterling', metalType: 'Silver', purity: '925', 
     weight: '', source: '', clientId: '', purchasePrice: '', meltValue: '', notes: '', 
@@ -7501,6 +7501,36 @@ function AddItemView({ onSave, onCancel, calculateMelt, clients }) {
   const getWeightInOz = () => {
     const w = parseFloat(form.weight) || 0;
     return weightUnit === 'g' ? w / GRAMS_PER_OZ : w;
+  };
+  
+  // Calculate melt value from metal type, purity, and weight
+  const calculateMeltValue = (metalType, purity, weightOz) => {
+    if (!weightOz || weightOz <= 0) return 0;
+    
+    const spot = liveSpotPrices?.[metalType?.toLowerCase()] || 0;
+    if (!spot) return 0;
+    
+    // Parse purity
+    let purityDecimal = 1;
+    if (purity) {
+      const p = purity.toString().toUpperCase();
+      if (p.includes('K')) {
+        // Karat gold: 24K = 1.0, 18K = 0.75, 14K = 0.583, 10K = 0.417
+        const karat = parseInt(p.replace('K', ''));
+        purityDecimal = karat / 24;
+      } else if (p.includes('%')) {
+        purityDecimal = parseFloat(p.replace('%', '')) / 100;
+      } else {
+        const num = parseFloat(p);
+        if (num > 1) {
+          purityDecimal = num / 1000; // 925 -> 0.925, 999 -> 0.999
+        } else {
+          purityDecimal = num;
+        }
+      }
+    }
+    
+    return (weightOz * spot * purityDecimal).toFixed(2);
   };
   
   // Photo refs
@@ -7647,17 +7677,22 @@ Return ONLY the JSON object.`
       console.log('Parsed AI result:', aiResult);
       
       // Update form with AI results
+      const weightOz = aiResult.estimatedWeightOz || 0;
+      const weightGrams = weightOz ? (weightOz * GRAMS_PER_OZ).toFixed(2) : '';
+      const meltVal = calculateMeltValue(aiResult.metalType, aiResult.purity, weightOz);
+      
       setForm(prev => ({
         ...prev,
         description: aiResult.description || prev.description,
         category: aiResult.category || prev.category,
         metalType: aiResult.metalType || prev.metalType,
         purity: aiResult.purity || prev.purity,
-        weight: aiResult.estimatedWeightOz ? (aiResult.estimatedWeightOz * GRAMS_PER_OZ).toFixed(2) : prev.weight,
+        weight: weightGrams || prev.weight,
         year: aiResult.year || prev.year,
         mint: aiResult.mint || prev.mint,
         grade: aiResult.grade || prev.grade,
         purchasePrice: aiResult.purchasePrice || prev.purchasePrice,
+        meltValue: meltVal || prev.meltValue,
         notes: aiResult.notes || prev.notes
       }));
       
@@ -9862,7 +9897,7 @@ export default function SESInventoryApp() {
   if (view === 'dashboard') return <DashboardView inventory={inventory} onBack={() => setView('list')} />;
   if (view === 'tax') return <TaxReportView inventory={inventory} onBack={() => setView('list')} />;
   if (view === 'ebayListings') return <EbayListingsView inventory={inventory} onBack={() => setView('list')} onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }} onListItem={(item) => { setSelectedItem(item); setView('ebayListing'); }} />;
-  if (view === 'add') return <AddItemView clients={clients} onSave={(item) => { setInventory([...inventory, { ...item, id: getNextId('SES') }]); setView('list'); }} onCancel={() => setView('list')} calculateMelt={calculateMelt} />;
+  if (view === 'add') return <AddItemView clients={clients} liveSpotPrices={liveSpotPrices} onSave={(item) => { setInventory([...inventory, { ...item, id: getNextId('SES') }]); setView('list'); }} onCancel={() => setView('list')} calculateMelt={calculateMelt} />;
   if (view === 'detail' && selectedItem) return <DetailView 
     item={selectedItem} 
     clients={clients} 
