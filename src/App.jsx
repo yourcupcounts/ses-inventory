@@ -11729,11 +11729,11 @@ export default function SESInventoryApp() {
     console.log('ADD ITEM: Saving', newInventory.length, 'items');
     FirebaseService.saveInventory(newInventory).then(success => {
       console.log('ADD ITEM: Save result:', success);
-      if (success) {
-        alert('Item saved! Check Firebase console.');
-      } else {
-        alert('Save may have failed - check console');
-      }
+      // Also check what Firebase actually has
+      FirebaseService.loadInventory().then(loaded => {
+        const firebaseCount = loaded ? loaded.length : 0;
+        alert(`Save result: ${success}\nFirebase has: ${firebaseCount} items\nWe tried to save: ${newInventory.length} items`);
+      });
     }).catch(err => {
       console.error('ADD ITEM: Save error:', err);
       alert('Save error: ' + err.message);
