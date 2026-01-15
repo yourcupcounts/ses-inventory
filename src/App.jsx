@@ -11692,7 +11692,22 @@ export default function SESInventoryApp() {
   if (view === 'dashboard') return <DashboardView inventory={inventory} onBack={() => setView('list')} />;
   if (view === 'tax') return <TaxReportView inventory={inventory} onBack={() => setView('list')} />;
   if (view === 'ebayListings') return <EbayListingsView inventory={inventory} onBack={() => setView('list')} onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }} onListItem={(item) => { setSelectedItem(item); setView('ebayListing'); }} />;
-  if (view === 'add') return <AddItemView clients={clients} liveSpotPrices={liveSpotPrices} onSave={(item) => { setInventory([...inventory, { ...item, id: getNextId('SES') }]); setView('list'); }} onCancel={() => setView('list')} calculateMelt={calculateMelt} />;
+  if (view === 'add') return <AddItemView clients={clients} liveSpotPrices={liveSpotPrices} onSave={async (item) => { 
+    const newItem = { ...item, id: getNextId('SES') };
+    const newInventory = [...inventory, newItem];
+    setInventory(newInventory); 
+    // EXPLICIT SAVE - don't rely on useEffect
+    console.log('ADD ITEM: Explicitly saving after add...');
+    const success = await FirebaseService.saveInventory(newInventory);
+    if (success) {
+      console.log('ADD ITEM: Save confirmed!');
+      alert('Item saved to Firebase!');
+    } else {
+      console.error('ADD ITEM: Save FAILED!');
+      alert('WARNING: Save failed! Check connection.');
+    }
+    setView('list'); 
+  }} onCancel={() => setView('list')} calculateMelt={calculateMelt} />;
   if (view === 'detail' && selectedItem) return <DetailView 
     item={selectedItem} 
     clients={clients} 
