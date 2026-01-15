@@ -8830,6 +8830,63 @@ Ships fast and packed well. Questions? Just ask.`;
         
         {item.notes && <div className="mt-4 p-3 bg-gray-50 rounded text-sm">{item.notes}</div>}
         
+        {/* EDIT SECTION */}
+        <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded">
+          <div className="text-xs text-amber-700 font-medium mb-3">Quick Edit</div>
+          <div className="grid grid-cols-2 gap-2">
+            <button 
+              onClick={() => {
+                const newDesc = prompt('Edit description:', item.description || '');
+                if (newDesc !== null) onUpdate({ ...item, description: newDesc });
+              }}
+              className="text-left p-2 bg-white rounded border text-sm hover:bg-amber-100"
+            >
+              <div className="text-xs text-gray-500">Description</div>
+              <div className="truncate">{item.description || 'N/A'}</div>
+            </button>
+            <button 
+              onClick={() => {
+                const newPrice = prompt('Edit purchase price:', item.purchasePrice || '');
+                if (newPrice !== null) onUpdate({ ...item, purchasePrice: parseFloat(newPrice) || 0 });
+              }}
+              className="text-left p-2 bg-white rounded border text-sm hover:bg-amber-100"
+            >
+              <div className="text-xs text-gray-500">Purchase Price</div>
+              <div>${item.purchasePrice || 0}</div>
+            </button>
+            <button 
+              onClick={() => {
+                const newWeight = prompt('Edit metal weight (oz):', item.weightOz || '');
+                if (newWeight !== null) onUpdate({ ...item, weightOz: parseFloat(newWeight) || 0 });
+              }}
+              className="text-left p-2 bg-white rounded border text-sm hover:bg-amber-100"
+            >
+              <div className="text-xs text-gray-500">Weight (oz)</div>
+              <div>{item.weightOz || 0} oz</div>
+            </button>
+            <button 
+              onClick={() => {
+                const newPurity = prompt('Edit purity (e.g., 925, 999, 14K):', item.purity || '');
+                if (newPurity !== null) onUpdate({ ...item, purity: newPurity });
+              }}
+              className="text-left p-2 bg-white rounded border text-sm hover:bg-amber-100"
+            >
+              <div className="text-xs text-gray-500">Purity</div>
+              <div>{item.purity || 'N/A'}</div>
+            </button>
+            <button 
+              onClick={() => {
+                const newNotes = prompt('Edit notes:', item.notes || '');
+                if (newNotes !== null) onUpdate({ ...item, notes: newNotes });
+              }}
+              className="text-left p-2 bg-white rounded border text-sm hover:bg-amber-100 col-span-2"
+            >
+              <div className="text-xs text-gray-500">Notes</div>
+              <div className="truncate">{item.notes || 'None'}</div>
+            </button>
+          </div>
+        </div>
+        
         {/* PRICING ANALYSIS SECTION */}
         {item.status === 'Available' && holdStatus.canSell && !item.ebayListingId && (
           <div className="mt-4 border-t pt-4">
@@ -9520,7 +9577,7 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
             <HardDrive size={18} /> App Information
           </h3>
           <div className="text-sm text-gray-600 space-y-1">
-            <p><strong>Version:</strong> 93</p>
+            <p><strong>Version:</strong> 94</p>
             <p><strong>Firebase Project:</strong> ses-inventory</p>
             <p><strong>Last Updated:</strong> January 2026</p>
           </div>
@@ -11767,8 +11824,20 @@ export default function SESInventoryApp() {
     item={selectedItem} 
     clients={clients} 
     liveSpotPrices={liveSpotPrices} 
-    onUpdate={(u) => { setInventory(inventory.map(i => i.id === u.id ? u : i)); setSelectedItem(u); }} 
-    onDelete={() => { setInventory(inventory.filter(i => i.id !== selectedItem.id)); setView('list'); }} 
+    onUpdate={(u) => { 
+      const newInventory = inventory.map(i => i.id === u.id ? u : i);
+      setInventory(newInventory); 
+      setSelectedItem(u);
+      // Explicitly save to Firebase
+      FirebaseService.saveInventory(newInventory);
+    }} 
+    onDelete={() => { 
+      const newInventory = inventory.filter(i => i.id !== selectedItem.id);
+      setInventory(newInventory); 
+      // Explicitly delete from Firebase
+      FirebaseService.deleteItem('inventory', selectedItem.id);
+      setView('list'); 
+    }} 
     onBack={() => { setView('list'); setSelectedItem(null); }}
     onGoHome={() => { setView('list'); setSelectedItem(null); }} 
     onListOnEbay={(listing) => { setPendingListing(listing); setView('ebayListing'); }}
