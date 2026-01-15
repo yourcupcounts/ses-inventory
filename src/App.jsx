@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Package, Plus, X, Trash2, Search, Settings, Download, Upload, Camera, Loader, BarChart3, TrendingUp, TrendingDown, Clock, AlertTriangle, AlertCircle, FileText, Filter, Users, UserPlus, Edit2, Check, MapPin, Calendar, CreditCard, Building, User, Lock, Unlock, ShieldCheck, DollarSign, RefreshCw, Calculator, Layers, Star, ExternalLink, Flame, Archive, Zap, Shield, Database, FileSpreadsheet, AlertOctagon, Wifi, WifiOff, HardDrive, Cloud, CloudOff } from 'lucide-react';
+import { Package, Plus, X, Trash2, Search, Settings, Download, Upload, Camera, Loader, BarChart3, TrendingUp, TrendingDown, Clock, AlertTriangle, AlertCircle, FileText, Filter, Users, UserPlus, Edit2, Check, MapPin, Calendar, CreditCard, Building, User, Lock, Unlock, ShieldCheck, DollarSign, RefreshCw, Calculator, Layers, Star, ExternalLink, Flame, Archive, Zap, Shield, Database, FileSpreadsheet, AlertOctagon, Wifi, WifiOff, HardDrive, Cloud, CloudOff, Home, ChevronDown, ChevronRight, Link2, UserCheck } from 'lucide-react';
 
 // ============ CONFIGURATION - ADD YOUR API KEYS HERE ============
 const CONFIG = {
@@ -2154,7 +2154,7 @@ Ships securely in protective packaging. Thanks for looking!`;
 }
 
 // ============ PERSONAL STASH VIEW ============
-function PersonalStashView({ inventory, spotPrices, onBack, onSelectItem, onMoveToStash, onMoveToInventory }) {
+function PersonalStashView({ inventory, spotPrices, onBack, onSelectItem, onMoveToStash, onMoveToInventory, onGoHome }) {
   const [view, setView] = useState('stash'); // stash, add
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItems, setSelectedItems] = useState([]);
@@ -2217,7 +2217,14 @@ function PersonalStashView({ inventory, spotPrices, onBack, onSelectItem, onMove
       {/* Header */}
       <div className="bg-gradient-to-r from-amber-700 to-yellow-600 text-white p-4">
         <div className="flex items-center justify-between">
-          <button onClick={onBack} className="text-white">← Back</button>
+          <div className="flex items-center gap-2">
+            <button onClick={onBack} className="text-white">← Back</button>
+            {onGoHome && (
+              <button onClick={onGoHome} className="p-1 hover:bg-white hover:bg-opacity-20 rounded">
+                <Home size={18} />
+              </button>
+            )}
+          </div>
           <h1 className="text-xl font-bold flex items-center gap-2">
             <Star size={24} /> Personal Stash
           </h1>
@@ -5456,7 +5463,7 @@ function LotPurchaseView({ clients, onSave, onCancel }) {
 }
 
 // ============ LOTS MANAGEMENT VIEW ============
-function LotsView({ lots, inventory, liveSpotPrices, onBack, onUpdateLot, onBreakLot, onSelectItem }) {
+function LotsView({ lots, inventory, liveSpotPrices, onBack, onUpdateLot, onBreakLot, onSelectItem, onGoHome }) {
   const [selectedLot, setSelectedLot] = useState(null);
   const [showBreakConfirm, setShowBreakConfirm] = useState(null);
   
@@ -5510,7 +5517,14 @@ function LotsView({ lots, inventory, liveSpotPrices, onBack, onUpdateLot, onBrea
     <div className="min-h-screen bg-gray-100">
       <div className="bg-purple-700 text-white p-4">
         <div className="flex items-center justify-between">
-          <button onClick={onBack} className="flex items-center gap-1">← Back</button>
+          <div className="flex items-center gap-2">
+            <button onClick={onBack} className="flex items-center gap-1">← Back</button>
+            {onGoHome && (
+              <button onClick={onGoHome} className="p-1 hover:bg-purple-600 rounded">
+                <Home size={18} />
+              </button>
+            )}
+          </div>
           <h1 className="text-xl font-bold flex items-center gap-2">
             <Package size={24} /> Lot Management
           </h1>
@@ -5681,7 +5695,7 @@ function LotsView({ lots, inventory, liveSpotPrices, onBack, onUpdateLot, onBrea
 }
 
 // ============ SCRAP CALCULATOR VIEW ============
-function ScrapCalculatorView({ spotPrices: propSpotPrices, onRefresh, isLoading: propIsLoading, onBack }) {
+function ScrapCalculatorView({ spotPrices: propSpotPrices, onRefresh, isLoading: propIsLoading, onBack, onGoHome }) {
   const [goldSpot, setGoldSpot] = useState(propSpotPrices?.gold || 4600.00);
   const [silverSpot, setSilverSpot] = useState(propSpotPrices?.silver || 90.00);
   const [platinumSpot, setPlatinumSpot] = useState(propSpotPrices?.platinum || 985.00);
@@ -6016,7 +6030,14 @@ function ScrapCalculatorView({ spotPrices: propSpotPrices, onRefresh, isLoading:
       {/* Header */}
       <div className="bg-gray-800 text-white p-3">
         <div className="flex items-center justify-between">
-          <button onClick={onBack} className="text-white">← Back</button>
+          <div className="flex items-center gap-2">
+            <button onClick={onBack} className="text-white">← Back</button>
+            {onGoHome && (
+              <button onClick={onGoHome} className="p-1 hover:bg-gray-600 rounded">
+                <Home size={18} />
+              </button>
+            )}
+          </div>
           <h1 className="text-lg font-bold">Scrap Calculator</h1>
           <button onClick={() => setShowSettings(true)} className="bg-gray-600 px-3 py-1 rounded text-sm">Settings</button>
         </div>
@@ -6701,7 +6722,7 @@ function SignaturePad({ onSave, onCancel }) {
 }
 
 // ============ CLIENT VIEWS ============
-function ClientListView({ clients, onSelect, onAdd, onBack }) {
+function ClientListView({ clients, onSelect, onAdd, onBack, onGoHome }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   
@@ -6715,7 +6736,14 @@ function ClientListView({ clients, onSelect, onAdd, onBack }) {
     <div className="min-h-screen bg-gray-100">
       <div className="bg-gradient-to-r from-indigo-700 to-indigo-800 text-white p-4">
         <div className="flex items-center justify-between">
-          <button onClick={onBack}>← Back</button>
+          <div className="flex items-center gap-2">
+            <button onClick={onBack}>← Back</button>
+            {onGoHome && (
+              <button onClick={onGoHome} className="p-1 hover:bg-indigo-600 rounded">
+                <Home size={18} />
+              </button>
+            )}
+          </div>
           <h1 className="text-xl font-bold flex items-center gap-2"><Users size={24} /> Clients</h1>
           <button onClick={onAdd} className="p-2"><UserPlus size={20} /></button>
         </div>
@@ -8046,7 +8074,7 @@ Return ONLY the JSON object.`
   );
 }
 
-function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay, liveSpotPrices, onCreateLot }) {
+function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay, liveSpotPrices, onCreateLot, onGoHome }) {
   const [showSold, setShowSold] = useState(false);
   const [salePrice, setSalePrice] = useState(item.meltValue || '');
   const [salePlatform, setSalePlatform] = useState('Refiner');
@@ -8428,8 +8456,15 @@ Ships fast and packed well. Questions? Just ask.`;
 
   return (
     <div className="min-h-screen bg-amber-50 pb-24">
-      <div className="bg-amber-700 text-white p-4 flex justify-between">
-        <button onClick={onBack}>← Back</button>
+      <div className="bg-amber-700 text-white p-4 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <button onClick={onBack}>← Back</button>
+          {onGoHome && (
+            <button onClick={onGoHome} className="p-1 hover:bg-amber-600 rounded">
+              <Home size={18} />
+            </button>
+          )}
+        </div>
         <button onClick={onDelete}><Trash2 size={20} /></button>
       </div>
       <div className="p-4"><div className="bg-white rounded-lg shadow p-4">
@@ -9399,7 +9434,7 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
 }
 
 // ============ RECEIPT MANAGER VIEW ============
-function ReceiptManagerView({ onBack, receipts, onAddReceipt, onDeleteReceipt, onUpdateReceipt, inventory, lots, clients }) {
+function ReceiptManagerView({ onBack, receipts, onAddReceipt, onDeleteReceipt, onUpdateReceipt, inventory, lots, clients, onAddClient, onGoHome }) {
   const [isUploading, setIsUploading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [uploadError, setUploadError] = useState(null);
@@ -9407,7 +9442,70 @@ function ReceiptManagerView({ onBack, receipts, onAddReceipt, onDeleteReceipt, o
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState(null);
   const [filter, setFilter] = useState('all'); // all, purchase, sale
+  const [showClientLink, setShowClientLink] = useState(false);
+  const [clientSearchTerm, setClientSearchTerm] = useState('');
   const fileInputRef = useRef(null);
+  
+  // Find matching clients based on vendor name
+  const findMatchingClients = (vendorName) => {
+    if (!vendorName || !clients) return [];
+    const searchLower = vendorName.toLowerCase();
+    return clients.filter(c => 
+      c.name.toLowerCase().includes(searchLower) ||
+      searchLower.includes(c.name.toLowerCase())
+    );
+  };
+  
+  // Link receipt to existing client
+  const linkToClient = (clientId) => {
+    const updatedReceipt = { ...selectedReceipt, linkedClientId: clientId };
+    onUpdateReceipt(updatedReceipt);
+    setSelectedReceipt(updatedReceipt);
+    setShowClientLink(false);
+  };
+  
+  // Create new client from receipt vendor and link
+  const createAndLinkClient = () => {
+    const receipt = selectedReceipt;
+    const newClient = {
+      id: `CLI-${Date.now()}`,
+      name: receipt.vendor || 'Unknown',
+      type: receipt.vendorType === 'individual' ? 'Private' : 'Business',
+      email: '',
+      phone: '',
+      address: '',
+      idType: receipt.vendorType === 'individual' ? 'Drivers License' : 'Business',
+      idNumber: '',
+      idExpiry: '',
+      idFrontPhoto: null,
+      idBackPhoto: null,
+      signature: null,
+      signatureTimestamp: null,
+      signatureLocation: null,
+      notes: `Created from receipt ${receipt.id}. ${receipt.vendorType ? `Type: ${receipt.vendorType}` : ''}`,
+      dateAdded: new Date().toISOString().split('T')[0],
+      totalTransactions: 1,
+      totalPurchased: receipt.type === 'purchase' ? (receipt.total || 0) : 0,
+      // New field to track if this is a vendor (we buy FROM) vs client (sells TO us)
+      relationship: receipt.type === 'purchase' ? 'vendor' : 'client'
+    };
+    
+    if (onAddClient) {
+      onAddClient(newClient);
+    }
+    
+    // Link receipt to new client
+    const updatedReceipt = { ...selectedReceipt, linkedClientId: newClient.id };
+    onUpdateReceipt(updatedReceipt);
+    setSelectedReceipt(updatedReceipt);
+    setShowClientLink(false);
+  };
+  
+  // Get linked client info
+  const getLinkedClient = (receipt) => {
+    if (!receipt?.linkedClientId || !clients) return null;
+    return clients.find(c => c.id === receipt.linkedClientId);
+  };
   
   // Start editing
   const startEditing = () => {
@@ -10009,6 +10107,143 @@ Be thorough - extract every line item you can identify.`
             )}
           </div>
           
+          {/* Client/Vendor Linking Section */}
+          {!isEditing && (
+            <div className="bg-white rounded-lg shadow p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-medium flex items-center gap-2">
+                  <Link2 size={16} />
+                  {selectedReceipt.type === 'purchase' ? 'Vendor' : 'Client'} Link
+                </h3>
+              </div>
+              
+              {(() => {
+                const linkedClient = getLinkedClient(selectedReceipt);
+                if (linkedClient) {
+                  return (
+                    <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg p-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                          <UserCheck size={20} className="text-green-600" />
+                        </div>
+                        <div>
+                          <div className="font-medium text-green-800">{linkedClient.name}</div>
+                          <div className="text-xs text-green-600">
+                            {linkedClient.type} • {linkedClient.relationship === 'vendor' ? 'Vendor (buy from)' : 'Client (sell to)'}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const updatedReceipt = { ...selectedReceipt };
+                          delete updatedReceipt.linkedClientId;
+                          onUpdateReceipt(updatedReceipt);
+                          setSelectedReceipt(updatedReceipt);
+                        }}
+                        className="text-red-500 text-sm"
+                      >
+                        Unlink
+                      </button>
+                    </div>
+                  );
+                }
+                
+                // Not linked yet - show linking options
+                const matchingClients = findMatchingClients(selectedReceipt.vendor);
+                
+                return (
+                  <div className="space-y-3">
+                    {/* Suggested matches */}
+                    {matchingClients.length > 0 && (
+                      <div>
+                        <p className="text-xs text-gray-500 mb-2">Possible matches:</p>
+                        <div className="space-y-2">
+                          {matchingClients.slice(0, 3).map(client => (
+                            <button
+                              key={client.id}
+                              onClick={() => linkToClient(client.id)}
+                              className="w-full flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg p-2 hover:bg-blue-100"
+                            >
+                              <div className="flex items-center gap-2">
+                                <User size={16} className="text-blue-600" />
+                                <span className="font-medium text-blue-800">{client.name}</span>
+                                <span className="text-xs text-blue-500">{client.type}</span>
+                              </div>
+                              <span className="text-xs text-blue-600">Link →</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Search existing clients */}
+                    {showClientLink ? (
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          value={clientSearchTerm}
+                          onChange={(e) => setClientSearchTerm(e.target.value)}
+                          placeholder="Search clients..."
+                          className="w-full border rounded p-2 text-sm"
+                          autoFocus
+                        />
+                        <div className="max-h-40 overflow-y-auto space-y-1">
+                          {(clients || [])
+                            .filter(c => 
+                              clientSearchTerm === '' || 
+                              c.name.toLowerCase().includes(clientSearchTerm.toLowerCase())
+                            )
+                            .slice(0, 10)
+                            .map(client => (
+                              <button
+                                key={client.id}
+                                onClick={() => linkToClient(client.id)}
+                                className="w-full text-left p-2 rounded hover:bg-gray-100 flex items-center gap-2"
+                              >
+                                <User size={14} className="text-gray-400" />
+                                <span className="text-sm">{client.name}</span>
+                                <span className="text-xs text-gray-400">{client.type}</span>
+                              </button>
+                            ))
+                          }
+                        </div>
+                        <button
+                          onClick={() => { setShowClientLink(false); setClientSearchTerm(''); }}
+                          className="w-full text-sm text-gray-500 py-1"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setShowClientLink(true)}
+                          className="flex-1 border border-blue-300 text-blue-600 py-2 rounded text-sm flex items-center justify-center gap-2"
+                        >
+                          <Search size={14} /> Find Existing
+                        </button>
+                        {selectedReceipt.vendor && (
+                          <button
+                            onClick={createAndLinkClient}
+                            className="flex-1 bg-green-600 text-white py-2 rounded text-sm flex items-center justify-center gap-2"
+                          >
+                            <UserPlus size={14} /> Create "{selectedReceipt.vendor}"
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    
+                    <p className="text-xs text-gray-400 text-center">
+                      {selectedReceipt.type === 'purchase' 
+                        ? 'Link to vendor you purchased from' 
+                        : 'Link to client you sold to'}
+                    </p>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+          
           {/* Original File Preview - only show when not editing */}
           {!isEditing && (
             <div className="bg-white rounded-lg shadow p-4">
@@ -10056,10 +10291,17 @@ Be thorough - extract every line item you can identify.`
   // Receipt list view
   return (
     <div className="min-h-screen bg-amber-50">
-      <div className="bg-amber-700 text-white p-4 flex items-center">
-        <button onClick={onBack} className="mr-4">← Back</button>
-        <FileText size={24} className="mr-2" />
-        <h1 className="text-xl font-bold">Receipts</h1>
+      <div className="bg-amber-700 text-white p-4 flex items-center justify-between">
+        <div className="flex items-center">
+          <button onClick={onBack} className="mr-4">← Back</button>
+          <FileText size={24} className="mr-2" />
+          <h1 className="text-xl font-bold">Receipts</h1>
+        </div>
+        {onGoHome && (
+          <button onClick={onGoHome} className="p-2 hover:bg-amber-600 rounded">
+            <Home size={20} />
+          </button>
+        )}
       </div>
       
       <div className="p-4 space-y-4">
@@ -10712,6 +10954,7 @@ export default function SESInventoryApp() {
   const [receipts, setReceipts] = useState([]);
   const [dataLoaded, setDataLoaded] = useState(false); // Track if initial load is complete
   const [kpiExpanded, setKpiExpanded] = useState(true); // KPI dashboard expanded by default
+  const [inventoryListExpanded, setInventoryListExpanded] = useState(false); // Inventory list collapsed by default
   const [kpiFilter, setKpiFilter] = useState(null); // Filter for KPI drill-down: 'stash', 'hold', 'sell', 'available', 'silver', 'gold', 'platinum', 'sold'
   const [view, setView] = useState('list');
   const [selectedItem, setSelectedItem] = useState(null);
@@ -10834,10 +11077,11 @@ export default function SESInventoryApp() {
           FirebaseService.loadLots()
         ]);
         
-        // Use Firebase data if it exists, otherwise use starter data
-        setInventory(fbInventory?.length ? fbInventory : starterInventory);
-        setClients(fbClients?.length ? fbClients : starterClients);
-        setLots(fbLots?.length ? fbLots : starterLots);
+        // Use Firebase data if it exists (including empty arrays), otherwise use starter data
+        // Using !== null instead of ?.length so empty arrays don't trigger starter data reload
+        setInventory(fbInventory !== null ? fbInventory : starterInventory);
+        setClients(fbClients !== null ? fbClients : starterClients);
+        setLots(fbLots !== null ? fbLots : starterLots);
         
         console.log('Loaded from Firebase:', {
           inventory: fbInventory?.length || 0,
@@ -11177,7 +11421,7 @@ export default function SESInventoryApp() {
   }
 
   // Client views
-  if (view === 'clients') return <ClientListView clients={clients} onSelect={(c) => { setSelectedClient(c); setView('clientDetail'); }} onAdd={() => setView('clientAdd')} onBack={() => setView('list')} />;
+  if (view === 'clients') return <ClientListView clients={clients} onSelect={(c) => { setSelectedClient(c); setView('clientDetail'); }} onAdd={() => setView('clientAdd')} onBack={() => setView('list')} onGoHome={() => setView('list')} />;
   if (view === 'clientAdd') return <ClientFormView onSave={(c) => { setClients([...clients, { ...c, id: getNextId('CLI') }]); setView('clients'); }} onCancel={() => setView('clients')} />;
   if (view === 'clientEdit' && selectedClient) return <ClientFormView client={selectedClient} onSave={(c) => { setClients(clients.map(x => x.id === c.id ? c : x)); setSelectedClient(c); setView('clientDetail'); }} onCancel={() => setView('clientDetail')} onDelete={(id) => { setClients(clients.filter(x => x.id !== id)); setView('clients'); }} />;
   if (view === 'clientDetail' && selectedClient) return <ClientDetailView client={selectedClient} transactions={inventory.filter(i => i.clientId === selectedClient.id)} onEdit={() => setView('clientEdit')} onBack={() => { setView('clients'); setSelectedClient(null); }} />;
@@ -11188,6 +11432,7 @@ export default function SESInventoryApp() {
       inventory={inventory} 
       spotPrices={liveSpotPrices}
       onBack={() => setView('list')}
+      onGoHome={() => setView('list')}
       onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }}
       onMoveToStash={handleMoveToStash}
       onMoveToInventory={handleMoveToInventory}
@@ -11201,7 +11446,8 @@ export default function SESInventoryApp() {
     lots={lots} 
     inventory={inventory} 
     liveSpotPrices={liveSpotPrices} 
-    onBack={() => setView('list')} 
+    onBack={() => setView('list')}
+    onGoHome={() => setView('list')} 
     onUpdateLot={(updatedLot) => setLots(lots.map(l => l.id === updatedLot.id ? updatedLot : l))}
     onBreakLot={(lot) => {
       // Break lot into individual items
@@ -11232,7 +11478,7 @@ export default function SESInventoryApp() {
     }}
     onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }}
   />;
-  if (view === 'calculator') return <ScrapCalculatorView spotPrices={liveSpotPrices} onRefresh={refreshSpotPrices} isLoading={isLoadingPrices} onBack={() => setView('list')} />;
+  if (view === 'calculator') return <ScrapCalculatorView spotPrices={liveSpotPrices} onRefresh={refreshSpotPrices} isLoading={isLoadingPrices} onBack={() => setView('list')} onGoHome={() => setView('list')} />;
   if (view === 'holdStatus') return <HoldStatusView 
     inventory={inventory} 
     onBack={() => setView('list')} 
@@ -11256,7 +11502,8 @@ export default function SESInventoryApp() {
     liveSpotPrices={liveSpotPrices} 
     onUpdate={(u) => { setInventory(inventory.map(i => i.id === u.id ? u : i)); setSelectedItem(u); }} 
     onDelete={() => { setInventory(inventory.filter(i => i.id !== selectedItem.id)); setView('list'); }} 
-    onBack={() => { setView('list'); setSelectedItem(null); }} 
+    onBack={() => { setView('list'); setSelectedItem(null); }}
+    onGoHome={() => { setView('list'); setSelectedItem(null); }} 
     onListOnEbay={(listing) => { setPendingListing(listing); setView('ebayListing'); }}
     onCreateLot={(lotData) => {
       const lotId = getNextId('LOT');
@@ -11309,6 +11556,7 @@ export default function SESInventoryApp() {
   if (view === 'ebaySync') return <EbaySyncView onBack={() => setView('settings')} onImportListings={handleImportEbayListings} inventory={inventory} />;
   if (view === 'receipts') return <ReceiptManagerView 
     onBack={() => setView('list')} 
+    onGoHome={() => setView('list')}
     receipts={receipts}
     inventory={inventory}
     lots={lots}
@@ -11316,6 +11564,7 @@ export default function SESInventoryApp() {
     onAddReceipt={(receipt) => setReceipts([...receipts, receipt])}
     onDeleteReceipt={(id) => setReceipts(receipts.filter(r => r.id !== id))}
     onUpdateReceipt={(updated) => setReceipts(receipts.map(r => r.id === updated.id ? updated : r))}
+    onAddClient={(client) => setClients([...clients, client])}
   />;
 
   // LIST VIEW
@@ -11653,112 +11902,156 @@ export default function SESInventoryApp() {
       
       {/* Search and Inventory List */}
       <div className="p-4 pt-2">
-        <div className="flex gap-2 mb-3">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
-            <input 
-              type="text" 
-              placeholder="Search inventory..." 
-              value={searchTerm} 
-              onChange={(e) => setSearchTerm(e.target.value)} 
-              className="w-full pl-10 pr-4 py-2 border rounded-lg bg-white" 
-            />
-          </div>
-          <select value={filter} onChange={(e) => setFilter(e.target.value)} className="border rounded-lg px-3 bg-white">
-            <option value="all">All</option>
-            <option value="available">Available</option>
-            <option value="sold">Sold</option>
-          </select>
-        </div>
-        
-        {/* Inventory Count */}
-        <div className="flex justify-between items-center mb-2 text-sm text-gray-500">
-          <div className="flex items-center gap-2">
-            <span>{filteredInventory.length} items</span>
-            {kpiFilter && (
-              <button 
-                onClick={() => setKpiFilter(null)}
-                className={`px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1 ${
-                  kpiFilter === 'stash' ? 'bg-amber-100 text-amber-700' :
-                  kpiFilter === 'hold' ? 'bg-blue-100 text-blue-700' :
-                  kpiFilter === 'sell' ? 'bg-green-100 text-green-700' :
-                  kpiFilter === 'sold' ? 'bg-green-100 text-green-700' :
-                  kpiFilter === 'silver' ? 'bg-gray-200 text-gray-700' :
-                  kpiFilter === 'gold' ? 'bg-yellow-100 text-yellow-700' :
-                  kpiFilter === 'platinum' ? 'bg-gray-300 text-gray-700' :
-                  'bg-gray-100 text-gray-700'
-                }`}
-              >
-                {kpiFilter.charAt(0).toUpperCase() + kpiFilter.slice(1)}
-                <X size={12} />
-              </button>
-            )}
-          </div>
-          {lots.filter(l => l.status !== 'sold' && l.status !== 'broken').length > 0 && (
-            <button onClick={() => setView('lots')} className="text-purple-600 flex items-center gap-1">
-              <Layers size={14} /> {lots.filter(l => l.status !== 'sold' && l.status !== 'broken').length} Lots
-            </button>
-          )}
-        </div>
-        
-        {/* Inventory Items */}
-        <div className="space-y-2 pb-24">
-          {filteredInventory.map(item => {
-            const holdStatus = getHoldStatus(item);
-            const profit = item.status === 'Sold' ? (item.salePrice - item.purchasePrice) : (item.meltValue - item.purchasePrice);
-            return (
-              <div 
-                key={item.id} 
-                onClick={() => { setSelectedItem(item); setView('detail'); }} 
-                className={`bg-white p-3 rounded-lg shadow cursor-pointer hover:shadow-md transition-shadow ${item.status === 'Sold' ? 'opacity-60' : ''}`}
-              >
-                <div className="flex justify-between items-start">
-                  <div className="flex gap-3">
-                    {item.photo && (
-                      <img src={`data:image/jpeg;base64,${item.photo}`} className="w-12 h-12 rounded object-cover" />
-                    )}
-                    <div>
-                      <div className="font-medium">{item.description}</div>
-                      <div className="text-xs text-gray-500">{item.id} • {item.category}</div>
-                      <div className="flex gap-1 mt-1">
-                        {item.status === 'Stash' && (
-                          <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded flex items-center gap-1">
-                            <Star size={10} /> Stash
-                          </span>
+        {/* Collapsible Inventory List */}
+        <details 
+          open={inventoryListExpanded} 
+          onToggle={(e) => setInventoryListExpanded(e.target.open)} 
+          className="bg-white rounded-xl shadow-lg overflow-hidden"
+        >
+          <summary className="p-3 cursor-pointer bg-gradient-to-r from-amber-600 to-amber-700 text-white flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <Package size={20} />
+              <span className="font-bold">Inventory</span>
+              <span className="bg-white bg-opacity-20 px-2 py-0.5 rounded-full text-sm">
+                {filteredInventory.length} items
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {kpiFilter && (
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                  kpiFilter === 'stash' ? 'bg-amber-200 text-amber-800' :
+                  kpiFilter === 'hold' ? 'bg-blue-200 text-blue-800' :
+                  kpiFilter === 'sell' ? 'bg-green-200 text-green-800' :
+                  kpiFilter === 'sold' ? 'bg-green-200 text-green-800' :
+                  kpiFilter === 'silver' ? 'bg-gray-200 text-gray-800' :
+                  kpiFilter === 'gold' ? 'bg-yellow-200 text-yellow-800' :
+                  kpiFilter === 'platinum' ? 'bg-gray-300 text-gray-800' :
+                  'bg-gray-200 text-gray-800'
+                }`}>
+                  {kpiFilter.charAt(0).toUpperCase() + kpiFilter.slice(1)}
+                </span>
+              )}
+              <ChevronDown size={20} className={`transform transition-transform ${inventoryListExpanded ? 'rotate-180' : ''}`} />
+            </div>
+          </summary>
+          
+          <div className="p-3">
+            {/* Search and Filter */}
+            <div className="flex gap-2 mb-3">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                <input 
+                  type="text" 
+                  placeholder="Search inventory..." 
+                  value={searchTerm} 
+                  onChange={(e) => setSearchTerm(e.target.value)} 
+                  className="w-full pl-10 pr-4 py-2 border rounded-lg bg-white" 
+                />
+              </div>
+              <select value={filter} onChange={(e) => setFilter(e.target.value)} className="border rounded-lg px-3 bg-white">
+                <option value="all">All</option>
+                <option value="available">Available</option>
+                <option value="sold">Sold</option>
+              </select>
+            </div>
+            
+            {/* Filter badge and lots link */}
+            <div className="flex justify-between items-center mb-2 text-sm text-gray-500">
+              <div className="flex items-center gap-2">
+                {kpiFilter && (
+                  <button 
+                    onClick={() => setKpiFilter(null)}
+                    className={`px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1 ${
+                      kpiFilter === 'stash' ? 'bg-amber-100 text-amber-700' :
+                      kpiFilter === 'hold' ? 'bg-blue-100 text-blue-700' :
+                      kpiFilter === 'sell' ? 'bg-green-100 text-green-700' :
+                      kpiFilter === 'sold' ? 'bg-green-100 text-green-700' :
+                      kpiFilter === 'silver' ? 'bg-gray-200 text-gray-700' :
+                      kpiFilter === 'gold' ? 'bg-yellow-100 text-yellow-700' :
+                      kpiFilter === 'platinum' ? 'bg-gray-300 text-gray-700' :
+                      'bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    Clear filter
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+              {lots.filter(l => l.status !== 'sold' && l.status !== 'broken').length > 0 && (
+                <button onClick={() => setView('lots')} className="text-purple-600 flex items-center gap-1">
+                  <Layers size={14} /> {lots.filter(l => l.status !== 'sold' && l.status !== 'broken').length} Lots
+                </button>
+              )}
+            </div>
+            
+            {/* Inventory Items */}
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {filteredInventory.map(item => {
+                const holdStatus = getHoldStatus(item);
+                const profit = item.status === 'Sold' ? (item.salePrice - item.purchasePrice) : (item.meltValue - item.purchasePrice);
+                return (
+                  <div 
+                    key={item.id} 
+                    onClick={() => { setSelectedItem(item); setView('detail'); }} 
+                    className={`bg-gray-50 p-3 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors ${item.status === 'Sold' ? 'opacity-60' : ''}`}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex gap-3">
+                        {item.photo && (
+                          <img src={`data:image/jpeg;base64,${item.photo}`} className="w-12 h-12 rounded object-cover" />
                         )}
-                        {item.plannedDisposition === 'hold' && (
-                          <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Hold</span>
-                        )}
-                        {item.plannedDisposition === 'sell' && (
-                          <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">Sell</span>
-                        )}
-                        {item.ebayListingId && (
-                          <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded flex items-center gap-1">
-                            <ExternalLink size={10} /> eBay
-                          </span>
-                        )}
-                        {item.status === 'Available' && !item.plannedDisposition && (
-                          <span className={`text-xs px-1.5 py-0.5 rounded flex items-center gap-1 ${
-                            holdStatus.status === 'hold' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-                          }`}>
-                            {holdStatus.status === 'hold' ? <><Lock size={10} /> {holdStatus.daysLeft}d</> : <><Unlock size={10} /> Ready</>}
-                          </span>
-                        )}
+                        <div>
+                          <div className="font-medium">{item.description}</div>
+                          <div className="text-xs text-gray-500">{item.id} • {item.category}</div>
+                          <div className="flex gap-1 mt-1">
+                            {item.status === 'Stash' && (
+                              <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                <Star size={10} /> Stash
+                              </span>
+                            )}
+                            {item.plannedDisposition === 'hold' && (
+                              <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Hold</span>
+                            )}
+                            {item.plannedDisposition === 'sell' && (
+                              <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">Sell</span>
+                            )}
+                            {item.ebayListingId && (
+                              <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                <ExternalLink size={10} /> eBay
+                              </span>
+                            )}
+                            {item.status === 'Available' && !item.plannedDisposition && (
+                              <span className={`text-xs px-1.5 py-0.5 rounded flex items-center gap-1 ${
+                                holdStatus.status === 'hold' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                              }`}>
+                                {holdStatus.status === 'hold' ? <><Lock size={10} /> {holdStatus.daysLeft}d</> : <><Unlock size={10} /> Ready</>}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-amber-700">${item.meltValue}</div>
+                        <div className="text-xs text-gray-400">Cost: ${item.purchasePrice}</div>
+                        <div className={`text-xs font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {profit >= 0 ? '+' : ''}${profit.toFixed(0)}
+                        </div>
                       </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="font-bold text-amber-700">${item.meltValue}</div>
-                    <div className="text-xs text-gray-400">Cost: ${item.purchasePrice}</div>
-                    <div className={`text-xs font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {profit >= 0 ? '+' : ''}${profit.toFixed(0)}
-                    </div>
-                  </div>
-                </div>
+                );
+              })}
+            </div>
+            
+            {filteredInventory.length === 0 && (
+              <div className="text-center py-8 text-gray-500">
+                <Package size={48} className="mx-auto mb-2 opacity-50" />
+                <p>No items found</p>
+                {kpiFilter && <p className="text-sm">Try clearing your filter</p>}
               </div>
-            );
-          })}
-        </div>
+            )}
+          </div>
+        </details>
         
         {/* Floating Action Button */}
         <div className="fixed bottom-6 right-6">
