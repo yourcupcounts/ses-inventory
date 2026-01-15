@@ -11236,8 +11236,16 @@ export default function SESInventoryApp() {
   // Using a ref to track if we're in the middle of initial load
   const initialLoadComplete = useRef(false);
   const saveTimeoutRef = useRef(null);
+  const lastSavedInventoryLength = useRef(0);
   
   useEffect(() => {
+    console.log('AUTO-SAVE useEffect triggered', { 
+      firebaseReady, 
+      dataLoaded, 
+      inventoryLength: inventory?.length,
+      initialLoadComplete: initialLoadComplete.current 
+    });
+    
     // Don't save during initial load
     if (!firebaseReady || !dataLoaded) {
       console.log('AUTO-SAVE SKIPPED: Not ready yet', { firebaseReady, dataLoaded });
@@ -11253,20 +11261,35 @@ export default function SESInventoryApp() {
     // Mark initial load as complete after first successful load
     if (!initialLoadComplete.current) {
       initialLoadComplete.current = true;
-      console.log('AUTO-SAVE: Initial load complete, future changes will be saved');
+      lastSavedInventoryLength.current = inventory.length;
+      console.log('AUTO-SAVE: Initial load complete, recorded baseline of', inventory.length, 'items');
       // Don't save on first load - data came FROM Firebase
       return;
     }
     
-    // Debounce saves - wait 1 second after last change
+    // Check if inventory actually changed
+    if (inventory.length === lastSavedInventoryLength.current && inventory.length === 0) {
+      console.log('AUTO-SAVE SKIPPED: Inventory still empty, nothing to save');
+      return;
+    }
+    
+    // Debounce saves - wait 500ms after last change (reduced from 1s)
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
     
-    saveTimeoutRef.current = setTimeout(() => {
-      console.log(`AUTO-SAVE TRIGGERED: Saving ${inventory.length} items`);
-      FirebaseService.saveInventory(inventory);
-    }, 1000);
+    console.log(`AUTO-SAVE QUEUED: Will save ${inventory.length} items in 500ms`);
+    
+    saveTimeoutRef.current = setTimeout(async () => {
+      console.log(`AUTO-SAVE EXECUTING: Saving ${inventory.length} items NOW`);
+      const success = await FirebaseService.saveInventory(inventory);
+      if (success) {
+        lastSavedInventoryLength.current = inventory.length;
+        console.log('AUTO-SAVE SUCCESS: Updated baseline to', inventory.length, 'items');
+      } else {
+        console.error('AUTO-SAVE FAILED: Save returned false');
+      }
+    }, 500);
     
     return () => {
       if (saveTimeoutRef.current) {
