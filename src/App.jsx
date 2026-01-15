@@ -1313,96 +1313,6 @@ function getHoldStatus(item) {
   }
 }
 
-// Your actual inventory from past conversations
-const starterInventory = [
-  // January 13, 2026 - Auction Purchases
-  { id: 'SES-001', description: 'Franklin Half Dollars (15 coin set)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 5.43, source: 'Auction', clientId: 'CLI-001', dateAcquired: '2026-01-13', purchasePrice: 400, meltValue: 469, status: 'Available', notes: 'Capital Plastics holder, AU/BU condition. Retail $600-675.', coinKey: 'franklin-half', quantity: 15, lotId: 'LOT-001' },
-  { id: 'SES-002', description: 'Peace Dollars (9 coin set, 1924)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 6.96, source: 'Auction', clientId: 'CLI-001', dateAcquired: '2026-01-13', purchasePrice: 550, meltValue: 601, status: 'Available', notes: 'Capital Plastics holder, VF-AU. Retail $720-855.', coinKey: 'peace-dollar', quantity: 9, lotId: 'LOT-002' },
-  { id: 'SES-003', description: '1927-D Peace Dollar NGC AU55', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.7734, source: 'Auction', clientId: 'CLI-001', dateAcquired: '2026-01-13', purchasePrice: 75, meltValue: 67, status: 'Available', notes: 'NGC Cert #1531904-041, Semi-key date (1.27M mintage). Retail $125-175.', coinKey: 'peace-dollar', year: '1927', mint: 'D', grade: 'AU55' },
-  { id: 'SES-004', description: '1922 Peace Dollar NGC MS63', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.7734, source: 'Auction', clientId: 'CLI-001', dateAcquired: '2026-01-13', purchasePrice: 75, meltValue: 67, status: 'Available', notes: 'NGC Cert #6788772-065, Common date. Retail $85-110.', coinKey: 'peace-dollar', year: '1922', grade: 'MS63' },
-  { id: 'SES-005', description: '90% Silver Quarters (60 coins)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 10.85, source: 'Auction', clientId: 'CLI-001', dateAcquired: '2026-01-13', purchasePrice: 750, meltValue: 938, status: 'Available', notes: 'Mixed Washington quarters bulk lot.', coinKey: 'washington-quarter', quantity: 60, lotId: 'LOT-003' },
-  
-  // January 12, 2026 - Victorian Lace Antique Mall
-  { id: 'SES-006', description: 'Mexican Sterling Hinged Bangle (HPL maker)', category: 'Silver - Sterling', metalType: 'Silver', purity: '925', weightOz: 2.70, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 136.96, meltValue: 225, status: 'Available', notes: 'Modernist square design, 84g. Price includes 7% tax.' },
-  { id: 'SES-007', description: 'Mexican Sterling Chevron Link Bracelet', category: 'Silver - Sterling', metalType: 'Silver', purity: '925', weightOz: 1.93, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 48.15, meltValue: 161, status: 'Available', notes: 'Leaf/wheat pattern, 60g, Mexico 925 mark, TL-01 maker. Price includes tax. Paid 32% of melt.' },
-  { id: 'SES-008', description: '2008-S Hawaii Silver Proof Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 13, meltValue: 16, status: 'Available', notes: 'State Quarter series, SGC booth', coinKey: 'washington-quarter', year: '2008', mint: 'S', grade: 'PF' },
-  { id: 'SES-009', description: '2011-S Gettysburg Silver Proof Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 11, meltValue: 16, status: 'Available', notes: 'America the Beautiful', coinKey: 'washington-quarter', year: '2011', mint: 'S', grade: 'PF' },
-  { id: 'SES-010', description: '2010-S Grand Canyon Silver Proof Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 13, meltValue: 16, status: 'Available', notes: 'America the Beautiful', coinKey: 'washington-quarter', year: '2010', mint: 'S', grade: 'PF' },
-  { id: 'SES-011', description: '1962-D Franklin Half Dollar', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.3617, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 26, meltValue: 31, status: 'Available', coinKey: 'franklin-half', year: '1962', mint: 'D' },
-  { id: 'SES-012', description: '1930 Standing Liberty Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 23, meltValue: 16, status: 'Available', notes: 'Collector premium (150% melt)', coinKey: 'standing-liberty-quarter', year: '1930' },
-  { id: 'SES-013', description: '1928 Standing Liberty Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 23, meltValue: 16, status: 'Available', coinKey: 'standing-liberty-quarter', year: '1928' },
-  { id: 'SES-014', description: '1924 Standing Liberty Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 75, meltValue: 16, status: 'Available', notes: 'Paid 488% of melt - collector piece', coinKey: 'standing-liberty-quarter', year: '1924' },
-  { id: 'SES-015', description: '1927 Standing Liberty Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 23, meltValue: 16, status: 'Available', coinKey: 'standing-liberty-quarter', year: '1927' },
-  { id: 'SES-016', description: '1925 Standing Liberty Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 23, meltValue: 16, status: 'Available', coinKey: 'standing-liberty-quarter', year: '1925' },
-  { id: 'SES-017', description: '1903-O Barber Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 13, meltValue: 16, status: 'Available', notes: 'Good buy at 85% melt', coinKey: 'barber-quarter', year: '1903', mint: 'O' },
-  { id: 'SES-018', description: '1909 Barber Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 13, meltValue: 16, status: 'Available', coinKey: 'barber-quarter', year: '1909' },
-  { id: 'SES-019', description: '1908 Barber Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 13, meltValue: 16, status: 'Available', coinKey: 'barber-quarter', year: '1908' },
-  { id: 'SES-020', description: '1909-D Barber Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 14, meltValue: 16, status: 'Available', coinKey: 'barber-quarter', year: '1909', mint: 'D' },
-  { id: 'SES-021', description: '1912 Barber Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 23, meltValue: 16, status: 'Available', notes: 'Collector premium (150% melt)', coinKey: 'barber-quarter', year: '1912' },
-  { id: 'SES-022', description: '1915 Barber Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 23, meltValue: 16, status: 'Available', coinKey: 'barber-quarter', year: '1915' },
-  { id: 'SES-023', description: '1945-S Walking Liberty Half', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.3617, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 26, meltValue: 31, status: 'Available', coinKey: 'walking-liberty-half', year: '1945', mint: 'S' },
-  { id: 'SES-024', description: '1937 Walking Liberty Half', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.3617, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 28, meltValue: 31, status: 'Available', coinKey: 'walking-liberty-half', year: '1937' },
-  { id: 'SES-025', description: '1949-S Franklin Half Dollar', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.3617, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 26, meltValue: 31, status: 'Available', coinKey: 'franklin-half', year: '1949', mint: 'S' },
-  
-  // Other items from conversations
-  { id: 'SES-026', description: 'South African Threepence Coin Bracelet (8 coins)', category: 'Silver - World', metalType: 'Silver', purity: '80%', weightOz: 0.29, source: 'Walk-in', clientId: 'CLI-003', dateAcquired: '2026-01-13', purchasePrice: 18, meltValue: 25, status: 'Available', notes: 'George VI era 3d coins (1951-1952), broken bracelet, base metal bezels. Melt only.' },
-  { id: 'SES-027', description: 'Franklin Mint Apollo 13 Medal', category: 'Collectibles', metalType: 'Silver', purity: '925', weightOz: 0, source: 'Walk-in', clientId: 'CLI-003', dateAcquired: '2026-01-10', purchasePrice: 60, meltValue: 0, status: 'Available', notes: 'Space-flown metal content, presentation case & docs. Collector value $100-150, not melt.' },
-  { id: 'SES-028', description: 'Mexican Sterling Mahogany Obsidian Bracelet', category: 'Silver - Sterling', metalType: 'Silver', purity: '925', weightOz: 0.80, source: 'Walk-in', clientId: 'CLI-003', dateAcquired: '2026-01-11', purchasePrice: 42, meltValue: 67, status: 'Available', notes: 'Taxco-style, 8 oval cabochons, ~43g total (~25g silver). eBay value $80-120. Bought at 70% melt.' },
-];
-
-// Your actual clients
-const starterClients = [
-  { id: 'CLI-001', name: 'January 13 Auction', type: 'Business', email: '', phone: '', address: '', idType: 'Business', idNumber: '', idExpiry: '', idFrontPhoto: null, idBackPhoto: null, signature: null, signatureTimestamp: null, signatureLocation: null, notes: 'Auction house - Franklin set, Peace set, NGC slabs, 60 quarters. Total: $1,850', dateAdded: '2026-01-13', totalTransactions: 5, totalPurchased: 1850 },
-  { id: 'CLI-002', name: 'Victorian Lace Antique Mall', type: 'Business', email: '', phone: '', address: 'Rutherfordton, NC', businessLicense: '', taxId: '', idType: 'Business', idNumber: '', idFrontPhoto: null, idBackPhoto: null, signature: null, signatureTimestamp: null, signatureLocation: null, notes: 'Antique mall with multiple booths (SGC, WW, etc). Coins exempt from tax, jewelry taxed at 7%.', dateAdded: '2026-01-12', totalTransactions: 22, totalPurchased: 560 },
-  { id: 'CLI-003', name: 'Walk-in Sellers', type: 'Private', email: '', phone: '', address: '', idType: '', idNumber: '', idExpiry: '', idFrontPhoto: null, idBackPhoto: null, signature: null, signatureTimestamp: null, signatureLocation: null, notes: 'Miscellaneous walk-in sellers - SA bracelet, Apollo medal, obsidian bracelet', dateAdded: '2026-01-10', totalTransactions: 3, totalPurchased: 120 },
-];
-
-// Your actual lots
-const starterLots = [
-  { 
-    id: 'LOT-001', 
-    description: 'Franklin Half Dollar Set (15 coins)', 
-    totalCost: 400, 
-    totalItems: 15, 
-    source: 'Auction',
-    clientId: 'CLI-001',
-    dateAcquired: '2026-01-13',
-    status: 'intact',
-    allocationMethod: 'equal',
-    notes: 'Capital Plastics holder, AU/BU condition. Paid 85.4% of melt ($468.57). Retail value $600-675. Consider selling as set for collector premium.',
-    itemIds: ['SES-001'],
-    createdAt: '2026-01-13T00:00:00Z'
-  },
-  { 
-    id: 'LOT-002', 
-    description: 'Peace Dollar Set (9 coins, 1924)', 
-    totalCost: 550, 
-    totalItems: 9, 
-    source: 'Auction',
-    clientId: 'CLI-001',
-    dateAcquired: '2026-01-13',
-    status: 'intact',
-    allocationMethod: 'equal',
-    notes: 'Capital Plastics holder (aftermarket, not mint issued), VF-AU. Paid 91.5% of melt ($600.88). Retail $720-855. Test for authenticity before resale.',
-    itemIds: ['SES-002'],
-    createdAt: '2026-01-13T00:00:00Z'
-  },
-  { 
-    id: 'LOT-003', 
-    description: '90% Silver Quarters (60 coins)', 
-    totalCost: 750, 
-    totalItems: 60, 
-    source: 'Auction',
-    clientId: 'CLI-001',
-    dateAcquired: '2026-01-13',
-    status: 'intact',
-    allocationMethod: 'equal',
-    notes: 'Mixed Washington quarters. $15 face value. Paid $50/face ($12.50/coin). Junk silver for melt or resale.',
-    itemIds: ['SES-005'],
-    createdAt: '2026-01-13T00:00:00Z'
-  }
-];
-
 // ============ EBAY LISTING VIEW ============
 function EbayListingView({ item, generatedListing, onBack, onListingCreated }) {
   const [photos, setPhotos] = useState(item.photos || (item.photo ? [item.photo] : []));
@@ -8029,7 +7939,8 @@ Return ONLY the JSON object.`
           <div className="grid grid-cols-2 gap-4">
             <div><label className="block text-sm font-medium mb-1">Purity</label><input type="text" value={form.purity} onChange={(e) => setForm({...form, purity: e.target.value})} className="w-full border rounded p-2" placeholder="925, 999, 14K..." /></div>
             <div>
-              <label className="block text-sm font-medium mb-1">Weight</label>
+              <label className="block text-sm font-medium mb-1">Metal Weight</label>
+              <p className="text-xs text-gray-500 -mt-1 mb-1">Pure metal content only</p>
               <div className="flex gap-1">
                 <input 
                   type="number" 
@@ -8121,7 +8032,8 @@ Return ONLY the JSON object.`
           <div className="grid grid-cols-2 gap-4">
             <div><label className="block text-sm font-medium mb-1">Purchase $</label><input type="number" value={form.purchasePrice} onChange={(e) => setForm({...form, purchasePrice: e.target.value})} className="w-full border rounded p-2" /></div>
             <div>
-              <label className="block text-sm font-medium mb-1">Melt Value</label>
+              <label className="block text-sm font-medium mb-1">Melt at Purchase</label>
+              <p className="text-xs text-gray-500 -mt-1 mb-1">Using today's spot</p>
               <div className="flex gap-2">
                 <input type="number" value={form.meltValue} onChange={(e) => setForm({...form, meltValue: e.target.value})} className="flex-1 border rounded p-2" />
                 <button onClick={() => setForm({...form, meltValue: calculateMelt(form.metalType, form.purity, getWeightInOz())})} className="bg-amber-100 px-2 rounded text-amber-700 text-sm">Calc</button>
@@ -8135,11 +8047,20 @@ Return ONLY the JSON object.`
               onClick={() => { 
                 if (form.description) {
                   const weightInOz = getWeightInOz();
+                  const meltAtPurchase = parseFloat(form.meltValue || calculateMelt(form.metalType, form.purity, weightInOz)) || 0;
                   onSave({ 
                     ...form, 
                     weightOz: weightInOz, 
                     purchasePrice: parseFloat(form.purchasePrice) || 0, 
-                    meltValue: parseFloat(form.meltValue || calculateMelt(form.metalType, form.purity, weightInOz)) || 0 
+                    meltValue: meltAtPurchase,
+                    // Store spot prices at time of purchase for historical reference
+                    spotAtPurchase: {
+                      gold: liveSpotPrices?.gold || 0,
+                      silver: liveSpotPrices?.silver || 0,
+                      platinum: liveSpotPrices?.platinum || 0,
+                      palladium: liveSpotPrices?.palladium || 0,
+                      date: new Date().toISOString()
+                    }
                   }); 
                 }
               }} 
@@ -8773,11 +8694,66 @@ Ships fast and packed well. Questions? Just ask.`;
           </div>
         )}
         
-        <div className="grid grid-cols-3 gap-3 my-4">
+        <div className="grid grid-cols-2 gap-3 my-4">
           <div className="bg-gray-50 p-3 rounded"><div className="text-xs text-gray-500">Cost</div><div className="text-lg font-bold">${item.purchasePrice}</div></div>
-          <div className="bg-gray-50 p-3 rounded"><div className="text-xs text-gray-500">Melt</div><div className="text-lg font-bold text-amber-700">${item.meltValue}</div></div>
-          <div className="bg-gray-50 p-3 rounded"><div className="text-xs text-gray-500">Profit</div><div className={`text-lg font-bold ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>${profit}</div></div>
+          <div className="bg-gray-50 p-3 rounded"><div className="text-xs text-gray-500">Melt @ Purchase</div><div className="text-lg font-bold text-amber-700">${item.meltValue}</div></div>
         </div>
+        
+        {/* Current Melt Value - calculated live from spot */}
+        {item.weightOz && item.metalType && (
+          <div className="bg-green-50 p-3 rounded-lg mb-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <div className="text-xs text-green-600 font-medium">Current Melt Value (Live)</div>
+                <div className="text-2xl font-bold text-green-700">
+                  ${(() => {
+                    const spot = liveSpotPrices?.[item.metalType?.toLowerCase()] || 0;
+                    let purityDecimal = 1;
+                    if (item.purity) {
+                      const p = item.purity.toString().toUpperCase();
+                      if (p.includes('K')) {
+                        purityDecimal = parseInt(p.replace('K', '')) / 24;
+                      } else if (p.includes('%')) {
+                        purityDecimal = parseFloat(p.replace('%', '')) / 100;
+                      } else {
+                        const num = parseFloat(p);
+                        purityDecimal = num > 1 ? num / 1000 : num;
+                      }
+                    }
+                    return ((item.weightOz || 0) * spot * purityDecimal).toFixed(2);
+                  })()}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-gray-500">{item.metalType} Spot</div>
+                <div className="font-medium">${liveSpotPrices?.[item.metalType?.toLowerCase()]?.toFixed(2) || 'N/A'}/oz</div>
+              </div>
+            </div>
+            {/* Show profit vs cost */}
+            {(() => {
+              const spot = liveSpotPrices?.[item.metalType?.toLowerCase()] || 0;
+              let purityDecimal = 1;
+              if (item.purity) {
+                const p = item.purity.toString().toUpperCase();
+                if (p.includes('K')) {
+                  purityDecimal = parseInt(p.replace('K', '')) / 24;
+                } else if (p.includes('%')) {
+                  purityDecimal = parseFloat(p.replace('%', '')) / 100;
+                } else {
+                  const num = parseFloat(p);
+                  purityDecimal = num > 1 ? num / 1000 : num;
+                }
+              }
+              const currentMelt = (item.weightOz || 0) * spot * purityDecimal;
+              const currentProfit = currentMelt - (item.purchasePrice || 0);
+              return (
+                <div className={`text-sm mt-2 ${currentProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {currentProfit >= 0 ? '↑' : '↓'} ${Math.abs(currentProfit).toFixed(2)} vs cost ({((currentProfit / (item.purchasePrice || 1)) * 100).toFixed(0)}%)
+                </div>
+              );
+            })()}
+          </div>
+        )}
         
         {item.status === 'Sold' && (
           <div className="bg-green-50 p-3 rounded mb-4">
@@ -11235,9 +11211,9 @@ export default function SESInventoryApp() {
   // Auto-save to Firebase when data changes - ONLY after initial load completes
   // Using a ref to track if we're in the middle of initial load
   const initialLoadComplete = useRef(false);
-  const saveTimeoutRef = useRef(null);
   const lastSavedInventoryLength = useRef(0);
   
+  // Save immediately when inventory changes (no debounce - mobile browsers kill timeouts)
   useEffect(() => {
     console.log('AUTO-SAVE useEffect triggered', { 
       firebaseReady, 
@@ -11273,30 +11249,43 @@ export default function SESInventoryApp() {
       return;
     }
     
-    // Debounce saves - wait 500ms after last change (reduced from 1s)
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-    
-    console.log(`AUTO-SAVE QUEUED: Will save ${inventory.length} items in 500ms`);
-    
-    saveTimeoutRef.current = setTimeout(async () => {
-      console.log(`AUTO-SAVE EXECUTING: Saving ${inventory.length} items NOW`);
-      const success = await FirebaseService.saveInventory(inventory);
+    // Save IMMEDIATELY - no timeout (mobile browsers kill timeouts when backgrounded)
+    console.log(`AUTO-SAVE EXECUTING: Saving ${inventory.length} items NOW`);
+    FirebaseService.saveInventory(inventory).then(success => {
       if (success) {
         lastSavedInventoryLength.current = inventory.length;
         console.log('AUTO-SAVE SUCCESS: Updated baseline to', inventory.length, 'items');
       } else {
         console.error('AUTO-SAVE FAILED: Save returned false');
       }
-    }, 500);
+    });
     
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
+  }, [inventory, firebaseReady, dataLoaded]);
+  
+  // Also save on page unload (backup for mobile)
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (firebaseReady && inventory && inventory.length > 0) {
+        console.log('UNLOAD SAVE: Saving before page close');
+        // Use sendBeacon for reliable save on close (doesn't work with Firestore, but try anyway)
+        FirebaseService.saveInventory(inventory);
       }
     };
-  }, [inventory, firebaseReady, dataLoaded]);
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handleBeforeUnload); // iOS Safari
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden' && firebaseReady && inventory && inventory.length > 0) {
+        console.log('VISIBILITY SAVE: Page hidden, saving...');
+        FirebaseService.saveInventory(inventory);
+      }
+    });
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handleBeforeUnload);
+    };
+  }, [firebaseReady, inventory]);
   
   useEffect(() => {
     if (firebaseReady && dataLoaded && clients !== null && initialLoadComplete.current) {
