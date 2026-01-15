@@ -66,6 +66,17 @@ const FirebaseService = {
     }
   },
   
+  // Helper to remove undefined values (Firestore doesn't accept undefined)
+  cleanObject(obj) {
+    const cleaned = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value !== undefined) {
+        cleaned[key] = value === null ? null : value;
+      }
+    }
+    return cleaned;
+  },
+  
   // Save inventory to Firestore
   async saveInventory(inventory) {
     if (!this.initialized) return false;
@@ -74,11 +85,19 @@ const FirebaseService = {
       for (const item of inventory) {
         // Store photo separately in Storage if exists
         let photoUrl = null;
+        let photoBackUrl = null;
         if (item.photo && item.photo.length > 1000) {
           photoUrl = await this.uploadPhoto(item.id, item.photo);
         }
+        if (item.photoBack && item.photoBack.length > 1000) {
+          photoBackUrl = await this.uploadPhoto(`${item.id}_back`, item.photoBack);
+        }
         
-        const itemData = { ...item, photo: photoUrl || item.photo };
+        const itemData = this.cleanObject({ 
+          ...item, 
+          photo: photoUrl || item.photo || null,
+          photoBack: photoBackUrl || item.photoBack || null
+        });
         await setDoc(doc(this.db, 'inventory', item.id), itemData);
       }
       return true;
@@ -110,9 +129,9 @@ const FirebaseService = {
       const { doc, setDoc } = this.firestore;
       for (const client of clients) {
         // Store ID photos and signature in Storage
-        let idPhotoFrontUrl = client.idPhotoFront;
-        let idPhotoBackUrl = client.idPhotoBack;
-        let signatureUrl = client.signature;
+        let idPhotoFrontUrl = client.idPhotoFront || null;
+        let idPhotoBackUrl = client.idPhotoBack || null;
+        let signatureUrl = client.signature || null;
         
         if (client.idPhotoFront && client.idPhotoFront.length > 1000) {
           idPhotoFrontUrl = await this.uploadPhoto(`${client.id}_id_front`, client.idPhotoFront);
@@ -124,12 +143,12 @@ const FirebaseService = {
           signatureUrl = await this.uploadPhoto(`${client.id}_signature`, client.signature);
         }
         
-        const clientData = {
+        const clientData = this.cleanObject({
           ...client,
           idPhotoFront: idPhotoFrontUrl,
           idPhotoBack: idPhotoBackUrl,
           signature: signatureUrl
-        };
+        });
         await setDoc(doc(this.db, 'clients', client.id), clientData);
       }
       return true;
@@ -160,7 +179,8 @@ const FirebaseService = {
     try {
       const { doc, setDoc } = this.firestore;
       for (const lot of lots) {
-        await setDoc(doc(this.db, 'lots', lot.id), lot);
+        const lotData = this.cleanObject(lot);
+        await setDoc(doc(this.db, 'lots', lot.id), lotData);
       }
       return true;
     } catch (error) {
