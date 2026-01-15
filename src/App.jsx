@@ -307,6 +307,21 @@ const FirebaseService = {
   }
 };
 
+// Helper function to get photo src - handles both base64 and URL formats
+const getPhotoSrc = (photo) => {
+  if (!photo) return null;
+  // If it's already a URL (from Firebase Storage), use it directly
+  if (photo.startsWith('http://') || photo.startsWith('https://')) {
+    return photo;
+  }
+  // If it's a data URL, use it directly
+  if (photo.startsWith('data:')) {
+    return photo;
+  }
+  // Otherwise assume it's base64 and add the prefix
+  return `data:image/jpeg;base64,${photo}`;
+};
+
 // ============ SPOT PRICE SERVICE ============
 const SpotPriceService = {
   lastPrices: { gold: 4600.00, silver: 90.00, platinum: 985.00, palladium: 945.00 },
@@ -2345,7 +2360,7 @@ function PersonalStashView({ inventory, spotPrices, onBack, onSelectItem, onMove
                       >
                         {item.photo && (
                           <img 
-                            src={`data:image/jpeg;base64,${item.photo}`} 
+                            src={getPhotoSrc(item.photo)} 
                             className="w-12 h-12 rounded object-cover"
                           />
                         )}
@@ -2429,7 +2444,7 @@ function PersonalStashView({ inventory, spotPrices, onBack, onSelectItem, onMove
                           </div>
                           {item.photo && (
                             <img 
-                              src={`data:image/jpeg;base64,${item.photo}`} 
+                              src={getPhotoSrc(item.photo)} 
                               className="w-10 h-10 rounded object-cover"
                             />
                           )}
@@ -3606,7 +3621,7 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                       <div key={item.id} className="flex items-center justify-between bg-gray-700 p-2 rounded">
                         <div className="flex items-center gap-2">
                           {item.photo && (
-                            <img src={`data:image/jpeg;base64,${item.photo}`} className="w-8 h-8 rounded object-cover" />
+                            <img src={getPhotoSrc(item.photo)} className="w-8 h-8 rounded object-cover" />
                           )}
                           <div>
                             <div className="text-white text-sm">{item.description}</div>
@@ -3658,7 +3673,7 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
               {evaluatingItem.photo && (
                 <div className="aspect-video bg-black">
                   <img 
-                    src={`data:image/jpeg;base64,${evaluatingItem.photo}`} 
+                    src={getPhotoSrc(evaluatingItem.photo)} 
                     className="w-full h-full object-contain"
                   />
                 </div>
@@ -4589,7 +4604,7 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                   <div className="flex gap-3">
                     {item.photo && (
                       <img 
-                        src={`data:image/jpeg;base64,${item.photo}`} 
+                        src={getPhotoSrc(item.photo)} 
                         className="w-16 h-16 rounded object-cover"
                       />
                     )}
@@ -7498,7 +7513,7 @@ function EbayListingsView({ inventory, onBack, onSelectItem, onListItem }) {
               {/* Thumbnail */}
               {item.photo ? (
                 <img 
-                  src={`data:image/jpeg;base64,${item.photo}`} 
+                  src={getPhotoSrc(item.photo)} 
                   className="w-16 h-16 object-cover rounded"
                   alt={item.description}
                 />
@@ -7857,7 +7872,7 @@ Return ONLY the JSON object.`
                 <div className="text-xs text-gray-500 mb-1">① Main Photo</div>
                 {form.photo ? (
                   <div className="relative">
-                    <img src={`data:image/jpeg;base64,${form.photo}`} className="w-full h-28 object-cover rounded-lg border-2 border-green-400" />
+                    <img src={getPhotoSrc(form.photo)} className="w-full h-28 object-cover rounded-lg border-2 border-green-400" />
                     <div className="absolute top-1 right-1 bg-green-500 text-white rounded-full w-5 h-5 flex items-center justify-center">
                       <Check size={12} />
                     </div>
@@ -7879,7 +7894,7 @@ Return ONLY the JSON object.`
                 <div className="text-xs text-gray-500 mb-1">② Back (optional)</div>
                 {form.photoBack ? (
                   <div className="relative">
-                    <img src={`data:image/jpeg;base64,${form.photoBack}`} className="w-full h-28 object-cover rounded-lg border-2 border-green-400" />
+                    <img src={getPhotoSrc(form.photoBack)} className="w-full h-28 object-cover rounded-lg border-2 border-green-400" />
                     <div className="absolute top-1 right-1 bg-green-500 text-white rounded-full w-5 h-5 flex items-center justify-center">
                       <Check size={12} />
                     </div>
@@ -8508,7 +8523,7 @@ Ships fast and packed well. Questions? Just ask.`;
                   {item.photo ? (
                     <div className="relative">
                       <img 
-                        src={`data:image/jpeg;base64,${item.photo}`} 
+                        src={getPhotoSrc(item.photo)} 
                         className="w-full h-32 object-cover rounded-lg"
                         alt="Front"
                       />
@@ -8536,7 +8551,7 @@ Ships fast and packed well. Questions? Just ask.`;
                   {item.photoBack ? (
                     <div className="relative">
                       <img 
-                        src={`data:image/jpeg;base64,${item.photoBack}`} 
+                        src={getPhotoSrc(item.photoBack)} 
                         className="w-full h-32 object-cover rounded-lg"
                         alt="Back"
                       />
@@ -8595,7 +8610,7 @@ Ships fast and packed well. Questions? Just ask.`;
                   {item.photo ? (
                     <div className="relative">
                       <img 
-                        src={`data:image/jpeg;base64,${item.photo}`} 
+                        src={getPhotoSrc(item.photo)} 
                         className="w-full h-48 object-contain bg-gray-100 rounded-lg"
                       />
                       <button
@@ -8633,7 +8648,7 @@ Ships fast and packed well. Questions? Just ask.`;
                   {item.photoBack ? (
                     <div className="relative">
                       <img 
-                        src={`data:image/jpeg;base64,${item.photoBack}`} 
+                        src={getPhotoSrc(item.photoBack)} 
                         className="w-full h-48 object-contain bg-gray-100 rounded-lg"
                       />
                       <button
@@ -9505,7 +9520,7 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
             <HardDrive size={18} /> App Information
           </h3>
           <div className="text-sm text-gray-600 space-y-1">
-            <p><strong>Version:</strong> 92</p>
+            <p><strong>Version:</strong> 93</p>
             <p><strong>Firebase Project:</strong> ses-inventory</p>
             <p><strong>Last Updated:</strong> January 2026</p>
           </div>
@@ -12250,7 +12265,7 @@ export default function SESInventoryApp() {
                     <div className="flex justify-between items-start">
                       <div className="flex gap-3">
                         {item.photo && (
-                          <img src={`data:image/jpeg;base64,${item.photo}`} className="w-12 h-12 rounded object-cover" />
+                          <img src={getPhotoSrc(item.photo)} className="w-12 h-12 rounded object-cover" />
                         )}
                         <div>
                           <div className="font-medium">{item.description}</div>
