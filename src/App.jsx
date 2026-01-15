@@ -8045,20 +8045,18 @@ Return ONLY the JSON object.`
             <button onClick={onCancel} className="flex-1 border py-2 rounded">Cancel</button>
             <button 
               onClick={() => { 
-                console.log('SAVE CLICKED, description:', form.description);
+                alert('Save button clicked!');
                 if (!form.description) {
                   alert('Please enter a description');
                   return;
                 }
                 const weightInOz = getWeightInOz();
                 const meltAtPurchase = parseFloat(form.meltValue || calculateMelt(form.metalType, form.purity, weightInOz)) || 0;
-                console.log('Calling onSave with data...');
                 onSave({ 
                   ...form, 
                   weightOz: weightInOz, 
                   purchasePrice: parseFloat(form.purchasePrice) || 0, 
                   meltValue: meltAtPurchase,
-                  // Store spot prices at time of purchase for historical reference
                   spotAtPurchase: {
                     gold: liveSpotPrices?.gold || 0,
                     silver: liveSpotPrices?.silver || 0,
@@ -11696,26 +11694,18 @@ export default function SESInventoryApp() {
   if (view === 'dashboard') return <DashboardView inventory={inventory} onBack={() => setView('list')} />;
   if (view === 'tax') return <TaxReportView inventory={inventory} onBack={() => setView('list')} />;
   if (view === 'ebayListings') return <EbayListingsView inventory={inventory} onBack={() => setView('list')} onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }} onListItem={(item) => { setSelectedItem(item); setView('ebayListing'); }} />;
-  if (view === 'add') return <AddItemView clients={clients} liveSpotPrices={liveSpotPrices} onSave={async (item) => { 
-    try {
-      const newItem = { ...item, id: getNextId('SES') };
-      const currentInv = inventory || [];
-      const newInventory = [...currentInv, newItem];
-      setInventory(newInventory); 
-      // EXPLICIT SAVE - don't rely on useEffect
-      console.log('ADD ITEM: Explicitly saving after add...', newInventory.length, 'items');
-      const success = await FirebaseService.saveInventory(newInventory);
-      if (success) {
-        console.log('ADD ITEM: Save confirmed!');
-        alert('Item saved to Firebase!');
-      } else {
-        console.error('ADD ITEM: Save FAILED!');
-        alert('WARNING: Save failed! Check connection.');
-      }
-    } catch (err) {
-      console.error('ADD ITEM ERROR:', err);
-      alert('ERROR: ' + err.message);
-    }
+  if (view === 'add') return <AddItemView clients={clients} liveSpotPrices={liveSpotPrices} onSave={(item) => { 
+    const newItem = { ...item, id: getNextId('SES') };
+    const currentInv = inventory || [];
+    const newInventory = [...currentInv, newItem];
+    setInventory(newInventory); 
+    // Save to Firebase (fire and forget)
+    console.log('ADD ITEM: Saving', newInventory.length, 'items');
+    FirebaseService.saveInventory(newInventory).then(success => {
+      console.log('ADD ITEM: Save result:', success);
+    }).catch(err => {
+      console.error('ADD ITEM: Save error:', err);
+    });
     setView('list'); 
   }} onCancel={() => setView('list')} calculateMelt={calculateMelt} />;
   if (view === 'detail' && selectedItem) return <DetailView 
