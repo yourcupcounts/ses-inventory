@@ -7507,7 +7507,7 @@ function AddItemView({ onSave, onCancel, calculateMelt, clients, liveSpotPrices 
     description: '', category: 'Silver - Sterling', metalType: 'Silver', purity: '925', 
     weight: '', source: '', clientId: '', purchasePrice: '', meltValue: '', notes: '', 
     status: 'Available', dateAcquired: new Date().toISOString().split('T')[0],
-    photo: null, photoBack: null, year: '', mint: '', grade: ''
+    photo: null, photoBack: null, year: '', mint: '', grade: '', serialNumber: ''
   });
   const [weightUnit, setWeightUnit] = useState('g'); // 'g' for grams, 'oz' for troy ounces
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -7637,7 +7637,8 @@ Return ONLY a valid JSON object (no markdown, no explanation) with these fields:
   "mint": "mint mark if visible (P, D, S, O, CC, W)" or null,
   "grade": "grade from holder/flip/slab or condition assessment" or null,
   "purchasePrice": number or null (if a price is written/labeled, extract just the number),
-  "notes": "maker's marks, serial numbers, hallmarks, condition details, certification info",
+  "serialNumber": "any serial numbers, certification numbers (NGC/PCGS cert#), hallmarks, maker marks" or null,
+  "notes": "additional condition details or other observations",
   "confidence": "high, medium, or low"
 }
 
@@ -7713,6 +7714,7 @@ Return ONLY the JSON object.`
         grade: aiResult.grade || prev.grade,
         purchasePrice: aiResult.purchasePrice || prev.purchasePrice,
         meltValue: meltVal || prev.meltValue,
+        serialNumber: aiResult.serialNumber || prev.serialNumber,
         notes: aiResult.notes || prev.notes
       }));
       
@@ -7992,6 +7994,19 @@ Return ONLY the JSON object.`
                 <option value="MS70">MS70</option>
               </select>
             </div>
+          </div>
+          
+          {/* Marks/Serial Numbers - AML Compliance */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Marks / Serial Numbers</label>
+            <input 
+              type="text" 
+              value={form.serialNumber || ''} 
+              onChange={(e) => setForm({...form, serialNumber: e.target.value})} 
+              className="w-full border rounded p-2" 
+              placeholder="Hallmarks, serial #, cert #, maker marks..."
+            />
+            <p className="text-xs text-gray-500 mt-1">For AML compliance: document all identifying marks</p>
           </div>
           
           <div><label className="block text-sm font-medium mb-1">Source</label><input type="text" value={form.source} onChange={(e) => setForm({...form, source: e.target.value})} className="w-full border rounded p-2" /></div>
@@ -8661,6 +8676,26 @@ Ships fast and packed well. Questions? Just ask.`;
           <div className="flex justify-between py-2"><span className="text-gray-500">Acquired</span><span>{item.dateAcquired}</span></div>
         </div>
         
+        {/* Serial/Marks - AML Compliance - Editable */}
+        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-xs text-blue-600 font-medium">Marks / Serial Numbers</span>
+            <button 
+              onClick={() => {
+                const newValue = prompt('Enter marks, serial numbers, or certification numbers:', item.serialNumber || '');
+                if (newValue !== null) {
+                  onUpdate({ ...item, serialNumber: newValue });
+                }
+              }}
+              className="text-xs text-blue-600 underline"
+            >
+              Edit
+            </button>
+          </div>
+          <div className="text-sm">{item.serialNumber || <span className="text-gray-400 italic">None recorded</span>}</div>
+          <p className="text-xs text-blue-500 mt-1">For AML compliance</p>
+        </div>
+        
         {item.notes && <div className="mt-4 p-3 bg-gray-50 rounded text-sm">{item.notes}</div>}
         
         {/* PRICING ANALYSIS SECTION */}
@@ -9034,6 +9069,7 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
     { key: 'year', label: 'Year' },
     { key: 'mint', label: 'Mint' },
     { key: 'grade', label: 'Grade' },
+    { key: 'serialNumber', label: 'Marks/Serial#' },
     { key: 'salePrice', label: 'Sale Price' },
     { key: 'saleDate', label: 'Sale Date' },
     { key: 'notes', label: 'Notes' }
@@ -9363,13 +9399,54 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
 }
 
 // ============ RECEIPT MANAGER VIEW ============
-function ReceiptManagerView({ onBack, receipts, onAddReceipt, onDeleteReceipt, inventory, lots, clients }) {
+function ReceiptManagerView({ onBack, receipts, onAddReceipt, onDeleteReceipt, onUpdateReceipt, inventory, lots, clients }) {
   const [isUploading, setIsUploading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [selectedReceipt, setSelectedReceipt] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState(null);
   const [filter, setFilter] = useState('all'); // all, purchase, sale
   const fileInputRef = useRef(null);
+  
+  // Start editing
+  const startEditing = () => {
+    setEditForm({ ...selectedReceipt });
+    setIsEditing(true);
+  };
+  
+  // Save edits
+  const saveEdits = () => {
+    onUpdateReceipt(editForm);
+    setSelectedReceipt(editForm);
+    setIsEditing(false);
+    setEditForm(null);
+  };
+  
+  // Cancel editing
+  const cancelEditing = () => {
+    setIsEditing(false);
+    setEditForm(null);
+  };
+  
+  // Update item in edit form
+  const updateEditItem = (index, field, value) => {
+    const newItems = [...(editForm.items || [])];
+    newItems[index] = { ...newItems[index], [field]: value };
+    setEditForm({ ...editForm, items: newItems });
+  };
+  
+  // Add new item
+  const addEditItem = () => {
+    const newItems = [...(editForm.items || []), { description: '', quantity: 1, totalPrice: 0 }];
+    setEditForm({ ...editForm, items: newItems });
+  };
+  
+  // Remove item
+  const removeEditItem = (index) => {
+    const newItems = (editForm.items || []).filter((_, i) => i !== index);
+    setEditForm({ ...editForm, items: newItems });
+  };
   
   // Handle file upload
   const handleFileUpload = async (e) => {
@@ -9524,164 +9601,453 @@ Be thorough - extract every line item you can identify.`
   
   // Receipt detail view
   if (selectedReceipt) {
+    const receipt = isEditing ? editForm : selectedReceipt;
+    
     return (
       <div className="min-h-screen bg-amber-50">
         <div className="bg-amber-700 text-white p-4 flex items-center justify-between">
           <div className="flex items-center">
-            <button onClick={() => setSelectedReceipt(null)} className="mr-4">← Back</button>
-            <h1 className="text-xl font-bold">Receipt Details</h1>
+            <button onClick={() => { 
+              if (isEditing) { cancelEditing(); } 
+              else { setSelectedReceipt(null); }
+            }} className="mr-4">
+              {isEditing ? '✕ Cancel' : '← Back'}
+            </button>
+            <h1 className="text-xl font-bold">{isEditing ? 'Edit Receipt' : 'Receipt Details'}</h1>
           </div>
-          <button 
-            onClick={() => downloadReceipt(selectedReceipt)}
-            className="bg-white text-amber-700 px-3 py-1 rounded text-sm font-medium"
-          >
-            Download
-          </button>
+          {isEditing ? (
+            <button 
+              onClick={saveEdits}
+              className="bg-green-500 text-white px-4 py-1 rounded text-sm font-medium"
+            >
+              ✓ Save
+            </button>
+          ) : (
+            <div className="flex gap-2">
+              <button 
+                onClick={startEditing}
+                className="bg-blue-500 text-white px-3 py-1 rounded text-sm font-medium"
+              >
+                Edit
+              </button>
+              <button 
+                onClick={() => downloadReceipt(selectedReceipt)}
+                className="bg-white text-amber-700 px-3 py-1 rounded text-sm font-medium"
+              >
+                Download
+              </button>
+            </div>
+          )}
         </div>
         
         <div className="p-4 space-y-4">
           {/* Receipt Header */}
           <div className="bg-white rounded-lg shadow p-4">
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <span className={`text-xs px-2 py-1 rounded font-medium ${
-                  selectedReceipt.type === 'purchase' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-                }`}>
-                  {selectedReceipt.type === 'purchase' ? '📥 PURCHASE' : '📤 SALE'}
-                </span>
-                <h2 className="text-lg font-bold mt-2">{selectedReceipt.vendor || 'Unknown Vendor'}</h2>
-                <p className="text-sm text-gray-500">{selectedReceipt.vendorType}</p>
+            {isEditing ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-gray-500">Type</label>
+                  <select 
+                    value={editForm.type || 'purchase'}
+                    onChange={(e) => setEditForm({...editForm, type: e.target.value})}
+                    className="w-full border rounded p-2 mt-1"
+                  >
+                    <option value="purchase">Purchase</option>
+                    <option value="sale">Sale</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">Vendor/Customer</label>
+                  <input 
+                    type="text"
+                    value={editForm.vendor || ''}
+                    onChange={(e) => setEditForm({...editForm, vendor: e.target.value})}
+                    className="w-full border rounded p-2 mt-1"
+                    placeholder="Name"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-gray-500">Vendor Type</label>
+                    <select 
+                      value={editForm.vendorType || 'individual'}
+                      onChange={(e) => setEditForm({...editForm, vendorType: e.target.value})}
+                      className="w-full border rounded p-2 mt-1"
+                    >
+                      <option value="individual">Individual</option>
+                      <option value="dealer">Dealer</option>
+                      <option value="refiner">Refiner</option>
+                      <option value="auction">Auction</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">Date</label>
+                    <input 
+                      type="date"
+                      value={editForm.date || ''}
+                      onChange={(e) => setEditForm({...editForm, date: e.target.value})}
+                      className="w-full border rounded p-2 mt-1"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">Reference Number</label>
+                  <input 
+                    type="text"
+                    value={editForm.referenceNumber || ''}
+                    onChange={(e) => setEditForm({...editForm, referenceNumber: e.target.value})}
+                    className="w-full border rounded p-2 mt-1"
+                    placeholder="Invoice/Receipt #"
+                  />
+                </div>
               </div>
-              <div className="text-right">
-                <div className="text-2xl font-bold text-amber-700">${(selectedReceipt.total || 0).toLocaleString()}</div>
-                <div className="text-sm text-gray-500">{selectedReceipt.date || 'No date'}</div>
-              </div>
-            </div>
-            
-            {selectedReceipt.referenceNumber && (
-              <div className="text-sm text-gray-600">
-                Ref: {selectedReceipt.referenceNumber}
-              </div>
+            ) : (
+              <>
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <span className={`text-xs px-2 py-1 rounded font-medium ${
+                      receipt.type === 'purchase' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                    }`}>
+                      {receipt.type === 'purchase' ? '📥 PURCHASE' : '📤 SALE'}
+                    </span>
+                    <h2 className="text-lg font-bold mt-2">{receipt.vendor || 'Unknown Vendor'}</h2>
+                    <p className="text-sm text-gray-500">{receipt.vendorType}</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-amber-700">${(receipt.total || 0).toLocaleString()}</div>
+                    <div className="text-sm text-gray-500">{receipt.date || 'No date'}</div>
+                  </div>
+                </div>
+                {receipt.referenceNumber && (
+                  <div className="text-sm text-gray-600">Ref: {receipt.referenceNumber}</div>
+                )}
+              </>
             )}
           </div>
           
           {/* Line Items */}
           <div className="bg-white rounded-lg shadow p-4">
-            <h3 className="font-medium mb-3">Items ({selectedReceipt.items?.length || 0})</h3>
-            <div className="space-y-2">
-              {(selectedReceipt.items || []).map((item, idx) => (
-                <div key={idx} className="border-b pb-2 last:border-b-0 last:pb-0">
-                  <div className="flex justify-between">
-                    <div className="flex-1">
-                      <div className="font-medium text-sm">{item.description}</div>
-                      <div className="text-xs text-gray-500">
-                        {item.quantity > 1 && `Qty: ${item.quantity} • `}
-                        {item.metalType && `${item.metalType} `}
-                        {item.purity && `${item.purity} `}
-                        {item.weight && `• ${item.weight}${item.weightUnit || 'oz'}`}
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="font-medium">Items ({receipt.items?.length || 0})</h3>
+              {isEditing && (
+                <button 
+                  onClick={addEditItem}
+                  className="text-sm bg-green-100 text-green-700 px-2 py-1 rounded"
+                >
+                  + Add Item
+                </button>
+              )}
+            </div>
+            
+            <div className="space-y-3">
+              {(receipt.items || []).map((item, idx) => (
+                <div key={idx} className={`${isEditing ? 'bg-gray-50 p-3 rounded border' : 'border-b pb-2 last:border-b-0 last:pb-0'}`}>
+                  {isEditing ? (
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <input 
+                          type="text"
+                          value={item.description || ''}
+                          onChange={(e) => updateEditItem(idx, 'description', e.target.value)}
+                          className="flex-1 border rounded p-1 text-sm"
+                          placeholder="Description"
+                        />
+                        <button 
+                          onClick={() => removeEditItem(idx)}
+                          className="ml-2 text-red-500"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2">
+                        <div>
+                          <label className="text-xs text-gray-500">Qty</label>
+                          <input 
+                            type="number"
+                            value={item.quantity || 1}
+                            onChange={(e) => updateEditItem(idx, 'quantity', parseInt(e.target.value) || 1)}
+                            className="w-full border rounded p-1 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500">Unit $</label>
+                          <input 
+                            type="number"
+                            step="0.01"
+                            value={item.unitPrice || ''}
+                            onChange={(e) => updateEditItem(idx, 'unitPrice', parseFloat(e.target.value) || 0)}
+                            className="w-full border rounded p-1 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500">Total $</label>
+                          <input 
+                            type="number"
+                            step="0.01"
+                            value={item.totalPrice || ''}
+                            onChange={(e) => updateEditItem(idx, 'totalPrice', parseFloat(e.target.value) || 0)}
+                            className="w-full border rounded p-1 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500">Metal</label>
+                          <select 
+                            value={item.metalType || ''}
+                            onChange={(e) => updateEditItem(idx, 'metalType', e.target.value)}
+                            className="w-full border rounded p-1 text-sm"
+                          >
+                            <option value="">--</option>
+                            <option value="Gold">Gold</option>
+                            <option value="Silver">Silver</option>
+                            <option value="Platinum">Platinum</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="text-xs text-gray-500">Purity</label>
+                          <input 
+                            type="text"
+                            value={item.purity || ''}
+                            onChange={(e) => updateEditItem(idx, 'purity', e.target.value)}
+                            className="w-full border rounded p-1 text-sm"
+                            placeholder="14K, 925..."
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500">Weight</label>
+                          <input 
+                            type="number"
+                            step="0.01"
+                            value={item.weight || ''}
+                            onChange={(e) => updateEditItem(idx, 'weight', parseFloat(e.target.value) || 0)}
+                            className="w-full border rounded p-1 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500">Unit</label>
+                          <select 
+                            value={item.weightUnit || 'oz'}
+                            onChange={(e) => updateEditItem(idx, 'weightUnit', e.target.value)}
+                            className="w-full border rounded p-1 text-sm"
+                          >
+                            <option value="oz">oz</option>
+                            <option value="g">g</option>
+                            <option value="dwt">dwt</option>
+                          </select>
+                        </div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      {item.totalPrice && (
-                        <div className="font-medium">${item.totalPrice.toLocaleString()}</div>
-                      )}
-                      {item.unitPrice && item.quantity > 1 && (
-                        <div className="text-xs text-gray-500">${item.unitPrice}/ea</div>
-                      )}
+                  ) : (
+                    <div className="flex justify-between">
+                      <div className="flex-1">
+                        <div className="font-medium text-sm">{item.description}</div>
+                        <div className="text-xs text-gray-500">
+                          {item.quantity > 1 && `Qty: ${item.quantity} • `}
+                          {item.metalType && `${item.metalType} `}
+                          {item.purity && `${item.purity} `}
+                          {item.weight && `• ${item.weight}${item.weightUnit || 'oz'}`}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        {item.totalPrice && (
+                          <div className="font-medium">${item.totalPrice.toLocaleString()}</div>
+                        )}
+                        {item.unitPrice && item.quantity > 1 && (
+                          <div className="text-xs text-gray-500">${item.unitPrice}/ea</div>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               ))}
             </div>
             
             {/* Totals */}
-            <div className="mt-4 pt-3 border-t space-y-1 text-sm">
-              {selectedReceipt.subtotal && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Subtotal</span>
-                  <span>${selectedReceipt.subtotal.toLocaleString()}</span>
-                </div>
+            <div className="mt-4 pt-3 border-t space-y-2 text-sm">
+              {isEditing ? (
+                <>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-xs text-gray-500">Subtotal</label>
+                      <input 
+                        type="number"
+                        step="0.01"
+                        value={editForm.subtotal || ''}
+                        onChange={(e) => setEditForm({...editForm, subtotal: parseFloat(e.target.value) || 0})}
+                        className="w-full border rounded p-1 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Tax</label>
+                      <input 
+                        type="number"
+                        step="0.01"
+                        value={editForm.tax || ''}
+                        onChange={(e) => setEditForm({...editForm, tax: parseFloat(e.target.value) || 0})}
+                        className="w-full border rounded p-1 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Shipping</label>
+                      <input 
+                        type="number"
+                        step="0.01"
+                        value={editForm.shipping || ''}
+                        onChange={(e) => setEditForm({...editForm, shipping: parseFloat(e.target.value) || 0})}
+                        className="w-full border rounded p-1 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 font-medium">Total</label>
+                    <input 
+                      type="number"
+                      step="0.01"
+                      value={editForm.total || ''}
+                      onChange={(e) => setEditForm({...editForm, total: parseFloat(e.target.value) || 0})}
+                      className="w-full border rounded p-2 text-lg font-bold"
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  {receipt.subtotal > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Subtotal</span>
+                      <span>${receipt.subtotal.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {receipt.tax > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Tax</span>
+                      <span>${receipt.tax.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {receipt.shipping > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Shipping</span>
+                      <span>${receipt.shipping.toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-base pt-2 border-t">
+                    <span>Total</span>
+                    <span>${(receipt.total || 0).toLocaleString()}</span>
+                  </div>
+                </>
               )}
-              {selectedReceipt.tax > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Tax</span>
-                  <span>${selectedReceipt.tax.toLocaleString()}</span>
-                </div>
-              )}
-              {selectedReceipt.shipping > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Shipping</span>
-                  <span>${selectedReceipt.shipping.toLocaleString()}</span>
-                </div>
-              )}
-              <div className="flex justify-between font-bold text-base pt-2 border-t">
-                <span>Total</span>
-                <span>${(selectedReceipt.total || 0).toLocaleString()}</span>
-              </div>
             </div>
           </div>
           
           {/* Payment & Notes */}
           <div className="bg-white rounded-lg shadow p-4">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-gray-500">Payment Method</span>
-                <div className="font-medium capitalize">{selectedReceipt.paymentMethod || 'Not specified'}</div>
-              </div>
-              <div>
-                <span className="text-gray-500">Confidence</span>
-                <div className={`font-medium ${
-                  selectedReceipt.confidence === 'high' ? 'text-green-600' :
-                  selectedReceipt.confidence === 'medium' ? 'text-yellow-600' : 'text-red-600'
-                }`}>
-                  {selectedReceipt.confidence || 'Unknown'}
+            {isEditing ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-gray-500">Payment Method</label>
+                    <select 
+                      value={editForm.paymentMethod || ''}
+                      onChange={(e) => setEditForm({...editForm, paymentMethod: e.target.value})}
+                      className="w-full border rounded p-2 mt-1"
+                    >
+                      <option value="">Not specified</option>
+                      <option value="cash">Cash</option>
+                      <option value="check">Check</option>
+                      <option value="wire">Wire Transfer</option>
+                      <option value="card">Card</option>
+                      <option value="zelle">Zelle</option>
+                      <option value="venmo">Venmo</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">AI Confidence</label>
+                    <div className={`mt-1 p-2 rounded text-sm ${
+                      editForm.confidence === 'high' ? 'bg-green-100 text-green-700' :
+                      editForm.confidence === 'medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'
+                    }`}>
+                      {editForm.confidence || 'Unknown'}
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">Notes</label>
+                  <textarea 
+                    value={editForm.notes || ''}
+                    onChange={(e) => setEditForm({...editForm, notes: e.target.value})}
+                    className="w-full border rounded p-2 mt-1"
+                    rows={3}
+                    placeholder="Additional notes..."
+                  />
                 </div>
               </div>
-            </div>
-            
-            {selectedReceipt.notes && (
-              <div className="mt-3 pt-3 border-t">
-                <span className="text-gray-500 text-sm">Notes</span>
-                <p className="text-sm mt-1">{selectedReceipt.notes}</p>
-              </div>
-            )}
-          </div>
-          
-          {/* Original File Preview */}
-          <div className="bg-white rounded-lg shadow p-4">
-            <h3 className="font-medium mb-3">Original Document</h3>
-            {selectedReceipt.fileType?.startsWith('image/') ? (
-              <img 
-                src={`data:${selectedReceipt.fileType};base64,${selectedReceipt.fileData}`}
-                alt="Receipt"
-                className="w-full rounded border"
-              />
             ) : (
-              <div className="bg-gray-100 p-4 rounded text-center">
-                <FileText size={48} className="mx-auto text-gray-400 mb-2" />
-                <p className="text-sm text-gray-600">{selectedReceipt.fileName}</p>
-                <button 
-                  onClick={() => downloadReceipt(selectedReceipt)}
-                  className="mt-2 text-blue-600 text-sm underline"
-                >
-                  Download to view PDF
-                </button>
-              </div>
+              <>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-500">Payment Method</span>
+                    <div className="font-medium capitalize">{receipt.paymentMethod || 'Not specified'}</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">AI Confidence</span>
+                    <div className={`font-medium ${
+                      receipt.confidence === 'high' ? 'text-green-600' :
+                      receipt.confidence === 'medium' ? 'text-yellow-600' : 'text-red-600'
+                    }`}>
+                      {receipt.confidence || 'Unknown'}
+                    </div>
+                  </div>
+                </div>
+                {receipt.notes && (
+                  <div className="mt-3 pt-3 border-t">
+                    <span className="text-gray-500 text-sm">Notes</span>
+                    <p className="text-sm mt-1">{receipt.notes}</p>
+                  </div>
+                )}
+              </>
             )}
           </div>
           
-          {/* Delete Button */}
-          <button 
-            onClick={() => {
-              if (confirm('Delete this receipt?')) {
-                onDeleteReceipt(selectedReceipt.id);
-                setSelectedReceipt(null);
-              }
-            }}
-            className="w-full border border-red-300 text-red-600 py-2 rounded flex items-center justify-center gap-2"
-          >
-            <Trash2 size={16} /> Delete Receipt
-          </button>
+          {/* Original File Preview - only show when not editing */}
+          {!isEditing && (
+            <div className="bg-white rounded-lg shadow p-4">
+              <h3 className="font-medium mb-3">Original Document</h3>
+              {selectedReceipt.fileType?.startsWith('image/') ? (
+                <img 
+                  src={`data:${selectedReceipt.fileType};base64,${selectedReceipt.fileData}`}
+                  alt="Receipt"
+                  className="w-full rounded border"
+                />
+              ) : (
+                <div className="bg-gray-100 p-4 rounded text-center">
+                  <FileText size={48} className="mx-auto text-gray-400 mb-2" />
+                  <p className="text-sm text-gray-600">{selectedReceipt.fileName}</p>
+                  <button 
+                    onClick={() => downloadReceipt(selectedReceipt)}
+                    className="mt-2 text-blue-600 text-sm underline"
+                  >
+                    Download to view PDF
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Delete Button - only show when not editing */}
+          {!isEditing && (
+            <button 
+              onClick={() => {
+                if (confirm('Delete this receipt?')) {
+                  onDeleteReceipt(selectedReceipt.id);
+                  setSelectedReceipt(null);
+                }
+              }}
+              className="w-full border border-red-300 text-red-600 py-2 rounded flex items-center justify-center gap-2"
+            >
+              <Trash2 size={16} /> Delete Receipt
+            </button>
+          )}
         </div>
       </div>
     );
@@ -10949,6 +11315,7 @@ export default function SESInventoryApp() {
     clients={clients}
     onAddReceipt={(receipt) => setReceipts([...receipts, receipt])}
     onDeleteReceipt={(id) => setReceipts(receipts.filter(r => r.id !== id))}
+    onUpdateReceipt={(updated) => setReceipts(receipts.map(r => r.id === updated.id ? updated : r))}
   />;
 
   // LIST VIEW
