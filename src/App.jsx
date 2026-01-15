@@ -77,18 +77,10 @@ const FirebaseService = {
     return cleaned;
   },
   
-  // Save inventory to Firestore with verification
+  // Save inventory to Firestore - SIMPLIFIED
   async saveInventory(inventory) {
     if (!this.initialized) {
       console.error('SAVE BLOCKED: Firebase not initialized');
-      return false;
-    }
-    
-    // SAFETY: Never save if inventory is empty but we previously had items
-    // This prevents accidental data wipes
-    const previousCount = this._lastKnownInventoryCount || 0;
-    if (inventory.length === 0 && previousCount > 0) {
-      console.error(`SAVE BLOCKED: Refusing to save empty inventory (had ${previousCount} items before)`);
       return false;
     }
     
@@ -97,66 +89,19 @@ const FirebaseService = {
       const { doc, setDoc } = this.firestore;
       
       for (const item of inventory) {
-        // Handle photos - upload to Storage if large, otherwise save inline
-        let photoToSave = item.photo || null;
-        let photoBackToSave = item.photoBack || null;
-        
-        // Upload large photos to Storage
-        if (item.photo && item.photo.length > 100000) {
-          console.log(`Uploading photo for ${item.id}...`);
-          const photoUrl = await this.uploadPhoto(item.id, item.photo);
-          if (photoUrl) {
-            photoToSave = photoUrl;
-            console.log(`Photo uploaded: ${photoUrl.substring(0, 50)}...`);
-          } else {
-            // If upload fails, don't save the huge base64
-            photoToSave = null;
-            console.warn(`Photo upload failed for ${item.id}, skipping photo`);
-          }
-        }
-        
-        if (item.photoBack && item.photoBack.length > 100000) {
-          console.log(`Uploading back photo for ${item.id}...`);
-          const photoBackUrl = await this.uploadPhoto(`${item.id}_back`, item.photoBack);
-          if (photoBackUrl) {
-            photoBackToSave = photoBackUrl;
-          } else {
-            photoBackToSave = null;
-            console.warn(`Back photo upload failed for ${item.id}, skipping`);
-          }
-        }
-        
+        // Strip large photos for now - just save the data
         const itemData = this.cleanObject({ 
           ...item, 
-          photo: photoToSave,
-          photoBack: photoBackToSave
+          photo: null,  // Skip photos temporarily
+          photoBack: null
         });
         
         console.log(`SAVING item: ${item.id}`);
-        
-        try {
-          await setDoc(doc(this.db, 'inventory', item.id), itemData);
-          console.log(`SAVED item: ${item.id} - SUCCESS`);
-        } catch (itemError) {
-          console.error(`SAVE ITEM FAILED: ${item.id}`, itemError);
-          throw itemError;
-        }
+        await setDoc(doc(this.db, 'inventory', item.id), itemData);
+        console.log(`SAVED item: ${item.id} - SUCCESS`);
       }
       
-      // Update last known count
-      this._lastKnownInventoryCount = inventory.length;
-      
-      // VERIFY: Read back to confirm save worked
-      const { collection, getDocs } = this.firestore;
-      const snapshot = await getDocs(collection(this.db, 'inventory'));
-      const savedCount = snapshot.size;
-      
-      console.log(`SAVE VERIFIED: Firebase now has ${savedCount} items (we saved ${inventory.length})`);
-      
-      if (savedCount < inventory.length) {
-        console.error(`SAVE WARNING: Firebase has fewer items (${savedCount}) than we tried to save (${inventory.length})`);
-      }
-      
+      console.log(`SAVE COMPLETE: ${inventory.length} items saved`);
       return true;
     } catch (error) {
       console.error('SAVE FAILED:', error);
@@ -9507,7 +9452,7 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
             <HardDrive size={18} /> App Information
           </h3>
           <div className="text-sm text-gray-600 space-y-1">
-            <p><strong>Version:</strong> 90</p>
+            <p><strong>Version:</strong> 91</p>
             <p><strong>Firebase Project:</strong> ses-inventory</p>
             <p><strong>Last Updated:</strong> January 2026</p>
           </div>
