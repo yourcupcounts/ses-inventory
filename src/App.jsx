@@ -97,24 +97,50 @@ const FirebaseService = {
       const { doc, setDoc } = this.firestore;
       
       for (const item of inventory) {
-        // Store photo separately in Storage if exists
-        let photoUrl = null;
-        let photoBackUrl = null;
-        if (item.photo && item.photo.length > 1000) {
-          photoUrl = await this.uploadPhoto(item.id, item.photo);
+        // Handle photos - upload to Storage if large, otherwise save inline
+        let photoToSave = item.photo || null;
+        let photoBackToSave = item.photoBack || null;
+        
+        // Upload large photos to Storage
+        if (item.photo && item.photo.length > 100000) {
+          console.log(`Uploading photo for ${item.id}...`);
+          const photoUrl = await this.uploadPhoto(item.id, item.photo);
+          if (photoUrl) {
+            photoToSave = photoUrl;
+            console.log(`Photo uploaded: ${photoUrl.substring(0, 50)}...`);
+          } else {
+            // If upload fails, don't save the huge base64
+            photoToSave = null;
+            console.warn(`Photo upload failed for ${item.id}, skipping photo`);
+          }
         }
-        if (item.photoBack && item.photoBack.length > 1000) {
-          photoBackUrl = await this.uploadPhoto(`${item.id}_back`, item.photoBack);
+        
+        if (item.photoBack && item.photoBack.length > 100000) {
+          console.log(`Uploading back photo for ${item.id}...`);
+          const photoBackUrl = await this.uploadPhoto(`${item.id}_back`, item.photoBack);
+          if (photoBackUrl) {
+            photoBackToSave = photoBackUrl;
+          } else {
+            photoBackToSave = null;
+            console.warn(`Back photo upload failed for ${item.id}, skipping`);
+          }
         }
         
         const itemData = this.cleanObject({ 
           ...item, 
-          photo: photoUrl || item.photo || null,
-          photoBack: photoBackUrl || item.photoBack || null
+          photo: photoToSave,
+          photoBack: photoBackToSave
         });
         
         console.log(`SAVING item: ${item.id}`);
-        await setDoc(doc(this.db, 'inventory', item.id), itemData);
+        
+        try {
+          await setDoc(doc(this.db, 'inventory', item.id), itemData);
+          console.log(`SAVED item: ${item.id} - SUCCESS`);
+        } catch (itemError) {
+          console.error(`SAVE ITEM FAILED: ${item.id}`, itemError);
+          throw itemError;
+        }
       }
       
       // Update last known count
@@ -11699,12 +11725,18 @@ export default function SESInventoryApp() {
     const currentInv = inventory || [];
     const newInventory = [...currentInv, newItem];
     setInventory(newInventory); 
-    // Save to Firebase (fire and forget)
+    // Save to Firebase with user feedback
     console.log('ADD ITEM: Saving', newInventory.length, 'items');
     FirebaseService.saveInventory(newInventory).then(success => {
       console.log('ADD ITEM: Save result:', success);
+      if (success) {
+        alert('Item saved! Check Firebase console.');
+      } else {
+        alert('Save may have failed - check console');
+      }
     }).catch(err => {
       console.error('ADD ITEM: Save error:', err);
+      alert('Save error: ' + err.message);
     });
     setView('list'); 
   }} onCancel={() => setView('list')} calculateMelt={calculateMelt} />;
