@@ -77,15 +77,25 @@ const FirebaseService = {
     return cleaned;
   },
   
-  // Save inventory to Firestore
+  // Save inventory to Firestore with verification
   async saveInventory(inventory) {
     if (!this.initialized) {
-      console.log('Firebase not initialized, cannot save inventory');
+      console.error('SAVE BLOCKED: Firebase not initialized');
       return false;
     }
+    
+    // SAFETY: Never save if inventory is empty but we previously had items
+    // This prevents accidental data wipes
+    const previousCount = this._lastKnownInventoryCount || 0;
+    if (inventory.length === 0 && previousCount > 0) {
+      console.error(`SAVE BLOCKED: Refusing to save empty inventory (had ${previousCount} items before)`);
+      return false;
+    }
+    
     try {
-      console.log(`Saving ${inventory.length} items to Firebase...`);
+      console.log(`SAVING: ${inventory.length} items to Firebase...`);
       const { doc, setDoc } = this.firestore;
+      
       for (const item of inventory) {
         // Store photo separately in Storage if exists
         let photoUrl = null;
@@ -102,12 +112,28 @@ const FirebaseService = {
           photo: photoUrl || item.photo || null,
           photoBack: photoBackUrl || item.photoBack || null
         });
+        
+        console.log(`SAVING item: ${item.id}`);
         await setDoc(doc(this.db, 'inventory', item.id), itemData);
       }
-      console.log(`Successfully saved ${inventory.length} items to Firebase`);
+      
+      // Update last known count
+      this._lastKnownInventoryCount = inventory.length;
+      
+      // VERIFY: Read back to confirm save worked
+      const { collection, getDocs } = this.firestore;
+      const snapshot = await getDocs(collection(this.db, 'inventory'));
+      const savedCount = snapshot.size;
+      
+      console.log(`SAVE VERIFIED: Firebase now has ${savedCount} items (we saved ${inventory.length})`);
+      
+      if (savedCount < inventory.length) {
+        console.error(`SAVE WARNING: Firebase has fewer items (${savedCount}) than we tried to save (${inventory.length})`);
+      }
+      
       return true;
     } catch (error) {
-      console.error('Error saving inventory to Firebase:', error);
+      console.error('SAVE FAILED:', error);
       return false;
     }
   },
@@ -115,19 +141,27 @@ const FirebaseService = {
   // Load inventory from Firestore
   async loadInventory() {
     if (!this.initialized) {
-      console.log('Firebase not initialized, cannot load inventory');
+      console.error('LOAD BLOCKED: Firebase not initialized');
       return null;
     }
     try {
+      console.log('LOADING: Fetching inventory from Firebase...');
       const { collection, getDocs } = this.firestore;
       const snapshot = await getDocs(collection(this.db, 'inventory'));
       const inventory = [];
-      snapshot.forEach(doc => inventory.push({ id: doc.id, ...doc.data() }));
-      console.log(`Loaded ${inventory.length} items from Firebase inventory`);
-      return inventory; // Returns empty array [] if collection is empty, which is valid
+      snapshot.forEach(doc => {
+        console.log(`LOADED item: ${doc.id}`);
+        inventory.push({ id: doc.id, ...doc.data() });
+      });
+      
+      // Track last known count to prevent accidental wipes
+      this._lastKnownInventoryCount = inventory.length;
+      
+      console.log(`LOAD COMPLETE: ${inventory.length} items from Firebase`);
+      return inventory;
     } catch (error) {
-      console.error('Error loading inventory from Firebase:', error);
-      return null; // Only return null on actual error
+      console.error('LOAD FAILED:', error);
+      return null;
     }
   },
   
@@ -11199,20 +11233,56 @@ export default function SESInventoryApp() {
   }, []);
   
   // Auto-save to Firebase when data changes - ONLY after initial load completes
+  // Using a ref to track if we're in the middle of initial load
+  const initialLoadComplete = useRef(false);
+  const saveTimeoutRef = useRef(null);
+  
   useEffect(() => {
-    if (firebaseReady && dataLoaded && inventory !== null && inventory.length >= 0) {
-      FirebaseService.saveInventory(inventory);
+    // Don't save during initial load
+    if (!firebaseReady || !dataLoaded) {
+      console.log('AUTO-SAVE SKIPPED: Not ready yet', { firebaseReady, dataLoaded });
+      return;
     }
+    
+    // Don't save null inventory
+    if (inventory === null) {
+      console.log('AUTO-SAVE SKIPPED: Inventory is null');
+      return;
+    }
+    
+    // Mark initial load as complete after first successful load
+    if (!initialLoadComplete.current) {
+      initialLoadComplete.current = true;
+      console.log('AUTO-SAVE: Initial load complete, future changes will be saved');
+      // Don't save on first load - data came FROM Firebase
+      return;
+    }
+    
+    // Debounce saves - wait 1 second after last change
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    saveTimeoutRef.current = setTimeout(() => {
+      console.log(`AUTO-SAVE TRIGGERED: Saving ${inventory.length} items`);
+      FirebaseService.saveInventory(inventory);
+    }, 1000);
+    
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
   }, [inventory, firebaseReady, dataLoaded]);
   
   useEffect(() => {
-    if (firebaseReady && dataLoaded && clients !== null && clients.length >= 0) {
+    if (firebaseReady && dataLoaded && clients !== null && initialLoadComplete.current) {
       FirebaseService.saveClients(clients);
     }
   }, [clients, firebaseReady, dataLoaded]);
   
   useEffect(() => {
-    if (firebaseReady && dataLoaded && lots !== null && lots.length >= 0) {
+    if (firebaseReady && dataLoaded && lots !== null && initialLoadComplete.current) {
       FirebaseService.saveLots(lots);
     }
   }, [lots, firebaseReady, dataLoaded]);
