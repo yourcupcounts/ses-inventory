@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Package, Plus, X, Trash2, Search, Settings, Download, Upload, Camera, Loader, BarChart3, TrendingUp, TrendingDown, Clock, AlertTriangle, AlertCircle, FileText, Filter, Users, UserPlus, Edit2, Check, MapPin, Calendar, CreditCard, Building, User, Lock, Unlock, ShieldCheck, DollarSign, RefreshCw, Calculator, Layers, Star, ExternalLink, Flame, Archive, Zap } from 'lucide-react';
+import { Package, Plus, X, Trash2, Search, Settings, Download, Upload, Camera, Loader, BarChart3, TrendingUp, TrendingDown, Clock, AlertTriangle, AlertCircle, FileText, Filter, Users, UserPlus, Edit2, Check, MapPin, Calendar, CreditCard, Building, User, Lock, Unlock, ShieldCheck, DollarSign, RefreshCw, Calculator, Layers, Star, ExternalLink, Flame, Archive, Zap, Shield, Database, FileSpreadsheet, AlertOctagon, Wifi, WifiOff, HardDrive, Cloud, CloudOff } from 'lucide-react';
 
 // ============ CONFIGURATION - ADD YOUR API KEYS HERE ============
 const CONFIG = {
@@ -8981,8 +8981,851 @@ Ships fast and packed well. Questions? Just ask.`;
   );
 }
 
-function SettingsView({ onBack, onExport, onImport, onReset, fileInputRef, coinBuyPercents, onUpdateCoinBuyPercent, ebayConnected, onEbayDisconnect, onViewEbaySync }) {
+// ============ ADMIN PANEL VIEW ============
+function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, firebaseReady }) {
+  const [confirmClear, setConfirmClear] = useState(null);
+  const [isClearing, setIsClearing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState(null);
+  
+  // Export to CSV
+  const exportToCSV = (data, filename, columns) => {
+    const headers = columns.map(c => c.label).join(',');
+    const rows = data.map(item => 
+      columns.map(c => {
+        let val = item[c.key];
+        if (val === null || val === undefined) val = '';
+        if (typeof val === 'string' && (val.includes(',') || val.includes('"') || val.includes('\n'))) {
+          val = `"${val.replace(/"/g, '""')}"`;
+        }
+        return val;
+      }).join(',')
+    );
+    const csv = [headers, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  
+  // Export to Excel (using CSV that Excel can open)
+  const exportToExcel = (data, filename, columns) => {
+    // For true Excel format, we'd need a library like xlsx
+    // For now, CSV works well and Excel opens it fine
+    exportToCSV(data, filename.replace('.xlsx', '.csv'), columns);
+  };
+  
+  // Inventory columns for export
+  const inventoryColumns = [
+    { key: 'id', label: 'ID' },
+    { key: 'description', label: 'Description' },
+    { key: 'category', label: 'Category' },
+    { key: 'metalType', label: 'Metal' },
+    { key: 'purity', label: 'Purity' },
+    { key: 'weightOz', label: 'Weight (oz)' },
+    { key: 'purchasePrice', label: 'Purchase Price' },
+    { key: 'meltValue', label: 'Melt Value' },
+    { key: 'status', label: 'Status' },
+    { key: 'dateAcquired', label: 'Date Acquired' },
+    { key: 'source', label: 'Source' },
+    { key: 'year', label: 'Year' },
+    { key: 'mint', label: 'Mint' },
+    { key: 'grade', label: 'Grade' },
+    { key: 'salePrice', label: 'Sale Price' },
+    { key: 'saleDate', label: 'Sale Date' },
+    { key: 'notes', label: 'Notes' }
+  ];
+  
+  // Client columns for export
+  const clientColumns = [
+    { key: 'id', label: 'ID' },
+    { key: 'name', label: 'Name' },
+    { key: 'type', label: 'Type' },
+    { key: 'phone', label: 'Phone' },
+    { key: 'email', label: 'Email' },
+    { key: 'address', label: 'Address' },
+    { key: 'idType', label: 'ID Type' },
+    { key: 'idNumber', label: 'ID Number' },
+    { key: 'createdAt', label: 'Created' },
+    { key: 'notes', label: 'Notes' }
+  ];
+  
+  // Lot columns for export
+  const lotColumns = [
+    { key: 'id', label: 'ID' },
+    { key: 'description', label: 'Description' },
+    { key: 'clientId', label: 'Client ID' },
+    { key: 'totalItems', label: 'Total Items' },
+    { key: 'totalMelt', label: 'Total Melt' },
+    { key: 'totalPurchase', label: 'Total Purchase' },
+    { key: 'status', label: 'Status' },
+    { key: 'dateAcquired', label: 'Date Acquired' },
+    { key: 'createdAt', label: 'Created' },
+    { key: 'notes', label: 'Notes' }
+  ];
+  
+  const handleExport = (type, format) => {
+    setIsExporting(true);
+    setExportStatus(null);
+    
+    try {
+      const timestamp = new Date().toISOString().split('T')[0];
+      
+      if (type === 'inventory') {
+        const filename = `ses-inventory-${timestamp}.${format}`;
+        if (format === 'csv') {
+          exportToCSV(inventory, filename, inventoryColumns);
+        } else {
+          exportToExcel(inventory, filename, inventoryColumns);
+        }
+        setExportStatus({ success: true, message: `Exported ${inventory.length} inventory items` });
+      } else if (type === 'clients') {
+        const filename = `ses-clients-${timestamp}.${format}`;
+        if (format === 'csv') {
+          exportToCSV(clients, filename, clientColumns);
+        } else {
+          exportToExcel(clients, filename, clientColumns);
+        }
+        setExportStatus({ success: true, message: `Exported ${clients.length} clients` });
+      } else if (type === 'lots') {
+        const filename = `ses-lots-${timestamp}.${format}`;
+        if (format === 'csv') {
+          exportToCSV(lots, filename, lotColumns);
+        } else {
+          exportToExcel(lots, filename, lotColumns);
+        }
+        setExportStatus({ success: true, message: `Exported ${lots.length} lots` });
+      } else if (type === 'all') {
+        exportToCSV(inventory, `ses-inventory-${timestamp}.csv`, inventoryColumns);
+        exportToCSV(clients, `ses-clients-${timestamp}.csv`, clientColumns);
+        exportToCSV(lots, `ses-lots-${timestamp}.csv`, lotColumns);
+        setExportStatus({ success: true, message: 'Exported all data (3 files)' });
+      }
+    } catch (error) {
+      setExportStatus({ success: false, message: `Export failed: ${error.message}` });
+    }
+    
+    setIsExporting(false);
+  };
+  
+  const handleClearCollection = async (collection) => {
+    setIsClearing(true);
+    try {
+      await onClearCollection(collection);
+      setConfirmClear(null);
+      setExportStatus({ success: true, message: `Cleared ${collection} collection` });
+    } catch (error) {
+      setExportStatus({ success: false, message: `Failed to clear: ${error.message}` });
+    }
+    setIsClearing(false);
+  };
+  
+  return (
+    <div className="min-h-screen bg-amber-50">
+      <div className="bg-red-700 text-white p-4 flex items-center">
+        <button onClick={onBack} className="mr-4">← Back</button>
+        <Shield size={24} className="mr-2" />
+        <h1 className="text-xl font-bold">Admin Panel</h1>
+      </div>
+      
+      <div className="p-4 space-y-4">
+        {/* Firebase Status */}
+        <div className="bg-white p-4 rounded-lg shadow">
+          <h3 className="font-medium mb-3 flex items-center gap-2">
+            <Database size={18} /> Database Status
+          </h3>
+          <div className={`flex items-center gap-2 p-3 rounded ${firebaseReady ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+            {firebaseReady ? <Cloud size={20} /> : <CloudOff size={20} />}
+            <span className="font-medium">{firebaseReady ? 'Firebase Connected' : 'Firebase Disconnected'}</span>
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center text-sm">
+            <div className="bg-gray-50 p-2 rounded">
+              <div className="text-2xl font-bold text-amber-600">{inventory?.length || 0}</div>
+              <div className="text-gray-500">Inventory</div>
+            </div>
+            <div className="bg-gray-50 p-2 rounded">
+              <div className="text-2xl font-bold text-amber-600">{clients?.length || 0}</div>
+              <div className="text-gray-500">Clients</div>
+            </div>
+            <div className="bg-gray-50 p-2 rounded">
+              <div className="text-2xl font-bold text-amber-600">{lots?.length || 0}</div>
+              <div className="text-gray-500">Lots</div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Export Data */}
+        <div className="bg-white p-4 rounded-lg shadow">
+          <h3 className="font-medium mb-3 flex items-center gap-2">
+            <FileSpreadsheet size={18} /> Export Data
+          </h3>
+          
+          {exportStatus && (
+            <div className={`mb-3 p-2 rounded text-sm ${exportStatus.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+              {exportStatus.message}
+            </div>
+          )}
+          
+          <div className="space-y-3">
+            {/* Export Inventory */}
+            <div className="border rounded p-3">
+              <div className="font-medium text-sm mb-2">Inventory ({inventory?.length || 0} items)</div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => handleExport('inventory', 'csv')}
+                  disabled={isExporting || !inventory?.length}
+                  className="flex-1 bg-green-600 text-white py-2 px-3 rounded text-sm flex items-center justify-center gap-1 disabled:opacity-50"
+                >
+                  <Download size={14} /> CSV
+                </button>
+                <button 
+                  onClick={() => handleExport('inventory', 'xlsx')}
+                  disabled={isExporting || !inventory?.length}
+                  className="flex-1 bg-blue-600 text-white py-2 px-3 rounded text-sm flex items-center justify-center gap-1 disabled:opacity-50"
+                >
+                  <Download size={14} /> Excel
+                </button>
+              </div>
+            </div>
+            
+            {/* Export Clients */}
+            <div className="border rounded p-3">
+              <div className="font-medium text-sm mb-2">Clients ({clients?.length || 0} records)</div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => handleExport('clients', 'csv')}
+                  disabled={isExporting || !clients?.length}
+                  className="flex-1 bg-green-600 text-white py-2 px-3 rounded text-sm flex items-center justify-center gap-1 disabled:opacity-50"
+                >
+                  <Download size={14} /> CSV
+                </button>
+                <button 
+                  onClick={() => handleExport('clients', 'xlsx')}
+                  disabled={isExporting || !clients?.length}
+                  className="flex-1 bg-blue-600 text-white py-2 px-3 rounded text-sm flex items-center justify-center gap-1 disabled:opacity-50"
+                >
+                  <Download size={14} /> Excel
+                </button>
+              </div>
+            </div>
+            
+            {/* Export Lots */}
+            <div className="border rounded p-3">
+              <div className="font-medium text-sm mb-2">Lots ({lots?.length || 0} records)</div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => handleExport('lots', 'csv')}
+                  disabled={isExporting || !lots?.length}
+                  className="flex-1 bg-green-600 text-white py-2 px-3 rounded text-sm flex items-center justify-center gap-1 disabled:opacity-50"
+                >
+                  <Download size={14} /> CSV
+                </button>
+                <button 
+                  onClick={() => handleExport('lots', 'xlsx')}
+                  disabled={isExporting || !lots?.length}
+                  className="flex-1 bg-blue-600 text-white py-2 px-3 rounded text-sm flex items-center justify-center gap-1 disabled:opacity-50"
+                >
+                  <Download size={14} /> Excel
+                </button>
+              </div>
+            </div>
+            
+            {/* Export All */}
+            <button 
+              onClick={() => handleExport('all', 'csv')}
+              disabled={isExporting}
+              className="w-full bg-amber-600 text-white py-3 rounded font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              <Download size={18} /> Export All Data (CSV)
+            </button>
+          </div>
+        </div>
+        
+        {/* Clear Data - Danger Zone */}
+        <div className="bg-white p-4 rounded-lg shadow border-2 border-red-200">
+          <h3 className="font-medium mb-3 flex items-center gap-2 text-red-700">
+            <AlertOctagon size={18} /> Danger Zone
+          </h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Permanently delete data from collections. This action cannot be undone. Data will be removed from both the app and Firebase.
+          </p>
+          
+          <div className="space-y-2">
+            {/* Clear Inventory */}
+            {confirmClear === 'inventory' ? (
+              <div className="bg-red-50 p-3 rounded border border-red-300">
+                <p className="text-sm text-red-700 mb-2">Delete all {inventory?.length || 0} inventory items?</p>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setConfirmClear(null)}
+                    className="flex-1 border border-gray-300 py-2 rounded text-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={() => handleClearCollection('inventory')}
+                    disabled={isClearing}
+                    className="flex-1 bg-red-600 text-white py-2 rounded text-sm flex items-center justify-center gap-1"
+                  >
+                    {isClearing ? <Loader size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                    Confirm Delete
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button 
+                onClick={() => setConfirmClear('inventory')}
+                className="w-full border border-red-300 text-red-600 py-2 rounded text-sm flex items-center justify-center gap-2 hover:bg-red-50"
+              >
+                <Trash2 size={14} /> Clear Inventory ({inventory?.length || 0} items)
+              </button>
+            )}
+            
+            {/* Clear Clients */}
+            {confirmClear === 'clients' ? (
+              <div className="bg-red-50 p-3 rounded border border-red-300">
+                <p className="text-sm text-red-700 mb-2">Delete all {clients?.length || 0} clients?</p>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setConfirmClear(null)}
+                    className="flex-1 border border-gray-300 py-2 rounded text-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={() => handleClearCollection('clients')}
+                    disabled={isClearing}
+                    className="flex-1 bg-red-600 text-white py-2 rounded text-sm flex items-center justify-center gap-1"
+                  >
+                    {isClearing ? <Loader size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                    Confirm Delete
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button 
+                onClick={() => setConfirmClear('clients')}
+                className="w-full border border-red-300 text-red-600 py-2 rounded text-sm flex items-center justify-center gap-2 hover:bg-red-50"
+              >
+                <Trash2 size={14} /> Clear Clients ({clients?.length || 0} records)
+              </button>
+            )}
+            
+            {/* Clear Lots */}
+            {confirmClear === 'lots' ? (
+              <div className="bg-red-50 p-3 rounded border border-red-300">
+                <p className="text-sm text-red-700 mb-2">Delete all {lots?.length || 0} lots?</p>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setConfirmClear(null)}
+                    className="flex-1 border border-gray-300 py-2 rounded text-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={() => handleClearCollection('lots')}
+                    disabled={isClearing}
+                    className="flex-1 bg-red-600 text-white py-2 rounded text-sm flex items-center justify-center gap-1"
+                  >
+                    {isClearing ? <Loader size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                    Confirm Delete
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button 
+                onClick={() => setConfirmClear('lots')}
+                className="w-full border border-red-300 text-red-600 py-2 rounded text-sm flex items-center justify-center gap-2 hover:bg-red-50"
+              >
+                <Trash2 size={14} /> Clear Lots ({lots?.length || 0} records)
+              </button>
+            )}
+          </div>
+        </div>
+        
+        {/* App Info */}
+        <div className="bg-white p-4 rounded-lg shadow">
+          <h3 className="font-medium mb-3 flex items-center gap-2">
+            <HardDrive size={18} /> App Information
+          </h3>
+          <div className="text-sm text-gray-600 space-y-1">
+            <p><strong>Version:</strong> 72</p>
+            <p><strong>Firebase Project:</strong> ses-inventory</p>
+            <p><strong>Last Updated:</strong> January 2026</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============ RECEIPT MANAGER VIEW ============
+function ReceiptManagerView({ onBack, receipts, onAddReceipt, onDeleteReceipt, inventory, lots, clients }) {
+  const [isUploading, setIsUploading] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+  const [selectedReceipt, setSelectedReceipt] = useState(null);
+  const [filter, setFilter] = useState('all'); // all, purchase, sale
+  const fileInputRef = useRef(null);
+  
+  // Handle file upload
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setIsUploading(true);
+    setUploadError(null);
+    
+    try {
+      // Read file as base64
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      
+      const fileType = file.type;
+      const fileName = file.name;
+      const isPDF = fileType === 'application/pdf';
+      
+      setIsAnalyzing(true);
+      
+      // Send to AI for analysis
+      const response = await fetch('/api/anthropic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          max_tokens: 2048,
+          system: `You are an expert at extracting data from receipts and invoices for a precious metals dealer. 
+Extract all relevant information and return structured JSON.`,
+          messages: [{
+            role: 'user',
+            content: [
+              {
+                type: isPDF ? 'document' : 'image',
+                source: {
+                  type: 'base64',
+                  media_type: fileType,
+                  data: base64
+                }
+              },
+              {
+                type: 'text',
+                text: `Analyze this receipt/invoice and extract all information.
+
+Return ONLY a valid JSON object (no markdown, no explanation):
+{
+  "type": "purchase" or "sale",
+  "date": "YYYY-MM-DD" or null,
+  "vendor": "seller/buyer name" or null,
+  "vendorType": "individual", "dealer", "refiner", "auction", or "other",
+  "items": [
+    {
+      "description": "item description",
+      "quantity": number,
+      "unitPrice": number or null,
+      "totalPrice": number or null,
+      "metalType": "Gold", "Silver", "Platinum", or null,
+      "purity": "999", "925", "14K", etc. or null,
+      "weight": number or null,
+      "weightUnit": "oz", "g", "dwt", or null
+    }
+  ],
+  "subtotal": number or null,
+  "tax": number or null,
+  "shipping": number or null,
+  "total": number,
+  "paymentMethod": "cash", "check", "wire", "card", or null,
+  "referenceNumber": "invoice/receipt number" or null,
+  "notes": "any additional details",
+  "confidence": "high", "medium", or "low"
+}
+
+Be thorough - extract every line item you can identify.`
+              }
+            ]
+          }]
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to analyze receipt');
+      }
+      
+      const data = await response.json();
+      let extractedData;
+      
+      try {
+        const textContent = data.content?.find(c => c.type === 'text')?.text || '';
+        const jsonMatch = textContent.match(/\{[\s\S]*\}/);
+        extractedData = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+      } catch (parseErr) {
+        console.error('Parse error:', parseErr);
+        extractedData = { type: 'unknown', items: [], total: 0, notes: 'Could not parse receipt' };
+      }
+      
+      // Create receipt record
+      const newReceipt = {
+        id: `RCP-${Date.now()}`,
+        fileName,
+        fileType,
+        fileData: base64,
+        uploadedAt: new Date().toISOString(),
+        ...extractedData,
+        linkedItems: [],
+        linkedLots: []
+      };
+      
+      onAddReceipt(newReceipt);
+      setSelectedReceipt(newReceipt);
+      
+    } catch (error) {
+      console.error('Upload error:', error);
+      setUploadError(error.message || 'Failed to process receipt');
+    } finally {
+      setIsUploading(false);
+      setIsAnalyzing(false);
+      e.target.value = '';
+    }
+  };
+  
+  // Download receipt as file
+  const downloadReceipt = (receipt) => {
+    const byteCharacters = atob(receipt.fileData);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: receipt.fileType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = receipt.fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  
+  // Filter receipts
+  const filteredReceipts = (receipts || []).filter(r => {
+    if (filter === 'all') return true;
+    return r.type === filter;
+  }).sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
+  
+  // Calculate totals
+  const totals = {
+    purchases: (receipts || []).filter(r => r.type === 'purchase').reduce((sum, r) => sum + (r.total || 0), 0),
+    sales: (receipts || []).filter(r => r.type === 'sale').reduce((sum, r) => sum + (r.total || 0), 0)
+  };
+  
+  // Receipt detail view
+  if (selectedReceipt) {
+    return (
+      <div className="min-h-screen bg-amber-50">
+        <div className="bg-amber-700 text-white p-4 flex items-center justify-between">
+          <div className="flex items-center">
+            <button onClick={() => setSelectedReceipt(null)} className="mr-4">← Back</button>
+            <h1 className="text-xl font-bold">Receipt Details</h1>
+          </div>
+          <button 
+            onClick={() => downloadReceipt(selectedReceipt)}
+            className="bg-white text-amber-700 px-3 py-1 rounded text-sm font-medium"
+          >
+            Download
+          </button>
+        </div>
+        
+        <div className="p-4 space-y-4">
+          {/* Receipt Header */}
+          <div className="bg-white rounded-lg shadow p-4">
+            <div className="flex justify-between items-start mb-3">
+              <div>
+                <span className={`text-xs px-2 py-1 rounded font-medium ${
+                  selectedReceipt.type === 'purchase' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                }`}>
+                  {selectedReceipt.type === 'purchase' ? '📥 PURCHASE' : '📤 SALE'}
+                </span>
+                <h2 className="text-lg font-bold mt-2">{selectedReceipt.vendor || 'Unknown Vendor'}</h2>
+                <p className="text-sm text-gray-500">{selectedReceipt.vendorType}</p>
+              </div>
+              <div className="text-right">
+                <div className="text-2xl font-bold text-amber-700">${(selectedReceipt.total || 0).toLocaleString()}</div>
+                <div className="text-sm text-gray-500">{selectedReceipt.date || 'No date'}</div>
+              </div>
+            </div>
+            
+            {selectedReceipt.referenceNumber && (
+              <div className="text-sm text-gray-600">
+                Ref: {selectedReceipt.referenceNumber}
+              </div>
+            )}
+          </div>
+          
+          {/* Line Items */}
+          <div className="bg-white rounded-lg shadow p-4">
+            <h3 className="font-medium mb-3">Items ({selectedReceipt.items?.length || 0})</h3>
+            <div className="space-y-2">
+              {(selectedReceipt.items || []).map((item, idx) => (
+                <div key={idx} className="border-b pb-2 last:border-b-0 last:pb-0">
+                  <div className="flex justify-between">
+                    <div className="flex-1">
+                      <div className="font-medium text-sm">{item.description}</div>
+                      <div className="text-xs text-gray-500">
+                        {item.quantity > 1 && `Qty: ${item.quantity} • `}
+                        {item.metalType && `${item.metalType} `}
+                        {item.purity && `${item.purity} `}
+                        {item.weight && `• ${item.weight}${item.weightUnit || 'oz'}`}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      {item.totalPrice && (
+                        <div className="font-medium">${item.totalPrice.toLocaleString()}</div>
+                      )}
+                      {item.unitPrice && item.quantity > 1 && (
+                        <div className="text-xs text-gray-500">${item.unitPrice}/ea</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {/* Totals */}
+            <div className="mt-4 pt-3 border-t space-y-1 text-sm">
+              {selectedReceipt.subtotal && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Subtotal</span>
+                  <span>${selectedReceipt.subtotal.toLocaleString()}</span>
+                </div>
+              )}
+              {selectedReceipt.tax > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Tax</span>
+                  <span>${selectedReceipt.tax.toLocaleString()}</span>
+                </div>
+              )}
+              {selectedReceipt.shipping > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Shipping</span>
+                  <span>${selectedReceipt.shipping.toLocaleString()}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-bold text-base pt-2 border-t">
+                <span>Total</span>
+                <span>${(selectedReceipt.total || 0).toLocaleString()}</span>
+              </div>
+            </div>
+          </div>
+          
+          {/* Payment & Notes */}
+          <div className="bg-white rounded-lg shadow p-4">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-gray-500">Payment Method</span>
+                <div className="font-medium capitalize">{selectedReceipt.paymentMethod || 'Not specified'}</div>
+              </div>
+              <div>
+                <span className="text-gray-500">Confidence</span>
+                <div className={`font-medium ${
+                  selectedReceipt.confidence === 'high' ? 'text-green-600' :
+                  selectedReceipt.confidence === 'medium' ? 'text-yellow-600' : 'text-red-600'
+                }`}>
+                  {selectedReceipt.confidence || 'Unknown'}
+                </div>
+              </div>
+            </div>
+            
+            {selectedReceipt.notes && (
+              <div className="mt-3 pt-3 border-t">
+                <span className="text-gray-500 text-sm">Notes</span>
+                <p className="text-sm mt-1">{selectedReceipt.notes}</p>
+              </div>
+            )}
+          </div>
+          
+          {/* Original File Preview */}
+          <div className="bg-white rounded-lg shadow p-4">
+            <h3 className="font-medium mb-3">Original Document</h3>
+            {selectedReceipt.fileType?.startsWith('image/') ? (
+              <img 
+                src={`data:${selectedReceipt.fileType};base64,${selectedReceipt.fileData}`}
+                alt="Receipt"
+                className="w-full rounded border"
+              />
+            ) : (
+              <div className="bg-gray-100 p-4 rounded text-center">
+                <FileText size={48} className="mx-auto text-gray-400 mb-2" />
+                <p className="text-sm text-gray-600">{selectedReceipt.fileName}</p>
+                <button 
+                  onClick={() => downloadReceipt(selectedReceipt)}
+                  className="mt-2 text-blue-600 text-sm underline"
+                >
+                  Download to view PDF
+                </button>
+              </div>
+            )}
+          </div>
+          
+          {/* Delete Button */}
+          <button 
+            onClick={() => {
+              if (confirm('Delete this receipt?')) {
+                onDeleteReceipt(selectedReceipt.id);
+                setSelectedReceipt(null);
+              }
+            }}
+            className="w-full border border-red-300 text-red-600 py-2 rounded flex items-center justify-center gap-2"
+          >
+            <Trash2 size={16} /> Delete Receipt
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
+  // Receipt list view
+  return (
+    <div className="min-h-screen bg-amber-50">
+      <div className="bg-amber-700 text-white p-4 flex items-center">
+        <button onClick={onBack} className="mr-4">← Back</button>
+        <FileText size={24} className="mr-2" />
+        <h1 className="text-xl font-bold">Receipts</h1>
+      </div>
+      
+      <div className="p-4 space-y-4">
+        {/* Upload Button */}
+        <button 
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isUploading || isAnalyzing}
+          className="w-full bg-amber-600 text-white p-4 rounded-lg shadow flex items-center justify-center gap-3 disabled:opacity-50"
+        >
+          {isAnalyzing ? (
+            <>
+              <Loader size={24} className="animate-spin" />
+              <span>AI Analyzing Receipt...</span>
+            </>
+          ) : isUploading ? (
+            <>
+              <Loader size={24} className="animate-spin" />
+              <span>Uploading...</span>
+            </>
+          ) : (
+            <>
+              <Upload size={24} />
+              <div className="text-left">
+                <div className="font-bold">Upload Receipt</div>
+                <div className="text-sm opacity-80">Photo or PDF • AI extracts data</div>
+              </div>
+            </>
+          )}
+        </button>
+        
+        <input 
+          type="file" 
+          ref={fileInputRef} 
+          onChange={handleFileUpload}
+          accept="image/*,.pdf,application/pdf"
+          className="hidden"
+        />
+        
+        {uploadError && (
+          <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded text-sm">
+            {uploadError}
+          </div>
+        )}
+        
+        {/* Summary Cards */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-red-50 border border-red-200 p-3 rounded-lg">
+            <div className="text-xs text-red-600 font-medium">PURCHASES</div>
+            <div className="text-xl font-bold text-red-700">${totals.purchases.toLocaleString()}</div>
+            <div className="text-xs text-red-500">{(receipts || []).filter(r => r.type === 'purchase').length} receipts</div>
+          </div>
+          <div className="bg-green-50 border border-green-200 p-3 rounded-lg">
+            <div className="text-xs text-green-600 font-medium">SALES</div>
+            <div className="text-xl font-bold text-green-700">${totals.sales.toLocaleString()}</div>
+            <div className="text-xs text-green-500">{(receipts || []).filter(r => r.type === 'sale').length} receipts</div>
+          </div>
+        </div>
+        
+        {/* Filter */}
+        <div className="flex gap-2">
+          {['all', 'purchase', 'sale'].map(f => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`flex-1 py-2 rounded text-sm font-medium ${
+                filter === f 
+                  ? 'bg-amber-600 text-white' 
+                  : 'bg-white border text-gray-600'
+              }`}
+            >
+              {f === 'all' ? 'All' : f === 'purchase' ? 'Purchases' : 'Sales'}
+            </button>
+          ))}
+        </div>
+        
+        {/* Receipt List */}
+        {filteredReceipts.length === 0 ? (
+          <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+            <FileText size={48} className="mx-auto mb-3 opacity-50" />
+            <p>No receipts yet</p>
+            <p className="text-sm">Upload purchase or sale receipts to track transactions</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {filteredReceipts.map(receipt => (
+              <button
+                key={receipt.id}
+                onClick={() => setSelectedReceipt(receipt)}
+                className="w-full bg-white rounded-lg shadow p-4 text-left flex items-center gap-3"
+              >
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                  receipt.type === 'purchase' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'
+                }`}>
+                  {receipt.type === 'purchase' ? '📥' : '📤'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{receipt.vendor || 'Unknown'}</div>
+                  <div className="text-xs text-gray-500">
+                    {receipt.date || 'No date'} • {receipt.items?.length || 0} items
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className={`font-bold ${receipt.type === 'purchase' ? 'text-red-600' : 'text-green-600'}`}>
+                    {receipt.type === 'purchase' ? '-' : '+'}${(receipt.total || 0).toLocaleString()}
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SettingsView({ onBack, onExport, onImport, onReset, fileInputRef, coinBuyPercents, onUpdateCoinBuyPercent, ebayConnected, onEbayDisconnect, onViewEbaySync, onViewAdmin, buyPercentages, onUpdateBuyPercentages, refinerRates, onUpdateRefinerRates }) {
   const [showCoinSettings, setShowCoinSettings] = useState(false);
+  const [showBuySettings, setShowBuySettings] = useState(false);
+  const [showRefinerSettings, setShowRefinerSettings] = useState(false);
+  
+  // Local state for buy percentages (with defaults)
+  const [localBuyPercents, setLocalBuyPercents] = useState({
+    silver: buyPercentages?.silver || 70,
+    gold: buyPercentages?.gold || 90,
+    resale: buyPercentages?.resale || 45
+  });
+  
+  // Local state for refiner rates (with defaults)
+  const [localRefinerRates, setLocalRefinerRates] = useState({
+    gold: refinerRates?.gold || 98,
+    silver: refinerRates?.silver || 85
+  });
   
   // Get all percentage-based coins
   const percentageCoins = Object.entries(coinReference)
@@ -8991,55 +9834,141 @@ function SettingsView({ onBack, onExport, onImport, onReset, fileInputRef, coinB
 
   return (
     <div className="min-h-screen bg-amber-50">
-      <div className="bg-amber-700 text-white p-4 flex items-center"><button onClick={onBack} className="mr-4">← Back</button><h1 className="text-xl font-bold">Settings</h1></div>
+      <div className="bg-amber-700 text-white p-4 flex items-center">
+        <button onClick={onBack} className="mr-4">← Back</button>
+        <h1 className="text-xl font-bold">Settings</h1>
+      </div>
       <div className="p-4 space-y-4">
         
-        {/* eBay Connection */}
-        <div className="bg-white p-4 rounded-lg shadow">
-          <h3 className="font-medium mb-3 flex items-center gap-2">
-            <ExternalLink size={18} /> eBay Integration
-          </h3>
-          {ebayConnected ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-green-600 bg-green-50 p-2 rounded">
-                <Check size={18} />
-                <span className="font-medium">eBay Account Connected</span>
-              </div>
-              <button
-                onClick={onViewEbaySync}
-                className="w-full bg-blue-600 text-white py-2 rounded flex items-center justify-center gap-2"
-              >
-                <RefreshCw size={18} /> Sync Active Listings
-              </button>
-              <button
-                onClick={onEbayDisconnect}
-                className="w-full border border-red-300 text-red-600 py-2 rounded text-sm"
-              >
-                Disconnect eBay
-              </button>
+        {/* Admin Panel Link */}
+        <button 
+          onClick={onViewAdmin}
+          className="w-full bg-red-700 text-white p-4 rounded-lg shadow flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3">
+            <Shield size={24} />
+            <div className="text-left">
+              <div className="font-bold">Admin Panel</div>
+              <div className="text-sm opacity-80">Export data, clear collections, database</div>
             </div>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-sm text-gray-600">
-                Connect your eBay seller account to import active listings and keep your inventory synced.
+          </div>
+          <span>→</span>
+        </button>
+        
+        {/* Buy Percentages */}
+        <div className="bg-white p-4 rounded-lg shadow">
+          <button 
+            onClick={() => setShowBuySettings(!showBuySettings)}
+            className="w-full flex items-center justify-between"
+          >
+            <h3 className="font-medium flex items-center gap-2">
+              <DollarSign size={18} /> Buy Percentages
+            </h3>
+            <span className="text-gray-400">{showBuySettings ? '▲' : '▼'}</span>
+          </button>
+          
+          {showBuySettings && (
+            <div className="mt-4 space-y-3">
+              <p className="text-xs text-gray-500">
+                What percentage of melt value you pay when buying
               </p>
-              <a
-                href="/api/ebay-auth"
-                className="block w-full bg-blue-600 text-white py-3 rounded text-center font-medium hover:bg-blue-700"
-              >
-                Connect eBay Account
-              </a>
+              
+              <div className="space-y-2">
+                <div className="flex items-center justify-between py-2 border-b">
+                  <span className="text-sm">Silver (sterling, scrap)</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      value={localBuyPercents.silver}
+                      onChange={(e) => setLocalBuyPercents({...localBuyPercents, silver: parseInt(e.target.value) || 0})}
+                      className="w-16 text-center border rounded p-1 text-sm"
+                    />
+                    <span className="text-sm text-gray-500">%</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between py-2 border-b">
+                  <span className="text-sm">Gold (jewelry, scrap)</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      value={localBuyPercents.gold}
+                      onChange={(e) => setLocalBuyPercents({...localBuyPercents, gold: parseInt(e.target.value) || 0})}
+                      className="w-16 text-center border rounded p-1 text-sm"
+                    />
+                    <span className="text-sm text-gray-500">%</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between py-2">
+                  <span className="text-sm">Resale items</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      value={localBuyPercents.resale}
+                      onChange={(e) => setLocalBuyPercents({...localBuyPercents, resale: parseInt(e.target.value) || 0})}
+                      className="w-16 text-center border rounded p-1 text-sm"
+                    />
+                    <span className="text-sm text-gray-500">%</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="text-xs text-gray-500 bg-amber-50 p-2 rounded">
+                <strong>Example:</strong> Silver at $90/oz, 70% buy = you pay $63/oz
+              </div>
             </div>
           )}
         </div>
         
-        {/* Spot Prices */}
+        {/* Refiner Payout Rates */}
         <div className="bg-white p-4 rounded-lg shadow">
-          <h3 className="font-medium mb-3">Spot Prices</h3>
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <div className="flex justify-between p-2 bg-yellow-50 rounded"><span>Gold</span><span>${spotPrices.gold}</span></div>
-            <div className="flex justify-between p-2 bg-gray-100 rounded"><span>Silver</span><span>${spotPrices.silver}</span></div>
-          </div>
+          <button 
+            onClick={() => setShowRefinerSettings(!showRefinerSettings)}
+            className="w-full flex items-center justify-between"
+          >
+            <h3 className="font-medium flex items-center gap-2">
+              <Flame size={18} /> Refiner Payout Rates
+            </h3>
+            <span className="text-gray-400">{showRefinerSettings ? '▲' : '▼'}</span>
+          </button>
+          
+          {showRefinerSettings && (
+            <div className="mt-4 space-y-3">
+              <p className="text-xs text-gray-500">
+                What percentage your refiner pays you for melt
+              </p>
+              
+              <div className="space-y-2">
+                <div className="flex items-center justify-between py-2 border-b">
+                  <span className="text-sm">Gold</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      value={localRefinerRates.gold}
+                      onChange={(e) => setLocalRefinerRates({...localRefinerRates, gold: parseInt(e.target.value) || 0})}
+                      className="w-16 text-center border rounded p-1 text-sm"
+                    />
+                    <span className="text-sm text-gray-500">%</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between py-2">
+                  <span className="text-sm">Silver</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      value={localRefinerRates.silver}
+                      onChange={(e) => setLocalRefinerRates({...localRefinerRates, silver: parseInt(e.target.value) || 0})}
+                      className="w-16 text-center border rounded p-1 text-sm"
+                    />
+                    <span className="text-sm text-gray-500">%</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="text-xs text-gray-500 bg-blue-50 p-2 rounded">
+                <strong>Profit calculation:</strong> (Refiner rate - Buy rate) × melt value
+              </div>
+            </div>
+          )}
         </div>
         
         {/* Coin Buy Percentages */}
@@ -9048,14 +9977,16 @@ function SettingsView({ onBack, onExport, onImport, onReset, fileInputRef, coinB
             onClick={() => setShowCoinSettings(!showCoinSettings)}
             className="w-full flex items-center justify-between"
           >
-            <h3 className="font-medium">Coin Buy Percentages</h3>
+            <h3 className="font-medium flex items-center gap-2">
+              <Calculator size={18} /> Coin Buy Percentages
+            </h3>
             <span className="text-gray-400">{showCoinSettings ? '▲' : '▼'}</span>
           </button>
           
           {showCoinSettings && (
             <div className="mt-4 space-y-3">
               <p className="text-xs text-gray-500 mb-3">
-                Set what % of melt value you're willing to pay for each coin type
+                Set what % of melt value you pay for each coin type
               </p>
               
               {percentageCoins.map(coin => {
@@ -9083,20 +10014,54 @@ function SettingsView({ onBack, onExport, onImport, onReset, fileInputRef, coinB
               
               <div className="pt-3 border-t">
                 <p className="text-xs text-gray-500">
-                  <strong>Note:</strong> 100% = spot melt value. Values above 100% mean you'll pay a premium over melt.
+                  100% = spot melt value. Above 100% = paying premium.
                 </p>
               </div>
             </div>
           )}
         </div>
         
-        {/* Import/Export/Reset */}
-        <div className="bg-white p-4 rounded-lg shadow space-y-2">
-          <button onClick={onExport} className="w-full bg-amber-100 text-amber-700 py-2 rounded flex items-center justify-center gap-2"><Download size={18} /> Export</button>
-          <input type="file" ref={fileInputRef} onChange={onImport} accept=".json" className="hidden" />
-          <button onClick={() => fileInputRef.current?.click()} className="w-full bg-blue-100 text-blue-700 py-2 rounded flex items-center justify-center gap-2"><Upload size={18} /> Import</button>
-          <button onClick={onReset} className="w-full bg-red-100 text-red-700 py-2 rounded">Reset</button>
+        {/* eBay Connection */}
+        <div className="bg-white p-4 rounded-lg shadow">
+          <h3 className="font-medium mb-3 flex items-center gap-2">
+            <ExternalLink size={18} /> eBay Integration
+          </h3>
+          {ebayConnected ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-green-600 bg-green-50 p-2 rounded">
+                <Check size={18} />
+                <span className="font-medium">Connected</span>
+              </div>
+              <button
+                onClick={onViewEbaySync}
+                className="w-full bg-blue-600 text-white py-2 rounded flex items-center justify-center gap-2"
+              >
+                <RefreshCw size={18} /> Sync Listings
+              </button>
+              <button
+                onClick={onEbayDisconnect}
+                className="w-full border border-red-300 text-red-600 py-2 rounded text-sm"
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600">
+                Connect to import active listings and sync inventory.
+              </p>
+              <a
+                href="/api/ebay-auth"
+                className="block w-full bg-blue-600 text-white py-3 rounded text-center font-medium"
+              >
+                Connect eBay Account
+              </a>
+            </div>
+          )}
         </div>
+        
+        {/* Legacy Import/Export - hidden but functional */}
+        <input type="file" ref={fileInputRef} onChange={onImport} accept=".json" className="hidden" />
       </div>
     </div>
   );
@@ -9378,6 +10343,7 @@ export default function SESInventoryApp() {
   const [inventory, setInventory] = useState(null);
   const [clients, setClients] = useState(null);
   const [lots, setLots] = useState(null);
+  const [receipts, setReceipts] = useState([]);
   const [dataLoaded, setDataLoaded] = useState(false); // Track if initial load is complete
   const [kpiExpanded, setKpiExpanded] = useState(true); // KPI dashboard expanded by default
   const [kpiFilter, setKpiFilter] = useState(null); // Filter for KPI drill-down: 'stash', 'hold', 'sell', 'available', 'silver', 'gold', 'platinum', 'sold'
@@ -9941,8 +10907,49 @@ export default function SESInventoryApp() {
     }}
   />;
   if (view === 'ebayListing' && selectedItem) return <EbayListingView item={selectedItem} generatedListing={pendingListing} onBack={() => { setPendingListing(null); setView('detail'); }} onListingCreated={(listing) => { setInventory(inventory.map(i => i.id === selectedItem.id ? { ...i, ebayListingId: listing.listingId, ebayUrl: listing.ebayUrl, status: 'Listed' } : i)); setSelectedItem({ ...selectedItem, ebayListingId: listing.listingId, ebayUrl: listing.ebayUrl, status: 'Listed' }); setPendingListing(null); setView('detail'); }} />;
-  if (view === 'settings') return <SettingsView onBack={() => setView('list')} onExport={handleExport} onImport={handleImport} onReset={() => { setInventory(starterInventory); setClients(starterClients); setLots(starterLots); }} fileInputRef={fileInputRef} coinBuyPercents={coinBuyPercents} onUpdateCoinBuyPercent={handleUpdateCoinBuyPercent} ebayConnected={ebayConnected} onEbayDisconnect={handleEbayDisconnect} onViewEbaySync={() => setView('ebaySync')} />;
+  if (view === 'settings') return <SettingsView onBack={() => setView('list')} onExport={handleExport} onImport={handleImport} onReset={() => { setInventory(starterInventory); setClients(starterClients); setLots(starterLots); }} fileInputRef={fileInputRef} coinBuyPercents={coinBuyPercents} onUpdateCoinBuyPercent={handleUpdateCoinBuyPercent} ebayConnected={ebayConnected} onEbayDisconnect={handleEbayDisconnect} onViewEbaySync={() => setView('ebaySync')} onViewAdmin={() => setView('admin')} />;
+  if (view === 'admin') return <AdminPanelView 
+    onBack={() => setView('settings')} 
+    inventory={inventory} 
+    clients={clients} 
+    lots={lots}
+    firebaseReady={firebaseReady}
+    onClearCollection={async (collection) => {
+      if (collection === 'inventory') {
+        // Clear from Firebase
+        if (firebaseReady) {
+          for (const item of inventory) {
+            await FirebaseService.deleteItem('inventory', item.id);
+          }
+        }
+        setInventory([]);
+      } else if (collection === 'clients') {
+        if (firebaseReady) {
+          for (const client of clients) {
+            await FirebaseService.deleteItem('clients', client.id);
+          }
+        }
+        setClients([]);
+      } else if (collection === 'lots') {
+        if (firebaseReady) {
+          for (const lot of lots) {
+            await FirebaseService.deleteItem('lots', lot.id);
+          }
+        }
+        setLots([]);
+      }
+    }}
+  />;
   if (view === 'ebaySync') return <EbaySyncView onBack={() => setView('settings')} onImportListings={handleImportEbayListings} inventory={inventory} />;
+  if (view === 'receipts') return <ReceiptManagerView 
+    onBack={() => setView('list')} 
+    receipts={receipts}
+    inventory={inventory}
+    lots={lots}
+    clients={clients}
+    onAddReceipt={(receipt) => setReceipts([...receipts, receipt])}
+    onDeleteReceipt={(id) => setReceipts(receipts.filter(r => r.id !== id))}
+  />;
 
   // LIST VIEW
   // Calculate comprehensive KPIs
@@ -10059,28 +11066,35 @@ export default function SESInventoryApp() {
         </div>
       </div>
       
-      {/* Quick Actions - 3 Main Buttons */}
-      <div className="p-4 grid grid-cols-3 gap-3">
+      {/* Quick Actions - 4 Main Buttons */}
+      <div className="p-4 grid grid-cols-4 gap-2">
         <button 
           onClick={() => setView('appraisal')}
-          className="bg-teal-600 text-white p-4 rounded-xl shadow-lg flex flex-col items-center gap-2"
+          className="bg-teal-600 text-white p-3 rounded-xl shadow-lg flex flex-col items-center gap-1"
         >
-          <Camera size={28} />
-          <span className="text-sm font-medium">Appraisal</span>
+          <Camera size={24} />
+          <span className="text-xs font-medium">Appraisal</span>
         </button>
         <button 
           onClick={() => setView('clients')}
-          className="bg-indigo-600 text-white p-4 rounded-xl shadow-lg flex flex-col items-center gap-2"
+          className="bg-indigo-600 text-white p-3 rounded-xl shadow-lg flex flex-col items-center gap-1"
         >
-          <Users size={28} />
-          <span className="text-sm font-medium">Clients</span>
+          <Users size={24} />
+          <span className="text-xs font-medium">Clients</span>
+        </button>
+        <button 
+          onClick={() => setView('receipts')}
+          className="bg-emerald-600 text-white p-3 rounded-xl shadow-lg flex flex-col items-center gap-1"
+        >
+          <FileText size={24} />
+          <span className="text-xs font-medium">Receipts</span>
         </button>
         <button 
           onClick={() => setView('calculator')}
-          className="bg-gray-700 text-white p-4 rounded-xl shadow-lg flex flex-col items-center gap-2"
+          className="bg-gray-700 text-white p-3 rounded-xl shadow-lg flex flex-col items-center gap-1"
         >
-          <Calculator size={28} />
-          <span className="text-sm font-medium">Scrap Calc</span>
+          <Calculator size={24} />
+          <span className="text-xs font-medium">Scrap Calc</span>
         </button>
       </div>
       
