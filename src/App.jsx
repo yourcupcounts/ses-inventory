@@ -42,6 +42,18 @@ const FirebaseService = {
   db: null,
   storage: null,
   initialized: false,
+  demoMode: false, // Demo mode uses separate collections
+  
+  // Set demo mode
+  setDemoMode(enabled) {
+    this.demoMode = enabled;
+    console.log(`Demo mode: ${enabled ? 'ENABLED' : 'DISABLED'}`);
+  },
+  
+  // Get collection name (prefixed with demo_ in demo mode)
+  getCollectionName(baseName) {
+    return this.demoMode ? `demo_${baseName}` : baseName;
+  },
   
   // Initialize Firebase
   async init() {
@@ -150,7 +162,7 @@ const FirebaseService = {
         });
         
         console.log(`SAVING item: ${item.id}`);
-        await setDoc(doc(this.db, 'inventory', item.id), itemData);
+        await setDoc(doc(this.db, this.getCollectionName('inventory'), item.id), itemData);
         console.log(`SAVED item: ${item.id} - SUCCESS`);
       }
       
@@ -169,9 +181,9 @@ const FirebaseService = {
       return null;
     }
     try {
-      console.log('LOADING: Fetching inventory from Firebase...');
+      console.log(`LOADING: Fetching inventory from Firebase (${this.demoMode ? 'DEMO' : 'PRODUCTION'})...`);
       const { collection, getDocs } = this.firestore;
-      const snapshot = await getDocs(collection(this.db, 'inventory'));
+      const snapshot = await getDocs(collection(this.db, this.getCollectionName('inventory')));
       const inventory = [];
       snapshot.forEach(doc => {
         console.log(`LOADED item: ${doc.id}`);
@@ -216,7 +228,7 @@ const FirebaseService = {
           idPhotoBack: idPhotoBackUrl,
           signature: signatureUrl
         });
-        await setDoc(doc(this.db, 'clients', client.id), clientData);
+        await setDoc(doc(this.db, this.getCollectionName('clients'), client.id), clientData);
       }
       return true;
     } catch (error) {
@@ -233,7 +245,7 @@ const FirebaseService = {
     }
     try {
       const { collection, getDocs } = this.firestore;
-      const snapshot = await getDocs(collection(this.db, 'clients'));
+      const snapshot = await getDocs(collection(this.db, this.getCollectionName('clients')));
       const clients = [];
       snapshot.forEach(doc => clients.push({ id: doc.id, ...doc.data() }));
       console.log(`Loaded ${clients.length} clients from Firebase`);
@@ -251,7 +263,7 @@ const FirebaseService = {
       const { doc, setDoc } = this.firestore;
       for (const lot of lots) {
         const lotData = this.cleanObject(lot);
-        await setDoc(doc(this.db, 'lots', lot.id), lotData);
+        await setDoc(doc(this.db, this.getCollectionName('lots'), lot.id), lotData);
       }
       return true;
     } catch (error) {
@@ -268,7 +280,7 @@ const FirebaseService = {
     }
     try {
       const { collection, getDocs } = this.firestore;
-      const snapshot = await getDocs(collection(this.db, 'lots'));
+      const snapshot = await getDocs(collection(this.db, this.getCollectionName('lots')));
       const lots = [];
       snapshot.forEach(doc => lots.push({ id: doc.id, ...doc.data() }));
       console.log(`Loaded ${lots.length} lots from Firebase`);
@@ -284,7 +296,9 @@ const FirebaseService = {
     if (!this.initialized || !this.storage) return null;
     try {
       const { ref, uploadString, getDownloadURL } = this.storageHelpers;
-      const storageRef = ref(this.storage, `photos/${id}.jpg`);
+      // Use demo_ prefix for photos in demo mode
+      const photoPath = this.demoMode ? `demo_photos/${id}.jpg` : `photos/${id}.jpg`;
+      const storageRef = ref(this.storage, photoPath);
       await uploadString(storageRef, base64Data, 'base64');
       return await getDownloadURL(storageRef);
     } catch (error) {
@@ -298,10 +312,43 @@ const FirebaseService = {
     if (!this.initialized) return false;
     try {
       const { doc, deleteDoc } = this.firestore;
-      await deleteDoc(doc(this.db, collectionName, itemId));
+      await deleteDoc(doc(this.db, this.getCollectionName(collectionName), itemId));
       return true;
     } catch (error) {
       console.error('Error deleting item:', error);
+      return false;
+    }
+  },
+  
+  // Clear all demo data (admin function)
+  async clearDemoData() {
+    if (!this.initialized) return false;
+    try {
+      const { collection, getDocs } = this.firestore;
+      const { doc, deleteDoc } = this.firestore;
+      
+      // Clear demo_inventory
+      const invSnapshot = await getDocs(collection(this.db, 'demo_inventory'));
+      for (const docSnap of invSnapshot.docs) {
+        await deleteDoc(doc(this.db, 'demo_inventory', docSnap.id));
+      }
+      
+      // Clear demo_clients
+      const clientSnapshot = await getDocs(collection(this.db, 'demo_clients'));
+      for (const docSnap of clientSnapshot.docs) {
+        await deleteDoc(doc(this.db, 'demo_clients', docSnap.id));
+      }
+      
+      // Clear demo_lots
+      const lotSnapshot = await getDocs(collection(this.db, 'demo_lots'));
+      for (const docSnap of lotSnapshot.docs) {
+        await deleteDoc(doc(this.db, 'demo_lots', docSnap.id));
+      }
+      
+      console.log('Demo data cleared');
+      return true;
+    } catch (error) {
+      console.error('Error clearing demo data:', error);
       return false;
     }
   }
@@ -9701,13 +9748,56 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
           </div>
         </div>
         
+        {/* Demo Mode Sharing */}
+        <div className="bg-white p-4 rounded-lg shadow border-2 border-purple-200">
+          <h3 className="font-medium mb-3 flex items-center gap-2 text-purple-700">
+            <Zap size={18} /> Demo Mode (Share with Others)
+          </h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Share this link to let others try the app without accessing your real data. Demo users have their own separate database.
+          </p>
+          
+          <div className="bg-purple-50 p-3 rounded mb-3">
+            <p className="text-xs text-purple-600 font-medium mb-1">Demo Link:</p>
+            <div className="flex gap-2">
+              <input 
+                type="text" 
+                readOnly 
+                value={`${window.location.origin}${window.location.pathname}?demo=true`}
+                className="flex-1 text-sm bg-white border rounded px-2 py-1"
+              />
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}?demo=true`);
+                  alert('Demo link copied to clipboard!');
+                }}
+                className="bg-purple-600 text-white px-3 py-1 rounded text-sm"
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+          
+          <button 
+            onClick={async () => {
+              if (confirm('Clear ALL demo data? This removes all inventory, clients, and lots from the demo environment.')) {
+                const success = await FirebaseService.clearDemoData();
+                alert(success ? 'Demo data cleared!' : 'Failed to clear demo data');
+              }
+            }}
+            className="w-full border border-purple-300 text-purple-600 py-2 rounded text-sm flex items-center justify-center gap-2 hover:bg-purple-50"
+          >
+            <Trash2 size={14} /> Clear Demo Data
+          </button>
+        </div>
+        
         {/* App Info */}
         <div className="bg-white p-4 rounded-lg shadow">
           <h3 className="font-medium mb-3 flex items-center gap-2">
             <HardDrive size={18} /> App Information
           </h3>
           <div className="text-sm text-gray-600 space-y-1">
-            <p><strong>Version:</strong> 96</p>
+            <p><strong>Version:</strong> 97</p>
             <p><strong>Firebase Project:</strong> ses-inventory</p>
             <p><strong>Last Updated:</strong> January 2026</p>
           </div>
@@ -11231,6 +11321,12 @@ function EbaySyncView({ onBack, onImportListings, inventory }) {
 
 // ============ MAIN APP ============
 export default function SESInventoryApp() {
+  // Check for demo mode from URL
+  const [demoMode] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('demo') === 'true';
+  });
+  
   // Start with null to indicate "not yet loaded" vs "empty"
   const [inventory, setInventory] = useState(null);
   const [clients, setClients] = useState(null);
@@ -11350,6 +11446,9 @@ export default function SESInventoryApp() {
   // Initialize services on mount
   useEffect(() => {
     const initServices = async () => {
+      // Set demo mode in FirebaseService
+      FirebaseService.setDemoMode(demoMode);
+      
       // Initialize Firebase
       const fbReady = await FirebaseService.init();
       setFirebaseReady(fbReady);
@@ -11838,7 +11937,14 @@ export default function SESInventoryApp() {
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-amber-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <h2 className="text-xl font-bold text-amber-800">Stevens Estate Services</h2>
-          <p className="text-amber-600 mt-2">Loading your inventory...</p>
+          <p className="text-amber-600 mt-2">
+            {demoMode ? 'Loading demo environment...' : 'Loading your inventory...'}
+          </p>
+          {demoMode && (
+            <div className="mt-3 bg-purple-100 text-purple-700 px-4 py-2 rounded-full inline-block text-sm">
+              <Zap size={14} className="inline mr-1" /> Demo Mode Active
+            </div>
+          )}
           {firebaseReady && <p className="text-green-600 text-sm mt-2">✓ Connected to cloud</p>}
         </div>
       </div>
@@ -12128,6 +12234,17 @@ export default function SESInventoryApp() {
 
   return (
     <div className="min-h-screen bg-gray-100">
+      {/* Demo Mode Banner */}
+      {demoMode && (
+        <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 py-2 text-center">
+          <div className="flex items-center justify-center gap-2">
+            <Zap size={16} />
+            <span className="font-medium">Demo Mode</span>
+            <span className="text-purple-200">- Your data is separate and will be cleared periodically</span>
+          </div>
+        </div>
+      )}
+      
       {/* Clean Header with Spot Prices */}
       <div className="bg-gradient-to-r from-amber-700 to-amber-800 text-white p-4">
         <div className="flex justify-between items-center">
