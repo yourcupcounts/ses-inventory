@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Package, Plus, X, Trash2, Search, Settings, Download, Upload, Camera, Loader, BarChart3, TrendingUp, TrendingDown, Clock, AlertTriangle, AlertCircle, FileText, Filter, Users, UserPlus, Edit2, Check, MapPin, Calendar, CreditCard, Building, User, Lock, Unlock, ShieldCheck, DollarSign, RefreshCw, Calculator, Layers, Star, ExternalLink, Flame, Archive, Zap, Shield, Database, FileSpreadsheet, AlertOctagon, Wifi, WifiOff, HardDrive, Cloud, CloudOff, Home, ChevronDown, ChevronRight, Link2, UserCheck } from 'lucide-react';
+import { Package, Plus, X, Trash2, Search, Settings, Download, Upload, Camera, Loader, BarChart3, TrendingUp, TrendingDown, Clock, AlertTriangle, AlertCircle, FileText, Filter, Users, UserPlus, Edit2, Edit3, Check, MapPin, Calendar, CreditCard, Building, User, Lock, Unlock, ShieldCheck, DollarSign, RefreshCw, Calculator, Layers, Star, ExternalLink, Flame, Archive, Zap, Shield, Database, FileSpreadsheet, AlertOctagon, Wifi, WifiOff, HardDrive, Cloud, CloudOff, Home, ChevronDown, ChevronRight, Link2, UserCheck } from 'lucide-react';
 
 // ============ CONFIGURATION - ADD YOUR API KEYS HERE ============
 const CONFIG = {
@@ -7975,43 +7975,49 @@ Return ONLY the JSON object.`
             </div>
           </div>
           
-          <div className="grid grid-cols-2 gap-4">
-            <div><label className="block text-sm font-medium mb-1">Purity</label><input type="text" value={form.purity} onChange={(e) => setForm({...form, purity: e.target.value})} className="w-full border rounded p-2" placeholder="925, 999, 14K..." /></div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Metal Weight</label>
-              <p className="text-xs text-gray-500 -mt-1 mb-1">Pure metal content only</p>
-              <div className="flex gap-1">
-                <input 
-                  type="number" 
-                  step="0.01" 
-                  value={form.weight} 
-                  onChange={(e) => setForm({...form, weight: e.target.value})} 
-                  className="flex-1 border rounded-l p-2" 
-                  placeholder={weightUnit === 'g' ? 'grams' : 'troy oz'}
-                />
-                <div className="flex border rounded-r overflow-hidden">
-                  <button 
-                    onClick={() => handleUnitChange('g')}
-                    className={`px-2 py-2 text-sm font-medium transition-colors ${weightUnit === 'g' ? 'bg-amber-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                  >
-                    g
-                  </button>
-                  <button 
-                    onClick={() => handleUnitChange('oz')}
-                    className={`px-2 py-2 text-sm font-medium transition-colors ${weightUnit === 'oz' ? 'bg-amber-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                  >
-                    oz
-                  </button>
-                </div>
+          {/* Purity - Full Width */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Purity</label>
+            <input type="text" value={form.purity} onChange={(e) => setForm({...form, purity: e.target.value})} className="w-full border rounded p-2" placeholder="925, 999, 14K..." />
+          </div>
+          
+          {/* Metal Weight - Full Width */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Metal Weight</label>
+            <p className="text-xs text-gray-500 mb-1">Pure metal content only</p>
+            <div className="flex gap-1">
+              <input 
+                type="number" 
+                step="0.01" 
+                value={form.weight} 
+                onChange={(e) => setForm({...form, weight: e.target.value})} 
+                className="flex-1 min-w-0 border rounded-l p-2" 
+                placeholder={weightUnit === 'g' ? 'grams' : 'troy oz'}
+              />
+              <div className="flex border rounded-r overflow-hidden flex-shrink-0">
+                <button 
+                  type="button"
+                  onClick={() => handleUnitChange('g')}
+                  className={`px-3 py-2 text-sm font-medium transition-colors ${weightUnit === 'g' ? 'bg-amber-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+                >
+                  g
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => handleUnitChange('oz')}
+                  className={`px-3 py-2 text-sm font-medium transition-colors ${weightUnit === 'oz' ? 'bg-amber-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+                >
+                  oz
+                </button>
               </div>
-              {form.weight && (
-                <div className="text-xs text-gray-500 mt-1">
-                  = {weightUnit === 'g' 
-                    ? `${getWeightInOz().toFixed(4)} troy oz` 
-                    : `${(parseFloat(form.weight) * GRAMS_PER_OZ).toFixed(2)} grams`}
-                </div>
-              )}
             </div>
+            {form.weight && (
+              <div className="text-xs text-gray-500 mt-1">
+                = {weightUnit === 'g' 
+                  ? `${getWeightInOz().toFixed(4)} troy oz` 
+                  : `${(parseFloat(form.weight) * GRAMS_PER_OZ).toFixed(2)} grams`}
+              </div>
+            )}
           </div>
           
           {/* Year/Mint/Grade for coins */}
@@ -8068,17 +8074,53 @@ Return ONLY the JSON object.`
           </div>
           
           <div><label className="block text-sm font-medium mb-1">Source</label><input type="text" value={form.source} onChange={(e) => setForm({...form, source: e.target.value})} className="w-full border rounded p-2" /></div>
-          <div className="grid grid-cols-2 gap-4">
-            <div><label className="block text-sm font-medium mb-1">Purchase $</label><input type="number" value={form.purchasePrice} onChange={(e) => setForm({...form, purchasePrice: e.target.value})} className="w-full border rounded p-2" /></div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Melt at Purchase</label>
-              <p className="text-xs text-gray-500 -mt-1 mb-1">Using today's spot</p>
-              <div className="flex gap-2">
-                <input type="number" value={form.meltValue} onChange={(e) => setForm({...form, meltValue: e.target.value})} className="flex-1 border rounded p-2" />
-                <button onClick={() => setForm({...form, meltValue: calculateMelt(form.metalType, form.purity, getWeightInOz())})} className="bg-amber-100 px-2 rounded text-amber-700 text-sm">Calc</button>
-              </div>
+          
+          {/* Purchase Price - Full Width */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Purchase Price</label>
+            <div className="flex">
+              <span className="bg-gray-100 border border-r-0 rounded-l px-3 py-2 text-gray-500">$</span>
+              <input type="number" value={form.purchasePrice} onChange={(e) => setForm({...form, purchasePrice: e.target.value})} className="flex-1 min-w-0 border rounded-r p-2" placeholder="0.00" />
             </div>
           </div>
+          
+          {/* Melt at Purchase - Full Width */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Melt at Purchase</label>
+            <p className="text-xs text-gray-500 mb-1">Locked value using spot when saved</p>
+            <div className="flex gap-2">
+              <div className="flex flex-1 min-w-0">
+                <span className="bg-gray-100 border border-r-0 rounded-l px-3 py-2 text-gray-500">$</span>
+                <input type="number" value={form.meltValue} onChange={(e) => setForm({...form, meltValue: e.target.value})} className="flex-1 min-w-0 border rounded-r p-2" placeholder="0.00" />
+              </div>
+              <button 
+                type="button"
+                onClick={() => setForm({...form, meltValue: calculateMelt(form.metalType, form.purity, getWeightInOz())})} 
+                className="bg-amber-500 text-white px-4 rounded text-sm font-medium flex-shrink-0"
+              >
+                Calc
+              </button>
+            </div>
+          </div>
+          
+          {/* Live Melt Value Display */}
+          {form.weight && form.metalType && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <div className="flex justify-between items-center">
+                <div>
+                  <div className="text-xs text-green-600 font-medium">Current Melt Value (Live)</div>
+                  <div className="text-xl font-bold text-green-700">
+                    ${calculateMeltValue(form.metalType, form.purity, getWeightInOz())}
+                  </div>
+                </div>
+                <div className="text-right text-xs text-gray-500">
+                  <div>{form.metalType} Spot</div>
+                  <div className="font-medium">${liveSpotPrices?.[form.metalType?.toLowerCase()]?.toFixed(2) || 'N/A'}/oz</div>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <div><label className="block text-sm font-medium mb-1">Notes</label><textarea value={form.notes} onChange={(e) => setForm({...form, notes: e.target.value})} className="w-full border rounded p-2" rows={2} /></div>
           <div className="flex gap-2 pt-2">
             <button onClick={onCancel} className="flex-1 border py-2 rounded">Cancel</button>
@@ -8128,6 +8170,26 @@ function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay, l
   const [lotDescription, setLotDescription] = useState(item.description);
   const [lotNotes, setLotNotes] = useState(item.notes || '');
   const [showPhotoManager, setShowPhotoManager] = useState(false);
+  
+  // Edit mode state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    description: item.description || '',
+    category: item.category || 'Silver - Sterling',
+    metalType: item.metalType || 'Silver',
+    purity: item.purity || '',
+    weightOz: item.weightOz || '',
+    source: item.source || '',
+    purchasePrice: item.purchasePrice || '',
+    meltValue: item.meltValue || '',
+    notes: item.notes || '',
+    serialNumber: item.serialNumber || '',
+    year: item.year || '',
+    mint: item.mint || '',
+    grade: item.grade || '',
+    clientId: item.clientId || '',
+    status: item.status || 'Available'
+  });
   
   // Photo management refs
   const photoCameraRef = useRef(null);
@@ -8495,6 +8557,21 @@ Ships fast and packed well. Questions? Just ask.`;
   };
   
   const sellStrategy = ebayPrices ? getSellStrategy(ebayPrices) : null;
+  
+  // Categories for edit form
+  const categories = ['Coins - Silver', 'Coins - Gold', 'Silver - Sterling', 'Silver - Bullion', 'Gold - Jewelry', 'Gold - Bullion', 'Gold - Scrap', 'Platinum', 'Palladium', 'Collectibles', 'Other'];
+  
+  // Save edit handler
+  const handleSaveEdit = () => {
+    onUpdate({
+      ...item,
+      ...editForm,
+      weightOz: parseFloat(editForm.weightOz) || item.weightOz,
+      purchasePrice: parseFloat(editForm.purchasePrice) || item.purchasePrice,
+      meltValue: parseFloat(editForm.meltValue) || item.meltValue
+    });
+    setIsEditing(false);
+  };
 
   return (
     <div className="min-h-screen bg-amber-50 pb-24">
@@ -8507,8 +8584,118 @@ Ships fast and packed well. Questions? Just ask.`;
             </button>
           )}
         </div>
-        <button onClick={onDelete}><Trash2 size={20} /></button>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setIsEditing(true)} className="p-1 hover:bg-amber-600 rounded">
+            <Edit3 size={20} />
+          </button>
+          <button onClick={onDelete}><Trash2 size={20} /></button>
+        </div>
       </div>
+      
+      {/* EDIT MODAL */}
+      {isEditing && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto">
+          <div className="min-h-screen p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-lg mx-auto">
+              <div className="bg-amber-600 text-white p-4 rounded-t-lg flex justify-between items-center">
+                <h3 className="font-bold text-lg">Edit Item</h3>
+                <button onClick={() => setIsEditing(false)}><X size={24} /></button>
+              </div>
+              <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Description *</label>
+                  <input type="text" value={editForm.description} onChange={(e) => setEditForm({...editForm, description: e.target.value})} className="w-full border rounded p-2" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Category</label>
+                    <select value={editForm.category} onChange={(e) => setEditForm({...editForm, category: e.target.value})} className="w-full border rounded p-2 bg-white">
+                      {categories.map(c => <option key={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Metal</label>
+                    <select value={editForm.metalType} onChange={(e) => setEditForm({...editForm, metalType: e.target.value})} className="w-full border rounded p-2 bg-white">
+                      <option>Gold</option><option>Silver</option><option>Platinum</option><option>Palladium</option><option>Other</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Purity</label>
+                    <input type="text" value={editForm.purity} onChange={(e) => setEditForm({...editForm, purity: e.target.value})} className="w-full border rounded p-2" placeholder="925, 999, 14K..." />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Weight (oz)</label>
+                    <input type="number" step="0.0001" value={editForm.weightOz} onChange={(e) => setEditForm({...editForm, weightOz: e.target.value})} className="w-full border rounded p-2" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Year</label>
+                    <input type="text" value={editForm.year} onChange={(e) => setEditForm({...editForm, year: e.target.value})} className="w-full border rounded p-2" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Mint</label>
+                    <select value={editForm.mint} onChange={(e) => setEditForm({...editForm, mint: e.target.value})} className="w-full border rounded p-2 bg-white">
+                      <option value="">-</option>
+                      <option value="P">P</option><option value="D">D</option><option value="S">S</option>
+                      <option value="O">O</option><option value="CC">CC</option><option value="W">W</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Grade</label>
+                    <input type="text" value={editForm.grade} onChange={(e) => setEditForm({...editForm, grade: e.target.value})} className="w-full border rounded p-2" placeholder="MS65, VF..." />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Source</label>
+                  <input type="text" value={editForm.source} onChange={(e) => setEditForm({...editForm, source: e.target.value})} className="w-full border rounded p-2" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Client</label>
+                  <select value={editForm.clientId} onChange={(e) => setEditForm({...editForm, clientId: e.target.value})} className="w-full border rounded p-2 bg-white">
+                    <option value="">No client</option>
+                    {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Purchase Price</label>
+                    <input type="number" step="0.01" value={editForm.purchasePrice} onChange={(e) => setEditForm({...editForm, purchasePrice: e.target.value})} className="w-full border rounded p-2" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Melt at Purchase</label>
+                    <input type="number" step="0.01" value={editForm.meltValue} onChange={(e) => setEditForm({...editForm, meltValue: e.target.value})} className="w-full border rounded p-2" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Serial / Marks</label>
+                  <input type="text" value={editForm.serialNumber} onChange={(e) => setEditForm({...editForm, serialNumber: e.target.value})} className="w-full border rounded p-2" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Status</label>
+                  <select value={editForm.status} onChange={(e) => setEditForm({...editForm, status: e.target.value})} className="w-full border rounded p-2 bg-white">
+                    <option value="Available">Available</option>
+                    <option value="Stash">Stash</option>
+                    <option value="Sold">Sold</option>
+                    <option value="Listed">Listed</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Notes</label>
+                  <textarea value={editForm.notes} onChange={(e) => setEditForm({...editForm, notes: e.target.value})} className="w-full border rounded p-2" rows={3} />
+                </div>
+              </div>
+              <div className="p-4 border-t flex gap-3">
+                <button onClick={() => setIsEditing(false)} className="flex-1 border py-2 rounded">Cancel</button>
+                <button onClick={handleSaveEdit} className="flex-1 bg-amber-600 text-white py-2 rounded font-medium">Save Changes</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <div className="p-4"><div className="bg-white rounded-lg shadow p-4">
         <h2 className="text-xl font-bold">{item.description}</h2>
         <div className="text-gray-500">{item.id} • {item.category}</div>
@@ -8829,63 +9016,6 @@ Ships fast and packed well. Questions? Just ask.`;
         </div>
         
         {item.notes && <div className="mt-4 p-3 bg-gray-50 rounded text-sm">{item.notes}</div>}
-        
-        {/* EDIT SECTION */}
-        <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded">
-          <div className="text-xs text-amber-700 font-medium mb-3">Quick Edit</div>
-          <div className="grid grid-cols-2 gap-2">
-            <button 
-              onClick={() => {
-                const newDesc = prompt('Edit description:', item.description || '');
-                if (newDesc !== null) onUpdate({ ...item, description: newDesc });
-              }}
-              className="text-left p-2 bg-white rounded border text-sm hover:bg-amber-100"
-            >
-              <div className="text-xs text-gray-500">Description</div>
-              <div className="truncate">{item.description || 'N/A'}</div>
-            </button>
-            <button 
-              onClick={() => {
-                const newPrice = prompt('Edit purchase price:', item.purchasePrice || '');
-                if (newPrice !== null) onUpdate({ ...item, purchasePrice: parseFloat(newPrice) || 0 });
-              }}
-              className="text-left p-2 bg-white rounded border text-sm hover:bg-amber-100"
-            >
-              <div className="text-xs text-gray-500">Purchase Price</div>
-              <div>${item.purchasePrice || 0}</div>
-            </button>
-            <button 
-              onClick={() => {
-                const newWeight = prompt('Edit metal weight (oz):', item.weightOz || '');
-                if (newWeight !== null) onUpdate({ ...item, weightOz: parseFloat(newWeight) || 0 });
-              }}
-              className="text-left p-2 bg-white rounded border text-sm hover:bg-amber-100"
-            >
-              <div className="text-xs text-gray-500">Weight (oz)</div>
-              <div>{item.weightOz || 0} oz</div>
-            </button>
-            <button 
-              onClick={() => {
-                const newPurity = prompt('Edit purity (e.g., 925, 999, 14K):', item.purity || '');
-                if (newPurity !== null) onUpdate({ ...item, purity: newPurity });
-              }}
-              className="text-left p-2 bg-white rounded border text-sm hover:bg-amber-100"
-            >
-              <div className="text-xs text-gray-500">Purity</div>
-              <div>{item.purity || 'N/A'}</div>
-            </button>
-            <button 
-              onClick={() => {
-                const newNotes = prompt('Edit notes:', item.notes || '');
-                if (newNotes !== null) onUpdate({ ...item, notes: newNotes });
-              }}
-              className="text-left p-2 bg-white rounded border text-sm hover:bg-amber-100 col-span-2"
-            >
-              <div className="text-xs text-gray-500">Notes</div>
-              <div className="truncate">{item.notes || 'None'}</div>
-            </button>
-          </div>
-        </div>
         
         {/* PRICING ANALYSIS SECTION */}
         {item.status === 'Available' && holdStatus.canSell && !item.ebayListingId && (
@@ -9577,7 +9707,7 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
             <HardDrive size={18} /> App Information
           </h3>
           <div className="text-sm text-gray-600 space-y-1">
-            <p><strong>Version:</strong> 94</p>
+            <p><strong>Version:</strong> 96</p>
             <p><strong>Firebase Project:</strong> ses-inventory</p>
             <p><strong>Last Updated:</strong> January 2026</p>
           </div>
