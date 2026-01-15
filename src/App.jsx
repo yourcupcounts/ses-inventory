@@ -77,7 +77,7 @@ const FirebaseService = {
     return cleaned;
   },
   
-  // Save inventory to Firestore - SIMPLIFIED
+  // Save inventory to Firestore with photo handling
   async saveInventory(inventory) {
     if (!this.initialized) {
       console.error('SAVE BLOCKED: Firebase not initialized');
@@ -89,11 +89,64 @@ const FirebaseService = {
       const { doc, setDoc } = this.firestore;
       
       for (const item of inventory) {
-        // Strip large photos for now - just save the data
+        // Handle photos - save directly if small enough for Firestore
+        let photoToSave = null;
+        let photoBackToSave = null;
+        
+        // Firestore document limit is ~1MB, so keep photos under 400KB each
+        if (item.photo) {
+          if (item.photo.startsWith('http')) {
+            // Already a URL (from Storage), keep it
+            photoToSave = item.photo;
+          } else if (item.photo.length < 400000) {
+            // Small enough for Firestore
+            photoToSave = item.photo;
+          } else {
+            // Too big - try to upload to Storage with timeout
+            console.log(`Photo for ${item.id} is large (${Math.round(item.photo.length/1000)}KB), trying Storage...`);
+            try {
+              const uploadPromise = this.uploadPhoto(item.id, item.photo);
+              const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Upload timeout')), 10000)
+              );
+              const url = await Promise.race([uploadPromise, timeoutPromise]);
+              if (url) {
+                photoToSave = url;
+                console.log(`Photo uploaded to Storage: ${url.substring(0, 50)}...`);
+              }
+            } catch (uploadErr) {
+              console.warn(`Photo upload failed for ${item.id}:`, uploadErr.message);
+              // Skip the photo rather than failing the whole save
+            }
+          }
+        }
+        
+        if (item.photoBack) {
+          if (item.photoBack.startsWith('http')) {
+            photoBackToSave = item.photoBack;
+          } else if (item.photoBack.length < 400000) {
+            photoBackToSave = item.photoBack;
+          } else {
+            console.log(`Back photo for ${item.id} is large, trying Storage...`);
+            try {
+              const uploadPromise = this.uploadPhoto(`${item.id}_back`, item.photoBack);
+              const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Upload timeout')), 10000)
+              );
+              const url = await Promise.race([uploadPromise, timeoutPromise]);
+              if (url) {
+                photoBackToSave = url;
+              }
+            } catch (uploadErr) {
+              console.warn(`Back photo upload failed for ${item.id}:`, uploadErr.message);
+            }
+          }
+        }
+        
         const itemData = this.cleanObject({ 
           ...item, 
-          photo: null,  // Skip photos temporarily
-          photoBack: null
+          photo: photoToSave,
+          photoBack: photoBackToSave
         });
         
         console.log(`SAVING item: ${item.id}`);
@@ -9452,7 +9505,7 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
             <HardDrive size={18} /> App Information
           </h3>
           <div className="text-sm text-gray-600 space-y-1">
-            <p><strong>Version:</strong> 91</p>
+            <p><strong>Version:</strong> 92</p>
             <p><strong>Firebase Project:</strong> ses-inventory</p>
             <p><strong>Last Updated:</strong> January 2026</p>
           </div>
