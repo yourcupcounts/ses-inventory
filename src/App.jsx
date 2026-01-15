@@ -79,8 +79,12 @@ const FirebaseService = {
   
   // Save inventory to Firestore
   async saveInventory(inventory) {
-    if (!this.initialized) return false;
+    if (!this.initialized) {
+      console.log('Firebase not initialized, cannot save inventory');
+      return false;
+    }
     try {
+      console.log(`Saving ${inventory.length} items to Firebase...`);
       const { doc, setDoc } = this.firestore;
       for (const item of inventory) {
         // Store photo separately in Storage if exists
@@ -100,25 +104,30 @@ const FirebaseService = {
         });
         await setDoc(doc(this.db, 'inventory', item.id), itemData);
       }
+      console.log(`Successfully saved ${inventory.length} items to Firebase`);
       return true;
     } catch (error) {
-      console.error('Error saving inventory:', error);
+      console.error('Error saving inventory to Firebase:', error);
       return false;
     }
   },
   
   // Load inventory from Firestore
   async loadInventory() {
-    if (!this.initialized) return null;
+    if (!this.initialized) {
+      console.log('Firebase not initialized, cannot load inventory');
+      return null;
+    }
     try {
       const { collection, getDocs } = this.firestore;
       const snapshot = await getDocs(collection(this.db, 'inventory'));
       const inventory = [];
       snapshot.forEach(doc => inventory.push({ id: doc.id, ...doc.data() }));
-      return inventory;
+      console.log(`Loaded ${inventory.length} items from Firebase inventory`);
+      return inventory; // Returns empty array [] if collection is empty, which is valid
     } catch (error) {
-      console.error('Error loading inventory:', error);
-      return null;
+      console.error('Error loading inventory from Firebase:', error);
+      return null; // Only return null on actual error
     }
   },
   
@@ -160,15 +169,19 @@ const FirebaseService = {
   
   // Load clients from Firestore
   async loadClients() {
-    if (!this.initialized) return null;
+    if (!this.initialized) {
+      console.log('Firebase not initialized, cannot load clients');
+      return null;
+    }
     try {
       const { collection, getDocs } = this.firestore;
       const snapshot = await getDocs(collection(this.db, 'clients'));
       const clients = [];
       snapshot.forEach(doc => clients.push({ id: doc.id, ...doc.data() }));
+      console.log(`Loaded ${clients.length} clients from Firebase`);
       return clients;
     } catch (error) {
-      console.error('Error loading clients:', error);
+      console.error('Error loading clients from Firebase:', error);
       return null;
     }
   },
@@ -191,15 +204,19 @@ const FirebaseService = {
   
   // Load lots from Firestore
   async loadLots() {
-    if (!this.initialized) return null;
+    if (!this.initialized) {
+      console.log('Firebase not initialized, cannot load lots');
+      return null;
+    }
     try {
       const { collection, getDocs } = this.firestore;
       const snapshot = await getDocs(collection(this.db, 'lots'));
       const lots = [];
       snapshot.forEach(doc => lots.push({ id: doc.id, ...doc.data() }));
+      console.log(`Loaded ${lots.length} lots from Firebase`);
       return lots;
     } catch (error) {
-      console.error('Error loading lots:', error);
+      console.error('Error loading lots from Firebase:', error);
       return null;
     }
   },
@@ -237,7 +254,7 @@ const SpotPriceService = {
   lastPrices: { gold: 4600.00, silver: 90.00, platinum: 985.00, palladium: 945.00 },
   lastUpdate: null,
   
-  // Fetch live spot prices from goldprice.org (free, CORS-friendly)
+  // Fetch live spot prices from multiple sources
   async fetchFromMetalsLive() {
     try {
       console.log('Fetching spot prices from goldprice.org...');
@@ -251,14 +268,38 @@ const SpotPriceService = {
         const item = data.items[0];
         if (item.xauPrice) this.lastPrices.gold = item.xauPrice;
         if (item.xagPrice) this.lastPrices.silver = item.xagPrice;
+        // goldprice.org also has platinum and palladium
+        if (item.xptPrice) this.lastPrices.platinum = item.xptPrice;
+        if (item.xpdPrice) this.lastPrices.palladium = item.xpdPrice;
         this.lastUpdate = new Date();
         console.log('Spot prices updated successfully:', this.lastPrices);
         return this.lastPrices;
       }
       throw new Error('Invalid response format');
     } catch (error) {
-      console.log('Spot price fetch failed, using defaults:', error.message);
+      console.log('goldprice.org fetch failed, trying backup...', error.message);
+      return null;
+    }
+  },
+  
+  // Backup: Fetch from metals-api via our serverless function
+  async fetchFromBackup() {
+    try {
+      console.log('Fetching from backup spot price API...');
+      const response = await fetch('/api/spot-prices');
+      if (!response.ok) throw new Error('Backup API error: ' + response.status);
+      const data = await response.json();
+      
+      if (data.gold) this.lastPrices.gold = data.gold;
+      if (data.silver) this.lastPrices.silver = data.silver;
+      if (data.platinum) this.lastPrices.platinum = data.platinum;
+      if (data.palladium) this.lastPrices.palladium = data.palladium;
+      this.lastUpdate = new Date();
+      console.log('Backup spot prices loaded:', this.lastPrices);
       return this.lastPrices;
+    } catch (error) {
+      console.log('Backup API failed:', error.message);
+      return null;
     }
   },
   
@@ -296,10 +337,15 @@ const SpotPriceService = {
   async fetchPrices() {
     if (!CONFIG.features.useLiveSpot) return this.lastPrices;
     
-    // Try Metals.live first (free)
+    // Try goldprice.org first (free, has all 4 metals)
     let prices = await this.fetchFromMetalsLive();
     
-    // Fall back to GoldAPI if available and Metals.live failed
+    // Try backup API if primary failed
+    if (!prices) {
+      prices = await this.fetchFromBackup();
+    }
+    
+    // Fall back to GoldAPI if available
     if (!prices && CONFIG.goldApiKey) {
       prices = await this.fetchFromGoldApi();
     }
@@ -10953,6 +10999,7 @@ export default function SESInventoryApp() {
   const [lots, setLots] = useState(null);
   const [receipts, setReceipts] = useState([]);
   const [dataLoaded, setDataLoaded] = useState(false); // Track if initial load is complete
+  const [loadError, setLoadError] = useState(null); // Critical error state - blocks app if set
   const [kpiExpanded, setKpiExpanded] = useState(true); // KPI dashboard expanded by default
   const [inventoryListExpanded, setInventoryListExpanded] = useState(false); // Inventory list collapsed by default
   const [kpiFilter, setKpiFilter] = useState(null); // Filter for KPI drill-down: 'stash', 'hold', 'sell', 'available', 'silver', 'gold', 'platinum', 'sold'
@@ -11069,44 +11116,85 @@ export default function SESInventoryApp() {
       const fbReady = await FirebaseService.init();
       setFirebaseReady(fbReady);
       
-      // Load data from Firebase if available
-      if (fbReady) {
+      if (!fbReady) {
+        // Firebase failed to initialize - this is a critical error
+        console.error('CRITICAL: Firebase failed to initialize');
+        setLoadError('Failed to connect to database. Please check your internet connection and refresh.');
+        setDataLoaded(true);
+        return;
+      }
+      
+      console.log('Firebase ready, loading data...');
+      
+      try {
         const [fbInventory, fbClients, fbLots] = await Promise.all([
           FirebaseService.loadInventory(),
           FirebaseService.loadClients(),
           FirebaseService.loadLots()
         ]);
         
-        // Use Firebase data if it exists (including empty arrays), otherwise use starter data
-        // Using !== null instead of ?.length so empty arrays don't trigger starter data reload
-        setInventory(fbInventory !== null ? fbInventory : starterInventory);
-        setClients(fbClients !== null ? fbClients : starterClients);
-        setLots(fbLots !== null ? fbLots : starterLots);
-        
-        console.log('Loaded from Firebase:', {
-          inventory: fbInventory?.length || 0,
-          clients: fbClients?.length || 0,
-          lots: fbLots?.length || 0
+        console.log('Firebase load results:', {
+          inventory: fbInventory?.length ?? 'null',
+          clients: fbClients?.length ?? 'null',
+          lots: fbLots?.length ?? 'null'
         });
-      } else {
-        // Firebase not available, use starter data
-        setInventory(starterInventory);
-        setClients(starterClients);
-        setLots(starterLots);
-        console.log('Firebase not available, using starter data');
+        
+        // If any load returned null, there was an error - don't proceed
+        if (fbInventory === null || fbClients === null || fbLots === null) {
+          console.error('CRITICAL: Firebase load returned null - data may be corrupted or connection failed');
+          setLoadError('Failed to load your data. Please refresh the page. If this persists, check browser console for errors.');
+          setDataLoaded(true);
+          return;
+        }
+        
+        // Success - use whatever Firebase returned (empty arrays are valid)
+        setInventory(fbInventory);
+        setClients(fbClients);
+        setLots(fbLots);
+        
+        console.log('Successfully loaded from Firebase:', {
+          inventory: fbInventory.length,
+          clients: fbClients.length,
+          lots: fbLots.length
+        });
+        
+      } catch (error) {
+        console.error('CRITICAL: Firebase load threw exception:', error);
+        setLoadError(`Database error: ${error.message}. Please refresh the page.`);
+        setDataLoaded(true);
+        return;
       }
       
       // Mark initial load as complete - this enables auto-save
       setDataLoaded(true);
       
       // Fetch live spot prices
-      await refreshSpotPrices();
+      try {
+        const prices = await SpotPriceService.fetchPrices();
+        if (prices) {
+          setLiveSpotPrices(prices);
+          setSpotLastUpdate(new Date());
+        }
+      } catch (e) {
+        console.log('Initial spot price fetch failed:', e);
+      }
     };
     
     initServices();
     
     // Refresh spot prices every 5 minutes
-    const priceInterval = setInterval(refreshSpotPrices, 5 * 60 * 1000);
+    const priceInterval = setInterval(async () => {
+      try {
+        const prices = await SpotPriceService.fetchPrices();
+        if (prices) {
+          setLiveSpotPrices(prices);
+          setSpotLastUpdate(new Date());
+        }
+      } catch (e) {
+        console.log('Spot price refresh failed:', e);
+      }
+    }, 5 * 60 * 1000);
+    
     return () => clearInterval(priceInterval);
   }, []);
   
@@ -11406,6 +11494,33 @@ export default function SESInventoryApp() {
     ));
   };
 
+  // Show error screen if there was a critical database error
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-red-50 flex items-center justify-center p-4">
+        <div className="text-center max-w-md">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertOctagon size={32} className="text-red-600" />
+          </div>
+          <h2 className="text-xl font-bold text-red-800">Database Error</h2>
+          <p className="text-red-600 mt-2 mb-4">{loadError}</p>
+          <div className="space-y-2">
+            <button 
+              onClick={() => window.location.reload()} 
+              className="w-full bg-red-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-red-700"
+            >
+              Refresh Page
+            </button>
+            <p className="text-xs text-red-500 mt-4">
+              If this error persists, check the browser console (F12) for details, 
+              or verify your Firebase connection at console.firebase.google.com
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Show loading screen while data is loading
   if (!dataLoaded || inventory === null || clients === null) {
     return (
@@ -11520,7 +11635,7 @@ export default function SESInventoryApp() {
     }}
   />;
   if (view === 'ebayListing' && selectedItem) return <EbayListingView item={selectedItem} generatedListing={pendingListing} onBack={() => { setPendingListing(null); setView('detail'); }} onListingCreated={(listing) => { setInventory(inventory.map(i => i.id === selectedItem.id ? { ...i, ebayListingId: listing.listingId, ebayUrl: listing.ebayUrl, status: 'Listed' } : i)); setSelectedItem({ ...selectedItem, ebayListingId: listing.listingId, ebayUrl: listing.ebayUrl, status: 'Listed' }); setPendingListing(null); setView('detail'); }} />;
-  if (view === 'settings') return <SettingsView onBack={() => setView('list')} onExport={handleExport} onImport={handleImport} onReset={() => { setInventory(starterInventory); setClients(starterClients); setLots(starterLots); }} fileInputRef={fileInputRef} coinBuyPercents={coinBuyPercents} onUpdateCoinBuyPercent={handleUpdateCoinBuyPercent} ebayConnected={ebayConnected} onEbayDisconnect={handleEbayDisconnect} onViewEbaySync={() => setView('ebaySync')} onViewAdmin={() => setView('admin')} />;
+  if (view === 'settings') return <SettingsView onBack={() => setView('list')} onExport={handleExport} onImport={handleImport} onReset={() => { if(confirm('This will DELETE ALL your data. Are you absolutely sure?')) { setInventory([]); setClients([]); setLots([]); }}} fileInputRef={fileInputRef} coinBuyPercents={coinBuyPercents} onUpdateCoinBuyPercent={handleUpdateCoinBuyPercent} ebayConnected={ebayConnected} onEbayDisconnect={handleEbayDisconnect} onViewEbaySync={() => setView('ebaySync')} onViewAdmin={() => setView('admin')} />;
   if (view === 'admin') return <AdminPanelView 
     onBack={() => setView('settings')} 
     inventory={inventory} 
