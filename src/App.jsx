@@ -8249,7 +8249,6 @@ Return ONLY the JSON object.`
             <button onClick={onCancel} className="flex-1 border py-2 rounded">Cancel</button>
             <button 
               onClick={() => { 
-                alert('Save button clicked!');
                 if (!form.description) {
                   alert('Please enter a description');
                   return;
@@ -9918,7 +9917,7 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
             <HardDrive size={18} /> App Information
           </h3>
           <div className="text-sm text-gray-600 space-y-1">
-            <p><strong>Version:</strong> 101</p>
+            <p><strong>Version:</strong> 102</p>
             <p><strong>Firebase Project:</strong> ses-inventory</p>
             <p><strong>Last Updated:</strong> January 2026</p>
           </div>
