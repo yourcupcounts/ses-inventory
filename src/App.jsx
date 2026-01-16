@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Package, Plus, X, Trash2, Search, Settings, Download, Upload, Camera, Loader, BarChart3, TrendingUp, TrendingDown, Clock, AlertTriangle, AlertCircle, FileText, Filter, Users, UserPlus, Edit2, Edit3, Check, MapPin, Calendar, CreditCard, Building, User, Lock, Unlock, ShieldCheck, DollarSign, RefreshCw, Calculator, Layers, Star, ExternalLink, Flame, Archive, Zap, Shield, Database, FileSpreadsheet, AlertOctagon, Wifi, WifiOff, HardDrive, Cloud, CloudOff, Home, ChevronDown, ChevronRight, Link2, UserCheck, RotateCw } from 'lucide-react';
+import { Package, Plus, X, Trash2, Search, Settings, Download, Upload, Camera, Loader, BarChart3, TrendingUp, TrendingDown, Clock, AlertTriangle, AlertCircle, FileText, Filter, Users, UserPlus, Edit2, Edit3, Check, MapPin, Calendar, CreditCard, Building, User, Lock, Unlock, ShieldCheck, DollarSign, RefreshCw, Calculator, Layers, Star, ExternalLink, Flame, Archive, Zap, Shield, Database, FileSpreadsheet, AlertOctagon, Wifi, WifiOff, HardDrive, Cloud, CloudOff, Home, ChevronDown, ChevronRight, ChevronLeft, Link2, UserCheck, RotateCw, Car } from 'lucide-react';
 
 // ============ CONFIGURATION - ADD YOUR API KEYS HERE ============
 const CONFIG = {
@@ -345,6 +345,156 @@ const FirebaseService = {
     }
   },
   
+  // Save a SINGLE client to Firestore
+  async saveClient(client) {
+    if (!this.initialized) {
+      console.error('SAVE BLOCKED: Firebase not initialized');
+      return false;
+    }
+    try {
+      const { doc, setDoc } = this.firestore;
+      
+      // Handle ID photos and signature
+      let idPhotoFrontUrl = client.idPhotoFront || null;
+      let idPhotoBackUrl = client.idPhotoBack || null;
+      let signatureUrl = client.signature || null;
+      
+      if (client.idPhotoFront && client.idPhotoFront.length > 1000 && !client.idPhotoFront.startsWith('http')) {
+        idPhotoFrontUrl = await this.uploadPhoto(`${client.id}_id_front`, client.idPhotoFront);
+      }
+      if (client.idPhotoBack && client.idPhotoBack.length > 1000 && !client.idPhotoBack.startsWith('http')) {
+        idPhotoBackUrl = await this.uploadPhoto(`${client.id}_id_back`, client.idPhotoBack);
+      }
+      if (client.signature && client.signature.length > 1000 && !client.signature.startsWith('http')) {
+        signatureUrl = await this.uploadPhoto(`${client.id}_signature`, client.signature);
+      }
+      
+      const clientData = this.cleanObject({
+        ...client,
+        idPhotoFront: idPhotoFrontUrl,
+        idPhotoBack: idPhotoBackUrl,
+        signature: signatureUrl
+      });
+      
+      console.log(`SAVING client: ${client.id}`);
+      await setDoc(doc(this.db, this.getCollectionName('clients'), client.id), clientData);
+      console.log(`SAVED client: ${client.id} - SUCCESS`);
+      return true;
+    } catch (error) {
+      console.error(`SAVE FAILED for client ${client.id}:`, error);
+      return false;
+    }
+  },
+  
+  // Save a SINGLE receipt to Firestore
+  async saveReceipt(receipt) {
+    if (!this.initialized) {
+      console.error('SAVE BLOCKED: Firebase not initialized');
+      return false;
+    }
+    try {
+      const { doc, setDoc } = this.firestore;
+      const receiptData = this.cleanObject(receipt);
+      
+      console.log(`SAVING receipt: ${receipt.id}`);
+      await setDoc(doc(this.db, this.getCollectionName('receipts'), receipt.id), receiptData);
+      console.log(`SAVED receipt: ${receipt.id} - SUCCESS`);
+      return true;
+    } catch (error) {
+      console.error(`SAVE FAILED for receipt ${receipt.id}:`, error);
+      return false;
+    }
+  },
+  
+  // Load receipts from Firestore
+  async loadReceipts() {
+    if (!this.initialized) {
+      console.log('Firebase not initialized, cannot load receipts');
+      return null;
+    }
+    try {
+      const { collection, getDocs } = this.firestore;
+      const snapshot = await getDocs(collection(this.db, this.getCollectionName('receipts')));
+      const receipts = [];
+      snapshot.forEach(doc => receipts.push({ id: doc.id, ...doc.data() }));
+      console.log(`Loaded ${receipts.length} receipts from Firebase`);
+      return receipts;
+    } catch (error) {
+      console.error('Error loading receipts from Firebase:', error);
+      return null;
+    }
+  },
+  
+  // Save mileage trip
+  async saveMileage(trip) {
+    if (!this.initialized) {
+      console.error('SAVE BLOCKED: Firebase not initialized');
+      return false;
+    }
+    try {
+      const { doc, setDoc } = this.firestore;
+      const tripData = this.cleanObject(trip);
+      console.log(`SAVING mileage: ${trip.id}`);
+      await setDoc(doc(this.db, this.getCollectionName('mileage'), trip.id), tripData);
+      console.log(`SAVED mileage: ${trip.id} - SUCCESS`);
+      return true;
+    } catch (error) {
+      console.error(`SAVE FAILED for mileage ${trip.id}:`, error);
+      return false;
+    }
+  },
+  
+  // Load mileage from Firestore
+  async loadMileage() {
+    if (!this.initialized) return null;
+    try {
+      const { collection, getDocs } = this.firestore;
+      const snapshot = await getDocs(collection(this.db, this.getCollectionName('mileage')));
+      const mileage = [];
+      snapshot.forEach(doc => mileage.push({ id: doc.id, ...doc.data() }));
+      console.log(`Loaded ${mileage.length} mileage trips from Firebase`);
+      return mileage;
+    } catch (error) {
+      console.error('Error loading mileage from Firebase:', error);
+      return null;
+    }
+  },
+  
+  // Save vehicle
+  async saveVehicle(vehicle) {
+    if (!this.initialized) {
+      console.error('SAVE BLOCKED: Firebase not initialized');
+      return false;
+    }
+    try {
+      const { doc, setDoc } = this.firestore;
+      const vehicleData = this.cleanObject(vehicle);
+      console.log(`SAVING vehicle: ${vehicle.id}`);
+      await setDoc(doc(this.db, this.getCollectionName('vehicles'), vehicle.id), vehicleData);
+      console.log(`SAVED vehicle: ${vehicle.id} - SUCCESS`);
+      return true;
+    } catch (error) {
+      console.error(`SAVE FAILED for vehicle ${vehicle.id}:`, error);
+      return false;
+    }
+  },
+  
+  // Load vehicles from Firestore
+  async loadVehicles() {
+    if (!this.initialized) return null;
+    try {
+      const { collection, getDocs } = this.firestore;
+      const snapshot = await getDocs(collection(this.db, this.getCollectionName('vehicles')));
+      const vehicles = [];
+      snapshot.forEach(doc => vehicles.push({ id: doc.id, ...doc.data() }));
+      console.log(`Loaded ${vehicles.length} vehicles from Firebase`);
+      return vehicles;
+    } catch (error) {
+      console.error('Error loading vehicles from Firebase:', error);
+      return null;
+    }
+  },
+
   // Upload photo to Firebase Storage
   async uploadPhoto(id, base64Data) {
     if (!this.initialized || !this.storage) return null;
@@ -2912,6 +3062,10 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
   const [analyzing, setAnalyzing] = useState(false);
   const [apiError, setApiError] = useState(null);
   
+  // Sales tax state
+  const [taxable, setTaxable] = useState(false);
+  const [taxRate, setTaxRate] = useState(6.75);
+  
   // Two-photo capture state
   const [captureStep, setCaptureStep] = useState('idle'); // idle, front, back
   const [frontPhoto, setFrontPhoto] = useState(null);
@@ -2923,7 +3077,9 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
   // Calculate totals
   const totalOffer = sessionItems.reduce((sum, item) => sum + item.buyPrice, 0);
   const discountAmount = parseFloat(bulkDiscount) || 0;
-  const finalOffer = totalOffer - discountAmount;
+  const subtotalAfterDiscount = totalOffer - discountAmount;
+  const salesTax = taxable ? Math.round(subtotalAfterDiscount * (taxRate / 100) * 100) / 100 : 0;
+  const finalOffer = subtotalAfterDiscount + salesTax;
   
   // Calculate value for a coin from reference
   const calculateCoinValue = (coinKey, grade, quantity = 1) => {
@@ -3351,6 +3507,14 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
         adjustedPrice = item.buyPrice - (discountAmount * proportion);
       }
       
+      // Apply sales tax proportionally if taxable
+      let taxPortion = 0;
+      if (taxable && salesTax > 0) {
+        const proportion = adjustedPrice / subtotalAfterDiscount;
+        taxPortion = salesTax * proportion;
+      }
+      
+      const totalItemCost = adjustedPrice + taxPortion;
       const coin = item.coinKey ? coinReference[item.coinKey] : null;
       
       return {
@@ -3359,7 +3523,11 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
         metalType: coin?.metal || 'Silver',
         purity: coin ? `${(coin.purity * 100).toFixed(0)}%` : '90%',
         weightOz: coin?.aswOz || coin?.agwOz || coin?.apwOz || 0,
-        purchasePrice: Math.round(adjustedPrice * 100) / 100,
+        purchasePrice: Math.round(totalItemCost * 100) / 100, // Total including proportional tax
+        priceBeforeTax: Math.round(adjustedPrice * 100) / 100,
+        salesTax: Math.round(taxPortion * 100) / 100,
+        taxable: taxable,
+        taxRate: taxable ? taxRate : null,
         meltValue: Math.round((item.meltValue || 0) * 100) / 100,
         photo: item.photo,
         photoBack: item.photoBack,
@@ -3375,6 +3543,9 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
       items: inventoryItems,
       totalPaid: finalOffer,
       discount: discountAmount,
+      salesTax: salesTax,
+      taxRate: taxable ? taxRate : null,
+      taxable: taxable,
       notes: sessionNotes,
       sessionDate: new Date().toISOString()
     });
@@ -4092,7 +4263,10 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                         onClick={() => {
                           const newQty = Math.max(1, (evaluatingItem.quantity || 1) - 1);
                           const valuation = calculateCoinValue(evaluatingItem.coinKey, evaluatingItem.grade, newQty);
-                          setEvaluatingItem({ ...evaluatingItem, ...valuation, quantity: newQty });
+                          // If custom unit price is set, recalculate buyPrice from it
+                          const customUnit = evaluatingItem.customUnitPrice ? parseFloat(evaluatingItem.customUnitPrice) : null;
+                          const newBuyPrice = customUnit ? (customUnit * newQty) : valuation.buyPrice;
+                          setEvaluatingItem({ ...evaluatingItem, ...valuation, quantity: newQty, buyPrice: newBuyPrice });
                         }}
                         className="w-8 h-8 bg-gray-700 text-white rounded"
                       >
@@ -4104,7 +4278,10 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                         onChange={(e) => {
                           const newQty = Math.max(1, parseInt(e.target.value) || 1);
                           const valuation = calculateCoinValue(evaluatingItem.coinKey, evaluatingItem.grade, newQty);
-                          setEvaluatingItem({ ...evaluatingItem, ...valuation, quantity: newQty });
+                          // If custom unit price is set, recalculate buyPrice from it
+                          const customUnit = evaluatingItem.customUnitPrice ? parseFloat(evaluatingItem.customUnitPrice) : null;
+                          const newBuyPrice = customUnit ? (customUnit * newQty) : valuation.buyPrice;
+                          setEvaluatingItem({ ...evaluatingItem, ...valuation, quantity: newQty, buyPrice: newBuyPrice });
                         }}
                         className="w-16 bg-gray-700 text-white text-center py-1 rounded"
                         min="1"
@@ -4113,7 +4290,10 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                         onClick={() => {
                           const newQty = (evaluatingItem.quantity || 1) + 1;
                           const valuation = calculateCoinValue(evaluatingItem.coinKey, evaluatingItem.grade, newQty);
-                          setEvaluatingItem({ ...evaluatingItem, ...valuation, quantity: newQty });
+                          // If custom unit price is set, recalculate buyPrice from it
+                          const customUnit = evaluatingItem.customUnitPrice ? parseFloat(evaluatingItem.customUnitPrice) : null;
+                          const newBuyPrice = customUnit ? (customUnit * newQty) : valuation.buyPrice;
+                          setEvaluatingItem({ ...evaluatingItem, ...valuation, quantity: newQty, buyPrice: newBuyPrice });
                         }}
                         className="w-8 h-8 bg-gray-700 text-white rounded"
                       >
@@ -4125,27 +4305,33 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                   {/* MANUAL PRICE OVERRIDE */}
                   <div className="mb-3 bg-gray-700 rounded-lg p-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-300 text-sm">Custom Price:</span>
+                      <span className="text-gray-300 text-sm">
+                        Custom Price {(evaluatingItem.quantity || 1) > 1 ? '(per item):' : ':'}
+                      </span>
                       <div className="flex items-center gap-2">
                         <span className="text-gray-400">$</span>
                         <input
                           type="number"
                           step="0.01"
-                          placeholder={evaluatingItem.buyPrice?.toFixed(2)}
-                          value={evaluatingItem.customPrice || ''}
-                          onChange={(e) => setEvaluatingItem({ 
-                            ...evaluatingItem, 
-                            customPrice: e.target.value,
-                            buyPrice: e.target.value ? parseFloat(e.target.value) : evaluatingItem.originalBuyPrice || evaluatingItem.buyPrice
-                          })}
+                          placeholder={(evaluatingItem.originalBuyPrice / (evaluatingItem.quantity || 1))?.toFixed(2)}
+                          value={evaluatingItem.customUnitPrice || ''}
+                          onChange={(e) => {
+                            const unitPrice = e.target.value ? parseFloat(e.target.value) : null;
+                            const qty = evaluatingItem.quantity || 1;
+                            setEvaluatingItem({ 
+                              ...evaluatingItem, 
+                              customUnitPrice: e.target.value,
+                              buyPrice: unitPrice ? (unitPrice * qty) : evaluatingItem.originalBuyPrice
+                            });
+                          }}
                           className="w-24 bg-gray-800 text-white text-right py-1 px-2 rounded border border-gray-600 focus:border-teal-500 focus:outline-none"
                         />
-                        {evaluatingItem.customPrice && (
+                        {evaluatingItem.customUnitPrice && (
                           <button
                             onClick={() => setEvaluatingItem({ 
                               ...evaluatingItem, 
-                              customPrice: '',
-                              buyPrice: evaluatingItem.originalBuyPrice || evaluatingItem.buyPrice
+                              customUnitPrice: '',
+                              buyPrice: evaluatingItem.originalBuyPrice
                             })}
                             className="text-gray-400 hover:text-white"
                           >
@@ -4154,7 +4340,12 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                         )}
                       </div>
                     </div>
-                    {evaluatingItem.customPrice && (
+                    {evaluatingItem.customUnitPrice && (evaluatingItem.quantity || 1) > 1 && (
+                      <div className="text-xs text-amber-400 mt-1 text-right">
+                        ${evaluatingItem.customUnitPrice} × {evaluatingItem.quantity} = ${evaluatingItem.buyPrice?.toFixed(2)} total
+                      </div>
+                    )}
+                    {evaluatingItem.customUnitPrice && (evaluatingItem.quantity || 1) === 1 && (
                       <div className="text-xs text-amber-400 mt-1 text-right">Using custom price</div>
                     )}
                   </div>
@@ -4835,6 +5026,48 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
             </div>
           )}
           
+          {/* Sales Tax Section */}
+          {sessionItems.length > 0 && (
+            <div className="bg-gray-50 rounded-lg shadow p-4">
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={taxable} 
+                    onChange={(e) => setTaxable(e.target.checked)}
+                    className="w-5 h-5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                  />
+                  <span className="font-medium">Taxable Purchase</span>
+                  <span className="text-xs text-gray-500">(e.g., estate sale company, retail)</span>
+                </label>
+                {taxable && (
+                  <div className="flex items-center gap-1">
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      value={taxRate} 
+                      onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
+                      className="w-16 border rounded px-2 py-1 text-sm text-right"
+                    />
+                    <span className="text-sm text-gray-500">%</span>
+                  </div>
+                )}
+              </div>
+              {taxable && subtotalAfterDiscount > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-200 space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Subtotal (after discount):</span>
+                    <span>${subtotalAfterDiscount.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Sales Tax ({taxRate}%):</span>
+                    <span className="text-amber-600 font-medium">+${salesTax.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          
           {/* Notes */}
           <div className="bg-white rounded-lg shadow p-4">
             <label className="block text-sm font-medium mb-1">Session Notes</label>
@@ -4858,6 +5091,12 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
             <div className="flex justify-between items-center mb-3 text-red-600">
               <span>Discount:</span>
               <span>-${discountAmount.toFixed(2)}</span>
+            </div>
+          )}
+          {taxable && salesTax > 0 && (
+            <div className="flex justify-between items-center mb-3 text-amber-600">
+              <span>Sales Tax ({taxRate}%):</span>
+              <span>+${salesTax.toFixed(2)}</span>
             </div>
           )}
           <div className="flex justify-between items-center mb-4">
@@ -4988,6 +5227,12 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                     <span>-${discountAmount.toFixed(2)}</span>
                   </div>
                 </>
+              )}
+              {taxable && salesTax > 0 && (
+                <div className="flex justify-between text-amber-600 mb-2">
+                  <span>Sales Tax ({taxRate}%):</span>
+                  <span>+${salesTax.toFixed(2)}</span>
+                </div>
               )}
               <div className="flex justify-between items-center">
                 <span className="text-xl font-bold">TOTAL OFFER</span>
@@ -7272,7 +7517,7 @@ function ClientDetailView({ client, transactions, onEdit, onBack }) {
 }
 
 // ============ SIMPLIFIED OTHER VIEWS ============
-function DashboardView({ inventory, onBack }) {
+function DashboardView({ inventory, spotPrices, onBack, onOpenTax }) {
   // Filter by status
   const sold = inventory.filter(i => i.status === 'Sold');
   const available = inventory.filter(i => i.status === 'Available');
@@ -7291,16 +7536,38 @@ function DashboardView({ inventory, onBack }) {
   const readyToSellCount = readyToSellItems.length;
   const exemptCount = exemptItems.length;
   
+  // Helper to calculate live spot value
+  const calcLiveSpotValue = (item) => {
+    if (!item.weightOz || !item.metalType) return parseFloat(item.meltValue) || 0;
+    const spot = spotPrices?.[item.metalType?.toLowerCase()] || 0;
+    if (!spot) return parseFloat(item.meltValue) || 0;
+    
+    // Parse purity
+    let purityDecimal = 1;
+    const p = item.purity?.toString().toUpperCase() || '';
+    if (p.includes('K')) {
+      purityDecimal = parseInt(p.replace('K', '')) / 24;
+    } else if (p.includes('%')) {
+      purityDecimal = parseFloat(p.replace('%', '')) / 100;
+    } else if (p) {
+      const num = parseFloat(p);
+      purityDecimal = num > 1 ? num / 1000 : num;
+    }
+    
+    return (parseFloat(item.weightOz) || 0) * spot * purityDecimal;
+  };
+  
   // Financial - Sales
   const totalRevenue = sold.reduce((s, i) => s + (parseFloat(i.salePrice) || 0), 0);
   const soldCost = sold.reduce((s, i) => s + (parseFloat(i.purchasePrice) || 0), 0);
   const realizedProfit = totalRevenue - soldCost;
   const avgMargin = soldCost > 0 ? ((realizedProfit / soldCost) * 100) : 0;
   
-  // Financial - Inventory
-  const totalCost = available.reduce((s, i) => s + (parseFloat(i.purchasePrice) || 0), 0);
-  const totalMeltValue = available.reduce((s, i) => s + (parseFloat(i.meltValue) || 0), 0);
-  const unrealizedGain = totalMeltValue - totalCost;
+  // Financial - Inventory (using LIVE spot prices)
+  const allHoldings = [...available, ...stash];
+  const totalCost = allHoldings.reduce((s, i) => s + (parseFloat(i.purchasePrice) || 0), 0);
+  const totalLiveValue = allHoldings.reduce((s, i) => s + calcLiveSpotValue(i), 0);
+  const unrealizedGain = totalLiveValue - totalCost;
   const roi = totalCost > 0 ? ((unrealizedGain / totalCost) * 100) : 0;
   
   // Capital deployed (available inventory cost)
@@ -7309,52 +7576,121 @@ function DashboardView({ inventory, onBack }) {
   // Total profit (realized)
   const totalProfit = realizedProfit;
   
-  // Metal breakdown
+  // Metal breakdown with LIVE values
   const metalBreakdown = ['Gold', 'Silver', 'Platinum', 'Palladium'].map(metal => {
-    const items = available.filter(i => i.metalType === metal);
+    const items = allHoldings.filter(i => i.metalType === metal);
+    const liveValue = items.reduce((s, i) => s + calcLiveSpotValue(i), 0);
     return {
       name: metal,
       count: items.length,
       weight: items.reduce((s, i) => s + (parseFloat(i.weightOz) || 0), 0),
-      value: items.reduce((s, i) => s + (parseFloat(i.meltValue) || 0), 0),
-      cost: items.reduce((s, i) => s + (parseFloat(i.purchasePrice) || 0), 0)
+      value: liveValue,
+      cost: items.reduce((s, i) => s + (parseFloat(i.purchasePrice) || 0), 0),
+      spot: spotPrices?.[metal.toLowerCase()] || 0
     };
   }).filter(m => m.count > 0);
   
   // Top items by value
-  const topItems = [...available]
-    .sort((a, b) => (parseFloat(b.meltValue) || 0) - (parseFloat(a.meltValue) || 0))
+  const topItems = [...allHoldings]
+    .map(i => ({ ...i, liveValue: calcLiveSpotValue(i) }))
+    .sort((a, b) => b.liveValue - a.liveValue)
     .slice(0, 5);
 
   return (
     <div className="min-h-screen bg-gray-100">
       <div className="bg-gradient-to-r from-amber-700 to-amber-800 text-white p-4">
         <div className="flex items-center justify-between">
-          <button onClick={onBack}>← Back</button>
-          <h1 className="text-xl font-bold flex items-center gap-2"><BarChart3 size={24} /> Analytics</h1>
+          <button onClick={onBack} className="flex items-center gap-1">
+            <ChevronLeft size={20} /> Back
+          </button>
+          <h1 className="text-xl font-bold flex items-center gap-2"><BarChart3 size={24} /> Dashboard</h1>
           <div className="w-16"></div>
+        </div>
+        {/* Live Spot Prices Bar */}
+        <div className="flex justify-center gap-6 mt-3 text-sm">
+          <span>Au: <span className="font-bold">${spotPrices?.gold?.toLocaleString() || '—'}</span></span>
+          <span>Ag: <span className="font-bold">${spotPrices?.silver?.toFixed(2) || '—'}</span></span>
+          <span>Pt: <span className="font-bold">${spotPrices?.platinum?.toLocaleString() || '—'}</span></span>
         </div>
       </div>
       
       <div className="p-4 space-y-4">
         {/* Top Summary Cards */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-white rounded-lg shadow p-4">
-            <div className="text-xs text-gray-500">Total Profit</div>
-            <div className={`text-2xl font-bold ${totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              ${totalProfit.toLocaleString()}
+          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-4 text-white">
+            <div className="text-xs text-green-100 uppercase tracking-wide">Realized Profit</div>
+            <div className="text-2xl font-bold mt-1">
+              ${totalProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </div>
+            <div className="text-xs text-green-200 mt-1">{soldCount} items sold</div>
+          </div>
+          <div className="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl shadow-lg p-4 text-white">
+            <div className="text-xs text-amber-100 uppercase tracking-wide">Portfolio Value</div>
+            <div className="text-2xl font-bold mt-1">
+              ${totalLiveValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </div>
+            <div className="text-xs text-amber-200 mt-1">@ live spot prices</div>
+          </div>
+        </div>
+        
+        {/* Unrealized P&L */}
+        <div className={`rounded-xl shadow-lg p-4 ${unrealizedGain >= 0 ? 'bg-gradient-to-r from-emerald-50 to-green-50 border border-green-200' : 'bg-gradient-to-r from-red-50 to-rose-50 border border-red-200'}`}>
+          <div className="flex justify-between items-center">
+            <div>
+              <div className="text-xs text-gray-500 uppercase tracking-wide">Unrealized P&L</div>
+              <div className={`text-2xl font-bold ${unrealizedGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {unrealizedGain >= 0 ? '+' : ''}${unrealizedGain.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className={`text-3xl font-bold ${roi >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {roi >= 0 ? '+' : ''}{roi.toFixed(1)}%
+              </div>
+              <div className="text-xs text-gray-500">ROI</div>
             </div>
           </div>
-          <div className="bg-white rounded-lg shadow p-4">
-            <div className="text-xs text-gray-500">Capital Deployed</div>
-            <div className="text-2xl font-bold text-amber-700">${capitalDeployed.toLocaleString()}</div>
+          <div className="text-xs text-gray-500 mt-2">
+            Cost basis: ${totalCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          </div>
+        </div>
+        
+        {/* Inventory by Metal - Visual Cards */}
+        <div>
+          <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
+            <TrendingUp size={18} /> Holdings by Metal
+          </h3>
+          <div className="grid grid-cols-2 gap-3">
+            {metalBreakdown.map(metal => {
+              const gain = metal.value - metal.cost;
+              const metalRoi = metal.cost > 0 ? ((gain / metal.cost) * 100) : 0;
+              const colorClass = metal.name === 'Gold' ? 'from-yellow-400 to-yellow-500' :
+                metal.name === 'Silver' ? 'from-gray-300 to-gray-400' :
+                metal.name === 'Platinum' ? 'from-slate-400 to-slate-500' :
+                'from-orange-400 to-orange-500';
+              
+              return (
+                <div key={metal.name} className={`bg-gradient-to-br ${colorClass} rounded-xl shadow-lg p-4 text-white`}>
+                  <div className="flex justify-between items-start">
+                    <div className="text-lg font-bold">{metal.name}</div>
+                    <div className="text-xs bg-white/20 rounded-full px-2 py-0.5">{metal.count}</div>
+                  </div>
+                  <div className="text-2xl font-bold mt-2">
+                    ${metal.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </div>
+                  <div className="text-sm opacity-90">{metal.weight.toFixed(2)} oz</div>
+                  <div className="text-xs mt-2 opacity-75">
+                    Spot: ${metal.spot?.toLocaleString()} • {metalRoi >= 0 ? '+' : ''}{metalRoi.toFixed(0)}% ROI
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
         
         {/* Inventory Overview */}
-        <div className="bg-white rounded-lg shadow p-4">
+        <div className="bg-white rounded-xl shadow-lg p-4">
           <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
-            <Package size={18} /> Inventory Overview
+            <Package size={18} /> Inventory Status
           </h3>
           <div className="grid grid-cols-4 gap-2 text-center">
             <div className="bg-blue-50 rounded-lg p-3">
@@ -7376,51 +7712,22 @@ function DashboardView({ inventory, onBack }) {
           </div>
         </div>
         
-        {/* Financial Summary */}
-        <div className="bg-white rounded-lg shadow p-4">
-          <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
-            <DollarSign size={18} /> Financial Summary
-          </h3>
-          <div className="space-y-2">
-            <div className="flex justify-between py-2 border-b">
-              <span className="text-gray-600">Total Cost Basis</span>
-              <span className="font-bold">${totalCost.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between py-2 border-b">
-              <span className="text-gray-600">Current Melt Value</span>
-              <span className="font-bold text-amber-700">${totalMeltValue.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between py-2 border-b">
-              <span className="text-gray-600">Unrealized Gain/Loss</span>
-              <span className={`font-bold ${unrealizedGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {unrealizedGain >= 0 ? '+' : ''}${unrealizedGain.toLocaleString()}
-              </span>
-            </div>
-            <div className="flex justify-between py-2">
-              <span className="text-gray-600">ROI</span>
-              <span className={`font-bold ${roi >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {roi >= 0 ? '+' : ''}{roi.toFixed(1)}%
-              </span>
-            </div>
-          </div>
-        </div>
-        
         {/* Sales Performance */}
-        <div className="bg-white rounded-lg shadow p-4">
+        <div className="bg-white rounded-xl shadow-lg p-4">
           <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
-            <TrendingUp size={18} /> Sales Performance
+            <DollarSign size={18} /> Sales Performance
           </h3>
           <div className="grid grid-cols-2 gap-3">
-            <div className="bg-gray-50 rounded-lg p-3">
-              <div className="text-xs text-gray-500">Items Sold</div>
-              <div className="text-xl font-bold">{soldCount}</div>
-            </div>
             <div className="bg-gray-50 rounded-lg p-3">
               <div className="text-xs text-gray-500">Revenue</div>
               <div className="text-xl font-bold text-green-600">${totalRevenue.toLocaleString()}</div>
             </div>
             <div className="bg-gray-50 rounded-lg p-3">
-              <div className="text-xs text-gray-500">Realized Profit</div>
+              <div className="text-xs text-gray-500">COGS</div>
+              <div className="text-xl font-bold">${soldCost.toLocaleString()}</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-3">
+              <div className="text-xs text-gray-500">Gross Profit</div>
               <div className={`text-xl font-bold ${realizedProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 ${realizedProfit.toLocaleString()}
               </div>
@@ -7434,48 +7741,58 @@ function DashboardView({ inventory, onBack }) {
           </div>
         </div>
         
-        {/* Inventory by Metal */}
-        <div className="bg-white rounded-lg shadow p-4">
-          <h3 className="font-bold text-gray-700 mb-3">Inventory by Metal</h3>
-          <div className="space-y-3">
-            {metalBreakdown.map(metal => (
-              <div key={metal.name} className="flex items-center gap-3">
-                <div className={`w-3 h-3 rounded-full ${
-                  metal.name === 'Gold' ? 'bg-yellow-500' :
-                  metal.name === 'Silver' ? 'bg-gray-400' :
-                  metal.name === 'Platinum' ? 'bg-gray-300' :
-                  'bg-orange-400'
-                }`}></div>
-                <div className="flex-1">
-                  <div className="flex justify-between">
-                    <span className="font-medium">{metal.name}</span>
-                    <span className="font-bold">${metal.value.toLocaleString()}</span>
+        {/* Top Holdings */}
+        {topItems.length > 0 && (
+          <div className="bg-white rounded-xl shadow-lg p-4">
+            <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
+              <Star size={18} /> Top Holdings by Value
+            </h3>
+            <div className="space-y-2">
+              {topItems.map((item, idx) => (
+                <div key={item.id} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                    idx === 0 ? 'bg-yellow-400 text-yellow-900' :
+                    idx === 1 ? 'bg-gray-300 text-gray-700' :
+                    idx === 2 ? 'bg-orange-400 text-orange-900' :
+                    'bg-gray-200 text-gray-600'
+                  }`}>
+                    {idx + 1}
                   </div>
-                  <div className="flex justify-between text-xs text-gray-500">
-                    <span>{metal.count} items</span>
-                    <span>{metal.weight.toFixed(2)} oz</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm truncate">{item.description}</div>
+                    <div className="text-xs text-gray-500">{item.metalType} • {item.weightOz} oz</div>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
-                    <div 
-                      className={`h-2 rounded-full ${
-                        metal.name === 'Gold' ? 'bg-yellow-500' :
-                        metal.name === 'Silver' ? 'bg-gray-400' :
-                        metal.name === 'Platinum' ? 'bg-gray-300' :
-                        'bg-orange-400'
-                      }`}
-                      style={{ width: `${totalMeltValue > 0 ? (metal.value / totalMeltValue * 100) : 0}%` }}
-                    ></div>
+                  <div className="text-right">
+                    <div className="font-bold text-amber-700">${item.liveValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                    <div className="text-xs text-gray-500">Cost: ${item.purchasePrice}</div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        )}
+        
+        {/* Tax & Mileage Reports */}
+        <button
+          onClick={onOpenTax}
+          className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl shadow-lg p-4 flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3">
+            <div className="bg-white/20 p-2 rounded-lg">
+              <FileText size={24} />
+            </div>
+            <div className="text-left">
+              <div className="font-bold">Tax & Mileage Reports</div>
+              <div className="text-sm opacity-90">Schedule C, mileage log, deductions</div>
+            </div>
+          </div>
+          <ChevronRight size={24} />
+        </button>
         
         {/* Hold Status */}
-        <div className="bg-white rounded-lg shadow p-4">
+        <div className="bg-white rounded-xl shadow-lg p-4">
           <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
-            <Clock size={18} /> Hold Status
+            <Clock size={18} /> NC Hold Status
           </h3>
           <div className="flex gap-2">
             <div className="flex-1 bg-red-50 rounded-lg p-3 text-center">
@@ -7490,7 +7807,7 @@ function DashboardView({ inventory, onBack }) {
                 <Unlock size={16} />
                 <span className="text-xl font-bold">{readyToSellCount}</span>
               </div>
-              <div className="text-xs text-gray-500">Ready to Sell</div>
+              <div className="text-xs text-gray-500">Ready</div>
             </div>
             <div className="flex-1 bg-blue-50 rounded-lg p-3 text-center">
               <div className="flex items-center justify-center gap-1 text-blue-600 mb-1">
@@ -7501,58 +7818,686 @@ function DashboardView({ inventory, onBack }) {
             </div>
           </div>
         </div>
-        
-        {/* Top Items by Value */}
-        {topItems.length > 0 && (
-          <div className="bg-white rounded-lg shadow p-4">
-            <h3 className="font-bold text-gray-700 mb-3">Top Items by Value</h3>
-            <div className="space-y-2">
-              {topItems.map((item, index) => (
-                <div key={item.id} className="flex items-center gap-3 py-2 border-b last:border-b-0">
-                  <div className="w-6 h-6 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-sm font-bold">
-                    {index + 1}
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-medium text-sm">{item.description}</div>
-                    <div className="text-xs text-gray-500">{item.metalType} • {item.weightOz} oz</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-bold text-amber-700">${item.meltValue}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
 }
 
-function TaxReportView({ inventory, onBack }) {
-  const yearSales = inventory.filter(i => i.status === 'Sold');
-  const totalRevenue = yearSales.reduce((s, i) => s + (i.salePrice || 0), 0);
-  const totalCOGS = yearSales.reduce((s, i) => s + (i.purchasePrice || 0), 0);
+function TaxReportView({ inventory, mileageLog, vehicles, onBack, onAddMileage, onDeleteMileage, onAddVehicle, spotPrices }) {
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [activeTab, setActiveTab] = useState('schedule-c');
+  const [showAddTrip, setShowAddTrip] = useState(false);
+  const [showAddVehicle, setShowAddVehicle] = useState(false);
+  const [isReadingOdometer, setIsReadingOdometer] = useState(null); // 'start' or 'end'
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const startOdometerRef = useRef(null);
+  const endOdometerRef = useRef(null);
+  
+  const [tripForm, setTripForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    vehicleId: vehicles?.[0]?.id || '',
+    purpose: '',
+    startLocation: '',
+    destination: '',
+    startOdometer: '',
+    endOdometer: '',
+    startPhoto: null,
+    endPhoto: null,
+    notes: ''
+  });
+  const [vehicleForm, setVehicleForm] = useState({
+    name: '',
+    make: '',
+    model: '',
+    year: '',
+    startingOdometer: ''
+  });
+  
+  // IRS mileage rates by year
+  const mileageRates = { 2023: 0.655, 2024: 0.67, 2025: 0.70, 2026: 0.725 };
+  
+  // Get unique years
+  const soldItems = inventory.filter(i => i.status === 'Sold');
+  const years = [...new Set([
+    ...soldItems.map(i => new Date(i.saleDate || i.dateAcquired || new Date()).getFullYear()),
+    ...(mileageLog || []).map(m => new Date(m.date).getFullYear()),
+    currentYear
+  ])].sort((a, b) => b - a);
+  
+  // Filter by year
+  const yearSales = soldItems.filter(i => {
+    const year = new Date(i.saleDate || i.dateAcquired || new Date()).getFullYear();
+    return year === selectedYear;
+  });
+  const yearMileage = (mileageLog || []).filter(m => new Date(m.date).getFullYear() === selectedYear);
+  
+  // Calculations
+  const grossReceipts = yearSales.reduce((s, i) => s + (parseFloat(i.salePrice) || 0), 0);
+  const cogs = yearSales.reduce((s, i) => s + (parseFloat(i.purchasePrice) || 0), 0);
+  const grossProfit = grossReceipts - cogs;
+  const totalMiles = yearMileage.reduce((s, m) => s + (parseFloat(m.miles) || 0), 0);
+  const mileageRate = mileageRates[selectedYear] || 0.70;
+  const mileageDeduction = totalMiles * mileageRate;
+  
+  // Get current location
+  const getCurrentLocation = async () => {
+    setIsGettingLocation(true);
+    try {
+      const position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true });
+      });
+      
+      // Reverse geocode
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}`
+      );
+      const data = await response.json();
+      const address = data.display_name?.split(',').slice(0, 3).join(',') || 
+        `${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`;
+      
+      setTripForm(prev => ({ ...prev, startLocation: address }));
+    } catch (err) {
+      console.error('Location error:', err);
+      alert('Could not get location. Please enter manually.');
+    }
+    setIsGettingLocation(false);
+  };
+  
+  // AI Odometer Reading
+  const readOdometerPhoto = async (photoBase64, field) => {
+    setIsReadingOdometer(field);
+    try {
+      const response = await fetch('/api/anthropic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: photoBase64 }},
+              { type: 'text', text: `Read the odometer in this image. Return ONLY the number shown on the odometer, nothing else. Just the digits. If you cannot read it clearly, respond with "UNREADABLE".` }
+            ]
+          }],
+          max_tokens: 50
+        })
+      });
+      
+      const data = await response.json();
+      const reading = data.content?.[0]?.text?.trim();
+      
+      if (reading && reading !== 'UNREADABLE' && /^\d+$/.test(reading.replace(/,/g, ''))) {
+        const numericReading = reading.replace(/,/g, '');
+        setTripForm(prev => ({ 
+          ...prev, 
+          [field]: numericReading,
+          [`${field.replace('Odometer', '')}Photo`]: photoBase64
+        }));
+      } else {
+        alert('Could not read odometer clearly. Please enter manually or retake photo.');
+      }
+    } catch (err) {
+      console.error('Odometer read error:', err);
+      alert('Error reading odometer. Please enter manually.');
+    }
+    setIsReadingOdometer(null);
+  };
+  
+  // Handle odometer photo capture
+  const handleOdometerCapture = (field) => async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const base64 = event.target.result.split(',')[1];
+      await readOdometerPhoto(base64, field);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+  
+  // Add trip
+  const handleAddTrip = async () => {
+    if (!tripForm.purpose) {
+      alert('Please enter business purpose');
+      return;
+    }
+    if (!tripForm.startOdometer || !tripForm.endOdometer) {
+      alert('Please enter start and end odometer readings');
+      return;
+    }
+    
+    const miles = parseFloat(tripForm.endOdometer) - parseFloat(tripForm.startOdometer);
+    if (miles <= 0) {
+      alert('End odometer must be greater than start odometer');
+      return;
+    }
+    
+    const newTrip = {
+      id: `MILE-${Date.now()}`,
+      ...tripForm,
+      miles,
+      createdAt: new Date().toISOString()
+    };
+    
+    await onAddMileage(newTrip);
+    
+    // Reset form but keep vehicle and use end odometer as next start
+    setTripForm({
+      date: new Date().toISOString().split('T')[0],
+      vehicleId: tripForm.vehicleId,
+      purpose: '',
+      startLocation: '',
+      destination: '',
+      startOdometer: tripForm.endOdometer,
+      endOdometer: '',
+      startPhoto: null,
+      endPhoto: null,
+      notes: ''
+    });
+    setShowAddTrip(false);
+  };
+  
+  // Add vehicle
+  const handleAddVehicle = async () => {
+    if (!vehicleForm.name) {
+      alert('Please enter vehicle name');
+      return;
+    }
+    const newVehicle = {
+      id: `VEH-${Date.now()}`,
+      ...vehicleForm,
+      createdAt: new Date().toISOString()
+    };
+    await onAddVehicle(newVehicle);
+    setVehicleForm({ name: '', make: '', model: '', year: '', startingOdometer: '' });
+    setShowAddVehicle(false);
+    setTripForm(prev => ({ ...prev, vehicleId: newVehicle.id }));
+  };
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gray-100 pb-20">
+      {/* Header */}
       <div className="bg-gradient-to-r from-green-700 to-green-800 text-white p-4">
         <div className="flex items-center justify-between">
-          <button onClick={onBack}>← Back</button>
-          <h1 className="text-xl font-bold flex items-center gap-2"><FileText size={24} /> Tax</h1>
-          <div className="w-16"></div>
+          <button onClick={onBack} className="flex items-center gap-1">
+            <ChevronLeft size={20} /> Back
+          </button>
+          <h1 className="text-xl font-bold flex items-center gap-2"><FileText size={24} /> Tax & Mileage</h1>
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+            className="bg-green-600 text-white border border-green-500 rounded px-2 py-1"
+          >
+            {years.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
         </div>
       </div>
-      <div className="p-4">
-        <div className="bg-white rounded-lg shadow p-4">
-          <h3 className="font-bold mb-3">Schedule C Summary</h3>
-          <div className="space-y-2">
-            <div className="flex justify-between py-2 border-b"><span>Gross Receipts</span><span className="font-bold">${totalRevenue.toLocaleString()}</span></div>
-            <div className="flex justify-between py-2 border-b"><span>COGS</span><span className="font-bold">${totalCOGS.toLocaleString()}</span></div>
-            <div className="flex justify-between py-2"><span className="font-bold">Gross Profit</span><span className={`font-bold ${(totalRevenue - totalCOGS) >= 0 ? 'text-green-600' : 'text-red-600'}`}>${(totalRevenue - totalCOGS).toLocaleString()}</span></div>
+      
+      {/* Tabs */}
+      <div className="flex border-b bg-white sticky top-0 z-10">
+        {['schedule-c', 'mileage', 'vehicles'].map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex-1 py-3 text-sm font-medium capitalize ${
+              activeTab === tab ? 'border-b-2 border-green-600 text-green-600' : 'text-gray-500'
+            }`}
+          >
+            {tab === 'schedule-c' ? 'Schedule C' : tab}
+          </button>
+        ))}
+      </div>
+      
+      <div className="p-4 space-y-4">
+        {/* SCHEDULE C TAB */}
+        {activeTab === 'schedule-c' && (
+          <>
+            <div className={`rounded-xl p-4 text-white ${grossProfit >= 0 ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 'bg-gradient-to-r from-red-500 to-rose-600'}`}>
+              <div className="text-sm opacity-90">Net Profit (After Mileage) - {selectedYear}</div>
+              <div className="text-3xl font-bold">${(grossProfit - mileageDeduction).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+            </div>
+            
+            <div className="bg-white rounded-xl shadow-lg p-4">
+              <h3 className="font-bold text-gray-700 mb-3">Schedule C Summary</h3>
+              <div className="space-y-1 text-sm">
+                <div className="flex justify-between py-2 border-b">
+                  <span>Gross Receipts ({yearSales.length} sales)</span>
+                  <span className="font-bold">${grossReceipts.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b">
+                  <span>Cost of Goods Sold</span>
+                  <span className="font-bold">${cogs.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b">
+                  <span>Gross Profit</span>
+                  <span className={`font-bold ${grossProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    ${grossProfit.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex justify-between py-2 border-b bg-amber-50 -mx-4 px-4">
+                  <span>Mileage Deduction ({totalMiles.toLocaleString()} mi × ${mileageRate})</span>
+                  <span className="font-bold text-amber-700">${mileageDeduction.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between py-3">
+                  <span className="font-bold">Net Profit</span>
+                  <span className={`font-bold text-lg ${(grossProfit - mileageDeduction) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    ${(grossProfit - mileageDeduction).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Sales breakdown */}
+            {yearSales.length > 0 && (
+              <details className="bg-white rounded-xl shadow-lg overflow-hidden">
+                <summary className="p-4 cursor-pointer font-bold text-gray-700">
+                  Sales Detail ({yearSales.length} items)
+                </summary>
+                <div className="max-h-60 overflow-y-auto border-t">
+                  {yearSales.map(item => (
+                    <div key={item.id} className="flex justify-between p-3 border-b text-sm">
+                      <div>
+                        <div className="font-medium">{item.description}</div>
+                        <div className="text-xs text-gray-500">{item.saleDate || item.dateAcquired}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-green-600">${item.salePrice}</div>
+                        <div className="text-xs text-gray-500">Cost: ${item.purchasePrice}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+          </>
+        )}
+        
+        {/* MILEAGE TAB */}
+        {activeTab === 'mileage' && (
+          <>
+            {/* Mileage Summary */}
+            <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl p-4 text-white">
+              <div className="flex justify-between items-center">
+                <div>
+                  <div className="text-sm opacity-90">{selectedYear} Mileage Deduction</div>
+                  <div className="text-3xl font-bold">${mileageDeduction.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-bold">{totalMiles.toLocaleString()}</div>
+                  <div className="text-sm opacity-90">miles</div>
+                </div>
+              </div>
+              <div className="text-xs mt-2 opacity-75">Rate: ${mileageRate}/mile</div>
+            </div>
+            
+            {/* Add Trip Button */}
+            <button
+              onClick={() => setShowAddTrip(true)}
+              className="w-full bg-green-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
+            >
+              <Plus size={20} /> Log New Trip
+            </button>
+            
+            {/* Trip List */}
+            <div className="space-y-2">
+              {yearMileage.length === 0 ? (
+                <div className="bg-white rounded-xl p-8 text-center text-gray-500">
+                  <Car size={48} className="mx-auto mb-2 opacity-50" />
+                  <p>No trips logged for {selectedYear}</p>
+                </div>
+              ) : (
+                yearMileage.sort((a, b) => new Date(b.date) - new Date(a.date)).map(trip => (
+                  <div key={trip.id} className="bg-white rounded-xl shadow p-4">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="font-bold text-gray-800">{trip.purpose}</div>
+                        <div className="text-sm text-gray-500">{trip.date}</div>
+                        {trip.startLocation && (
+                          <div className="text-xs text-gray-400 mt-1">
+                            {trip.startLocation} → {trip.destination || 'N/A'}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xl font-bold text-blue-600">{trip.miles} mi</div>
+                        <div className="text-sm text-green-600">${(trip.miles * mileageRate).toFixed(2)}</div>
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center mt-2 pt-2 border-t text-xs text-gray-400">
+                      <span>Odometer: {trip.startOdometer} → {trip.endOdometer}</span>
+                      <button
+                        onClick={() => onDeleteMileage(trip.id)}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </>
+        )}
+        
+        {/* VEHICLES TAB */}
+        {activeTab === 'vehicles' && (
+          <>
+            <button
+              onClick={() => setShowAddVehicle(true)}
+              className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
+            >
+              <Plus size={20} /> Add Vehicle
+            </button>
+            
+            {(vehicles || []).length === 0 ? (
+              <div className="bg-white rounded-xl p-8 text-center text-gray-500">
+                <Car size={48} className="mx-auto mb-2 opacity-50" />
+                <p>No vehicles added yet</p>
+                <p className="text-sm">Add a vehicle to start tracking mileage</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {vehicles.map(v => (
+                  <div key={v.id} className="bg-white rounded-xl shadow p-4">
+                    <div className="font-bold text-gray-800">{v.name}</div>
+                    <div className="text-sm text-gray-500">
+                      {v.year} {v.make} {v.model}
+                    </div>
+                    {v.startingOdometer && (
+                      <div className="text-xs text-gray-400 mt-1">
+                        Starting odometer: {parseInt(v.startingOdometer).toLocaleString()} mi
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      
+      {/* ADD TRIP MODAL */}
+      {showAddTrip && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="bg-white w-full rounded-t-2xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b p-4 flex justify-between items-center">
+              <h2 className="text-xl font-bold">Log Trip</h2>
+              <button onClick={() => setShowAddTrip(false)} className="p-2"><X size={24} /></button>
+            </div>
+            
+            <div className="p-4 space-y-4">
+              {/* Date */}
+              <div>
+                <label className="block text-sm font-medium mb-1">Date</label>
+                <input
+                  type="date"
+                  value={tripForm.date}
+                  onChange={(e) => setTripForm({ ...tripForm, date: e.target.value })}
+                  className="w-full border rounded-lg p-3"
+                />
+              </div>
+              
+              {/* Vehicle */}
+              {vehicles?.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Vehicle</label>
+                  <select
+                    value={tripForm.vehicleId}
+                    onChange={(e) => setTripForm({ ...tripForm, vehicleId: e.target.value })}
+                    className="w-full border rounded-lg p-3"
+                  >
+                    {vehicles.map(v => (
+                      <option key={v.id} value={v.id}>{v.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              
+              {/* Business Purpose */}
+              <div>
+                <label className="block text-sm font-medium mb-1">Business Purpose *</label>
+                <input
+                  type="text"
+                  value={tripForm.purpose}
+                  onChange={(e) => setTripForm({ ...tripForm, purpose: e.target.value })}
+                  placeholder="e.g., Meet client for gold purchase"
+                  className="w-full border rounded-lg p-3"
+                />
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {['Client purchase', 'Refiner drop-off', 'Estate sale', 'Coin show', 'Bank deposit', 'Supplies'].map(p => (
+                    <button
+                      key={p}
+                      onClick={() => setTripForm({ ...tripForm, purpose: p })}
+                      className="text-xs bg-gray-100 px-2 py-1 rounded"
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Starting Location with GPS */}
+              <div>
+                <label className="block text-sm font-medium mb-1">Starting Location</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={tripForm.startLocation}
+                    onChange={(e) => setTripForm({ ...tripForm, startLocation: e.target.value })}
+                    placeholder="e.g., Home office"
+                    className="flex-1 border rounded-lg p-3"
+                  />
+                  <button
+                    onClick={getCurrentLocation}
+                    disabled={isGettingLocation}
+                    className="bg-blue-100 text-blue-700 px-4 rounded-lg flex items-center gap-1"
+                  >
+                    {isGettingLocation ? <RefreshCw size={18} className="animate-spin" /> : <MapPin size={18} />}
+                  </button>
+                </div>
+              </div>
+              
+              {/* Destination */}
+              <div>
+                <label className="block text-sm font-medium mb-1">Destination</label>
+                <input
+                  type="text"
+                  value={tripForm.destination}
+                  onChange={(e) => setTripForm({ ...tripForm, destination: e.target.value })}
+                  placeholder="e.g., Client's home, Refiner"
+                  className="w-full border rounded-lg p-3"
+                />
+              </div>
+              
+              {/* Start Odometer with Camera */}
+              <div>
+                <label className="block text-sm font-medium mb-1">Start Odometer *</label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    value={tripForm.startOdometer}
+                    onChange={(e) => setTripForm({ ...tripForm, startOdometer: e.target.value })}
+                    placeholder="e.g., 45230"
+                    className="flex-1 border rounded-lg p-3"
+                  />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    ref={startOdometerRef}
+                    onChange={handleOdometerCapture('startOdometer')}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => startOdometerRef.current?.click()}
+                    disabled={isReadingOdometer === 'startOdometer'}
+                    className="bg-amber-100 text-amber-700 px-4 rounded-lg flex items-center gap-1"
+                  >
+                    {isReadingOdometer === 'startOdometer' ? (
+                      <RefreshCw size={18} className="animate-spin" />
+                    ) : (
+                      <Camera size={18} />
+                    )}
+                  </button>
+                </div>
+                {tripForm.startPhoto && (
+                  <div className="mt-1 text-xs text-green-600 flex items-center gap-1">
+                    <Check size={14} /> Photo captured & read
+                  </div>
+                )}
+              </div>
+              
+              {/* End Odometer with Camera */}
+              <div>
+                <label className="block text-sm font-medium mb-1">End Odometer *</label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    value={tripForm.endOdometer}
+                    onChange={(e) => setTripForm({ ...tripForm, endOdometer: e.target.value })}
+                    placeholder="e.g., 45280"
+                    className="flex-1 border rounded-lg p-3"
+                  />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    ref={endOdometerRef}
+                    onChange={handleOdometerCapture('endOdometer')}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => endOdometerRef.current?.click()}
+                    disabled={isReadingOdometer === 'endOdometer'}
+                    className="bg-amber-100 text-amber-700 px-4 rounded-lg flex items-center gap-1"
+                  >
+                    {isReadingOdometer === 'endOdometer' ? (
+                      <RefreshCw size={18} className="animate-spin" />
+                    ) : (
+                      <Camera size={18} />
+                    )}
+                  </button>
+                </div>
+                {tripForm.endPhoto && (
+                  <div className="mt-1 text-xs text-green-600 flex items-center gap-1">
+                    <Check size={14} /> Photo captured & read
+                  </div>
+                )}
+              </div>
+              
+              {/* Calculated Miles */}
+              {tripForm.startOdometer && tripForm.endOdometer && (
+                <div className="bg-blue-50 rounded-xl p-4 text-center">
+                  <div className="text-sm text-blue-600">Trip Distance</div>
+                  <div className="text-3xl font-bold text-blue-700">
+                    {(parseFloat(tripForm.endOdometer) - parseFloat(tripForm.startOdometer)).toLocaleString()} miles
+                  </div>
+                  <div className="text-sm text-green-600">
+                    ≈ ${((parseFloat(tripForm.endOdometer) - parseFloat(tripForm.startOdometer)) * mileageRate).toFixed(2)} deduction
+                  </div>
+                </div>
+              )}
+              
+              {/* Notes */}
+              <div>
+                <label className="block text-sm font-medium mb-1">Notes (optional)</label>
+                <textarea
+                  value={tripForm.notes}
+                  onChange={(e) => setTripForm({ ...tripForm, notes: e.target.value })}
+                  placeholder="Additional details..."
+                  className="w-full border rounded-lg p-3"
+                  rows={2}
+                />
+              </div>
+              
+              {/* Save Button */}
+              <button
+                onClick={handleAddTrip}
+                disabled={!tripForm.purpose || !tripForm.startOdometer || !tripForm.endOdometer}
+                className="w-full bg-green-600 text-white py-4 rounded-xl font-bold disabled:bg-gray-300"
+              >
+                Save Trip
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
+      
+      {/* ADD VEHICLE MODAL */}
+      {showAddVehicle && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl">
+            <div className="border-b p-4 flex justify-between items-center">
+              <h2 className="text-xl font-bold">Add Vehicle</h2>
+              <button onClick={() => setShowAddVehicle(false)} className="p-2"><X size={24} /></button>
+            </div>
+            
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Vehicle Name *</label>
+                <input
+                  type="text"
+                  value={vehicleForm.name}
+                  onChange={(e) => setVehicleForm({ ...vehicleForm, name: e.target.value })}
+                  placeholder="e.g., Work Truck"
+                  className="w-full border rounded-lg p-3"
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Year</label>
+                  <input
+                    type="text"
+                    value={vehicleForm.year}
+                    onChange={(e) => setVehicleForm({ ...vehicleForm, year: e.target.value })}
+                    placeholder="2020"
+                    className="w-full border rounded-lg p-3"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Make</label>
+                  <input
+                    type="text"
+                    value={vehicleForm.make}
+                    onChange={(e) => setVehicleForm({ ...vehicleForm, make: e.target.value })}
+                    placeholder="Ford"
+                    className="w-full border rounded-lg p-3"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Model</label>
+                  <input
+                    type="text"
+                    value={vehicleForm.model}
+                    onChange={(e) => setVehicleForm({ ...vehicleForm, model: e.target.value })}
+                    placeholder="F-150"
+                    className="w-full border rounded-lg p-3"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Starting Odometer (for {currentYear})</label>
+                <input
+                  type="number"
+                  value={vehicleForm.startingOdometer}
+                  onChange={(e) => setVehicleForm({ ...vehicleForm, startingOdometer: e.target.value })}
+                  placeholder="e.g., 45000"
+                  className="w-full border rounded-lg p-3"
+                />
+              </div>
+              <button
+                onClick={handleAddVehicle}
+                disabled={!vehicleForm.name}
+                className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold disabled:bg-gray-300"
+              >
+                Add Vehicle
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -7704,12 +8649,23 @@ function AddItemView({ onSave, onCancel, calculateMelt, clients, liveSpotPrices 
     description: '', category: 'Silver - Sterling', metalType: 'Silver', purity: '925', 
     weight: '', source: '', clientId: '', purchasePrice: '', meltValue: '', notes: '', 
     status: 'Available', dateAcquired: new Date().toISOString().split('T')[0],
-    photo: null, photoBack: null, year: '', mint: '', grade: '', serialNumber: ''
+    photo: null, photoBack: null, year: '', mint: '', grade: '', serialNumber: '',
+    taxable: false, taxRate: 6.75, salesTax: 0
   });
   const [weightUnit, setWeightUnit] = useState('g'); // 'g' for grams, 'oz' for troy ounces
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [aiError, setAiError] = useState(null);
   const [captureStep, setCaptureStep] = useState('idle'); // idle, front, back, done
+  
+  // Calculate sales tax when price or rate changes
+  const calculateSalesTax = (price, rate, isTaxable) => {
+    if (!isTaxable) return 0;
+    return Math.round((parseFloat(price) || 0) * (parseFloat(rate) || 0) / 100 * 100) / 100;
+  };
+  
+  const salesTax = calculateSalesTax(form.purchasePrice, form.taxRate, form.taxable);
+  const totalWithTax = (parseFloat(form.purchasePrice) || 0) + salesTax;
   
   // Conversion: 1 troy oz = 31.1035 grams
   const GRAMS_PER_OZ = 31.1035;
@@ -8314,6 +9270,49 @@ Return ONLY the JSON object.`
             </div>
           </div>
           
+          {/* Sales Tax Section */}
+          <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={form.taxable} 
+                  onChange={(e) => setForm({...form, taxable: e.target.checked})}
+                  className="w-5 h-5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                />
+                <span className="text-sm font-medium">Taxable Purchase</span>
+              </label>
+              {form.taxable && (
+                <div className="flex items-center gap-1">
+                  <input 
+                    type="number" 
+                    step="0.01"
+                    value={form.taxRate} 
+                    onChange={(e) => setForm({...form, taxRate: e.target.value})}
+                    className="w-16 border rounded px-2 py-1 text-sm text-right"
+                  />
+                  <span className="text-sm text-gray-500">%</span>
+                </div>
+              )}
+            </div>
+            {form.taxable && form.purchasePrice && (
+              <div className="pt-2 border-t border-gray-200 space-y-1">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Subtotal:</span>
+                  <span>${parseFloat(form.purchasePrice).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Sales Tax ({form.taxRate}%):</span>
+                  <span className="text-amber-600">${salesTax.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between font-bold">
+                  <span>Total Cost Basis:</span>
+                  <span className="text-green-600">${totalWithTax.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+          </div>
+          
           {/* Melt at Purchase - Full Width */}
           <div>
             <label className="block text-sm font-medium mb-1">Melt at Purchase</label>
@@ -8360,19 +9359,29 @@ Return ONLY the JSON object.`
           
           <div><label className="block text-sm font-medium mb-1">Notes</label><textarea value={form.notes} onChange={(e) => setForm({...form, notes: e.target.value})} className="w-full border rounded p-2" rows={2} /></div>
           <div className="flex gap-2 pt-2">
-            <button onClick={onCancel} className="flex-1 border py-2 rounded">Cancel</button>
+            <button onClick={onCancel} disabled={isSaving} className="flex-1 border py-2 rounded disabled:opacity-50">Cancel</button>
             <button 
-              onClick={() => { 
+              disabled={isSaving}
+              onClick={async () => { 
                 if (!form.description) {
                   alert('Please enter a description');
                   return;
                 }
+                setIsSaving(true);
                 const weightInOz = getWeightInOz();
                 const meltAtPurchase = parseFloat(form.meltValue || calculateMelt(form.metalType, form.purity, weightInOz)) || 0;
-                onSave({ 
+                // Calculate total cost including tax if applicable
+                const basePurchasePrice = parseFloat(form.purchasePrice) || 0;
+                const taxAmount = form.taxable ? calculateSalesTax(form.purchasePrice, form.taxRate, true) : 0;
+                const totalPurchasePrice = basePurchasePrice + taxAmount;
+                await onSave({ 
                   ...form, 
                   weightOz: weightInOz, 
-                  purchasePrice: parseFloat(form.purchasePrice) || 0, 
+                  purchasePrice: totalPurchasePrice, // Total including tax
+                  priceBeforeTax: basePurchasePrice,
+                  salesTax: taxAmount,
+                  taxRate: form.taxable ? parseFloat(form.taxRate) : null,
+                  taxable: form.taxable,
                   meltValue: meltAtPurchase,
                   spotAtPurchase: {
                     gold: liveSpotPrices?.gold || 0,
@@ -8382,10 +9391,11 @@ Return ONLY the JSON object.`
                     date: new Date().toISOString()
                   }
                 }); 
+                setIsSaving(false);
               }} 
-              className="flex-1 bg-amber-600 text-white py-2 rounded"
+              className={`flex-1 py-2 rounded text-white font-medium ${isSaving ? 'bg-gray-400' : 'bg-amber-600'}`}
             >
-              Save
+              {isSaving ? '⏳ Saving...' : 'Save'}
             </button>
           </div>
         </div>
@@ -10065,7 +11075,7 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
             <HardDrive size={18} /> App Information
           </h3>
           <div className="text-sm text-gray-600 space-y-1">
-            <p><strong>Version:</strong> 104</p>
+            <p><strong>Version:</strong> 111</p>
             <p><strong>Firebase Project:</strong> ses-inventory</p>
             <p><strong>Last Updated:</strong> January 2026</p>
           </div>
@@ -11600,6 +12610,8 @@ export default function SESInventoryApp() {
   const [clients, setClients] = useState(null);
   const [lots, setLots] = useState(null);
   const [receipts, setReceipts] = useState([]);
+  const [mileageLog, setMileageLog] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
   const [dataLoaded, setDataLoaded] = useState(false); // Track if initial load is complete
   const [loadError, setLoadError] = useState(null); // Critical error state - blocks app if set
   const [kpiExpanded, setKpiExpanded] = useState(true); // KPI dashboard expanded by default
@@ -11632,10 +12644,11 @@ export default function SESInventoryApp() {
   const [toast, setToast] = useState(null); // { message, type: 'success' | 'error' }
   const fileInputRef = useRef(null);
   
-  // Show toast notification
+  // Show toast notification - errors stay longer
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+    const duration = type === 'error' ? 6000 : 3000;
+    setTimeout(() => setToast(null), duration);
   };
   
   // Check for eBay connection on mount and handle OAuth callback
@@ -11739,16 +12752,22 @@ export default function SESInventoryApp() {
       console.log('Firebase ready, loading data...');
       
       try {
-        const [fbInventory, fbClients, fbLots] = await Promise.all([
+        const [fbInventory, fbClients, fbLots, fbReceipts, fbMileage, fbVehicles] = await Promise.all([
           FirebaseService.loadInventory(),
           FirebaseService.loadClients(),
-          FirebaseService.loadLots()
+          FirebaseService.loadLots(),
+          FirebaseService.loadReceipts(),
+          FirebaseService.loadMileage(),
+          FirebaseService.loadVehicles()
         ]);
         
         console.log('Firebase load results:', {
           inventory: fbInventory?.length ?? 'null',
           clients: fbClients?.length ?? 'null',
-          lots: fbLots?.length ?? 'null'
+          lots: fbLots?.length ?? 'null',
+          receipts: fbReceipts?.length ?? 'null',
+          mileage: fbMileage?.length ?? 'null',
+          vehicles: fbVehicles?.length ?? 'null'
         });
         
         // If any load returned null, there was an error - don't proceed
@@ -11763,11 +12782,17 @@ export default function SESInventoryApp() {
         setInventory(fbInventory);
         setClients(fbClients);
         setLots(fbLots);
+        setReceipts(fbReceipts || []);
+        setMileageLog(fbMileage || []);
+        setVehicles(fbVehicles || []);
         
         console.log('Successfully loaded from Firebase:', {
           inventory: fbInventory.length,
           clients: fbClients.length,
-          lots: fbLots.length
+          lots: fbLots.length,
+          receipts: fbReceipts?.length || 0,
+          mileage: fbMileage?.length || 0,
+          vehicles: fbVehicles?.length || 0
         });
         
       } catch (error) {
@@ -12264,26 +13289,72 @@ export default function SESInventoryApp() {
     }}
   />;
   if (view === 'spotValue') return <SpotValueView inventory={inventory} onBack={() => setView('list')} liveSpotPrices={liveSpotPrices} />;
-  if (view === 'dashboard') return <DashboardView inventory={inventory} onBack={() => setView('list')} />;
-  if (view === 'tax') return <TaxReportView inventory={inventory} onBack={() => setView('list')} />;
+  if (view === 'dashboard') return <DashboardView inventory={inventory} spotPrices={liveSpotPrices} onBack={() => setView('list')} onOpenTax={() => setView('tax')} />;
+  if (view === 'tax') return <TaxReportView 
+    inventory={inventory} 
+    mileageLog={mileageLog}
+    vehicles={vehicles}
+    spotPrices={liveSpotPrices}
+    onBack={() => setView('list')} 
+    onAddMileage={async (trip) => {
+      setMileageLog([...mileageLog, trip]);
+      const success = await FirebaseService.saveMileage(trip);
+      if (success) {
+        showToast(`✓ Trip logged: ${trip.miles} miles`, 'success');
+      } else {
+        showToast(`⚠ Trip may not have saved`, 'error');
+      }
+    }}
+    onDeleteMileage={async (id) => {
+      setMileageLog(mileageLog.filter(m => m.id !== id));
+      await FirebaseService.deleteItem('mileage', id);
+      showToast(`✓ Trip deleted`, 'success');
+    }}
+    onAddVehicle={async (vehicle) => {
+      setVehicles([...vehicles, vehicle]);
+      const success = await FirebaseService.saveVehicle(vehicle);
+      if (success) {
+        showToast(`✓ Vehicle added: ${vehicle.name}`, 'success');
+      } else {
+        showToast(`⚠ Vehicle may not have saved`, 'error');
+      }
+    }}
+  />;
   if (view === 'ebayListings') return <EbayListingsView inventory={inventory} onBack={() => setView('list')} onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }} onListItem={(item) => { setSelectedItem(item); setView('ebayListing'); }} />;
   if (view === 'add') return <AddItemView clients={clients} liveSpotPrices={liveSpotPrices} onSave={async (item) => { 
     const newItem = { ...item, id: getNextId('SES') };
     const currentInv = inventory || [];
-    setInventory([...currentInv, newItem]); 
-    setView('list'); 
     
-    // Save ONLY the new item to Firebase (fast!)
+    // Show saving indicator
+    showToast(`⏳ Saving ${newItem.id}...`, 'success');
+    
+    // Save to Firebase FIRST, wait for confirmation
     try {
       const success = await FirebaseService.saveItem(newItem);
       if (success) {
-        showToast(`✓ ${newItem.id} saved to cloud`, 'success');
+        // Verify it's actually there
+        const verification = await FirebaseService.loadInventory();
+        const verified = verification?.find(i => i.id === newItem.id);
+        
+        if (verified) {
+          setInventory([...currentInv, newItem]); 
+          setView('list'); 
+          showToast(`✓ ${newItem.id} SAVED & VERIFIED`, 'success');
+        } else {
+          // Saved but can't verify - add locally anyway but warn
+          setInventory([...currentInv, newItem]); 
+          setView('list'); 
+          showToast(`⚠ ${newItem.id} saved but couldn't verify`, 'error');
+        }
       } else {
-        showToast(`⚠ ${newItem.id} may not have saved`, 'error');
+        // Save failed - DON'T add to inventory, DON'T leave add screen
+        showToast(`❌ ${newItem.id} FAILED TO SAVE - Try again!`, 'error');
+        // Stay on add screen so user can retry
       }
     } catch (err) {
       console.error('Save error:', err);
-      showToast(`✗ Save failed: ${err.message}`, 'error');
+      showToast(`❌ SAVE FAILED: ${err.message}`, 'error');
+      // Stay on add screen so user can retry
     }
   }} onCancel={() => setView('list')} calculateMelt={calculateMelt} />;
   if (view === 'detail' && selectedItem) return <DetailView 
@@ -12369,10 +13440,36 @@ export default function SESInventoryApp() {
     inventory={inventory}
     lots={lots}
     clients={clients}
-    onAddReceipt={(receipt) => setReceipts([...receipts, receipt])}
-    onDeleteReceipt={(id) => setReceipts(receipts.filter(r => r.id !== id))}
-    onUpdateReceipt={(updated) => setReceipts(receipts.map(r => r.id === updated.id ? updated : r))}
-    onAddClient={(client) => setClients([...clients, client])}
+    onAddReceipt={async (receipt) => {
+      setReceipts([...receipts, receipt]);
+      const success = await FirebaseService.saveReceipt(receipt);
+      if (success) {
+        showToast(`✓ Receipt ${receipt.id} saved`, 'success');
+      } else {
+        showToast(`⚠ Receipt may not have saved`, 'error');
+      }
+    }}
+    onDeleteReceipt={async (id) => {
+      setReceipts(receipts.filter(r => r.id !== id));
+      await FirebaseService.deleteItem('receipts', id);
+      showToast(`✓ Receipt deleted`, 'success');
+    }}
+    onUpdateReceipt={async (updated) => {
+      setReceipts(receipts.map(r => r.id === updated.id ? updated : r));
+      const success = await FirebaseService.saveReceipt(updated);
+      if (success) {
+        showToast(`✓ Receipt updated`, 'success');
+      }
+    }}
+    onAddClient={async (client) => {
+      setClients([...clients, client]);
+      const success = await FirebaseService.saveClient(client);
+      if (success) {
+        showToast(`✓ Client ${client.name} created`, 'success');
+      } else {
+        showToast(`⚠ Client may not have saved`, 'error');
+      }
+    }}
   />;
 
   // LIST VIEW
@@ -12470,10 +13567,10 @@ export default function SESInventoryApp() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Toast Notification */}
+      {/* Toast Notification - Bigger and more visible */}
       {toast && (
-        <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-white font-medium ${
-          toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+        <div className={`fixed top-4 left-4 right-4 z-50 px-4 py-3 rounded-lg shadow-xl text-white font-bold text-center text-lg ${
+          toast.type === 'success' ? 'bg-green-600' : 'bg-red-600 animate-pulse'
         }`}>
           {toast.message}
         </div>
@@ -12494,9 +13591,17 @@ export default function SESInventoryApp() {
       <div className="bg-gradient-to-r from-amber-700 to-amber-800 text-white p-4">
         <div className="flex justify-between items-center">
           <h1 className="text-lg font-bold">Stevens Estate Services</h1>
-          <button onClick={() => setView('settings')} className="p-2 hover:bg-amber-600 rounded">
-            <Settings size={20} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setView('tax')} className="p-2 hover:bg-amber-600 rounded" title="Tax & Mileage">
+              <Car size={20} />
+            </button>
+            <button onClick={() => setView('dashboard')} className="p-2 hover:bg-amber-600 rounded" title="Dashboard">
+              <BarChart3 size={20} />
+            </button>
+            <button onClick={() => setView('settings')} className="p-2 hover:bg-amber-600 rounded" title="Settings">
+              <Settings size={20} />
+            </button>
+          </div>
         </div>
         <div className="flex items-center justify-between mt-2 text-sm">
           <div className="flex gap-4">
