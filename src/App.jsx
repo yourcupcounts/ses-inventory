@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Package, Plus, X, Trash2, Search, Settings, Download, Upload, Camera, Loader, BarChart3, TrendingUp, TrendingDown, Clock, AlertTriangle, AlertCircle, FileText, Filter, Users, UserPlus, Edit2, Edit3, Check, MapPin, Calendar, CreditCard, Building, User, Lock, Unlock, ShieldCheck, DollarSign, RefreshCw, Calculator, Layers, Star, ExternalLink, Flame, Archive, Zap, Shield, Database, FileSpreadsheet, AlertOctagon, Wifi, WifiOff, HardDrive, Cloud, CloudOff, Home, ChevronDown, ChevronRight, Link2, UserCheck } from 'lucide-react';
+import { Package, Plus, X, Trash2, Search, Settings, Download, Upload, Camera, Loader, BarChart3, TrendingUp, TrendingDown, Clock, AlertTriangle, AlertCircle, FileText, Filter, Users, UserPlus, Edit2, Edit3, Check, MapPin, Calendar, CreditCard, Building, User, Lock, Unlock, ShieldCheck, DollarSign, RefreshCw, Calculator, Layers, Star, ExternalLink, Flame, Archive, Zap, Shield, Database, FileSpreadsheet, AlertOctagon, Wifi, WifiOff, HardDrive, Cloud, CloudOff, Home, ChevronDown, ChevronRight, Link2, UserCheck, RotateCw } from 'lucide-react';
 
 // ============ CONFIGURATION - ADD YOUR API KEYS HERE ============
 const CONFIG = {
@@ -7860,6 +7860,37 @@ Return ONLY the JSON object.`
     e.target.value = ''; // Reset input
   };
   
+  // Rotate photo 90 degrees clockwise
+  const rotatePhoto = (side) => {
+    const photoData = side === 'front' ? form.photo : form.photoBack;
+    if (!photoData) return;
+    
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      // Swap width and height for 90 degree rotation
+      canvas.width = img.height;
+      canvas.height = img.width;
+      
+      // Rotate 90 degrees clockwise
+      ctx.translate(canvas.width, 0);
+      ctx.rotate(Math.PI / 2);
+      ctx.drawImage(img, 0, 0);
+      
+      // Get rotated base64 (without the data:image prefix)
+      const rotatedBase64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+      
+      if (side === 'front') {
+        setForm(prev => ({...prev, photo: rotatedBase64}));
+      } else {
+        setForm(prev => ({...prev, photoBack: rotatedBase64}));
+      }
+    };
+    img.src = getPhotoSrc(photoData);
+  };
+  
   // Handle unit change - convert the current value
   const handleUnitChange = (newUnit) => {
     if (newUnit === weightUnit) return;
@@ -7923,6 +7954,13 @@ Return ONLY the JSON object.`
                     <div className="absolute top-1 right-1 bg-green-500 text-white rounded-full w-5 h-5 flex items-center justify-center">
                       <Check size={12} />
                     </div>
+                    <button 
+                      onClick={() => rotatePhoto('front')}
+                      className="absolute bottom-1 right-1 bg-black bg-opacity-60 text-white rounded-full w-7 h-7 flex items-center justify-center"
+                      title="Rotate 90°"
+                    >
+                      <RotateCw size={14} />
+                    </button>
                   </div>
                 ) : (
                   <button 
@@ -7945,6 +7983,13 @@ Return ONLY the JSON object.`
                     <div className="absolute top-1 right-1 bg-green-500 text-white rounded-full w-5 h-5 flex items-center justify-center">
                       <Check size={12} />
                     </div>
+                    <button 
+                      onClick={() => rotatePhoto('back')}
+                      className="absolute bottom-1 right-1 bg-black bg-opacity-60 text-white rounded-full w-7 h-7 flex items-center justify-center"
+                      title="Rotate 90°"
+                    >
+                      <RotateCw size={14} />
+                    </button>
                   </div>
                 ) : (
                   <button 
@@ -8272,6 +8317,37 @@ function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay, l
     } else {
       onUpdate({ ...item, photoBack: null });
     }
+  };
+  
+  // Rotate photo 90 degrees clockwise
+  const rotatePhoto = (side) => {
+    const photoData = side === 'front' ? item.photo : item.photoBack;
+    if (!photoData) return;
+    
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      // Swap width and height for 90 degree rotation
+      canvas.width = img.height;
+      canvas.height = img.width;
+      
+      // Rotate 90 degrees clockwise
+      ctx.translate(canvas.width, 0);
+      ctx.rotate(Math.PI / 2);
+      ctx.drawImage(img, 0, 0);
+      
+      // Get rotated base64 (without the data:image prefix)
+      const rotatedBase64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+      
+      if (side === 'front') {
+        onUpdate({ ...item, photo: rotatedBase64 });
+      } else {
+        onUpdate({ ...item, photoBack: rotatedBase64 });
+      }
+    };
+    img.src = getPhotoSrc(photoData);
   };
   
   // Generate casual, human eBay listing - NO cost info, conversational tone
@@ -8768,6 +8844,13 @@ Ships fast and packed well. Questions? Just ask.`;
                       >
                         <X size={14} />
                       </button>
+                      <button
+                        onClick={() => rotatePhoto('front')}
+                        className="absolute bottom-1 right-1 bg-black bg-opacity-60 text-white rounded-full w-7 h-7 flex items-center justify-center"
+                        title="Rotate 90°"
+                      >
+                        <RotateCw size={14} />
+                      </button>
                     </div>
                   ) : (
                     <div 
@@ -8795,6 +8878,13 @@ Ships fast and packed well. Questions? Just ask.`;
                         className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
                       >
                         <X size={14} />
+                      </button>
+                      <button
+                        onClick={() => rotatePhoto('back')}
+                        className="absolute bottom-1 right-1 bg-black bg-opacity-60 text-white rounded-full w-7 h-7 flex items-center justify-center"
+                        title="Rotate 90°"
+                      >
+                        <RotateCw size={14} />
                       </button>
                     </div>
                   ) : (
@@ -9797,7 +9887,7 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
             <HardDrive size={18} /> App Information
           </h3>
           <div className="text-sm text-gray-600 space-y-1">
-            <p><strong>Version:</strong> 98</p>
+            <p><strong>Version:</strong> 100</p>
             <p><strong>Firebase Project:</strong> ses-inventory</p>
             <p><strong>Last Updated:</strong> January 2026</p>
           </div>
@@ -11542,59 +11632,17 @@ export default function SESInventoryApp() {
   
   // Save immediately when inventory changes (no debounce - mobile browsers kill timeouts)
   useEffect(() => {
-    // AUTO-SAVE DISABLED FOR DEBUGGING
-    // The issue is items keep coming back after delete
-    // Saves are now explicit only (on add, edit, delete)
-    console.log('AUTO-SAVE DISABLED - saves are explicit only');
-    return;
+    // AUTO-SAVE REMOVED - all saves are now explicit
+    // This prevents deleted items from being resurrected by stale data in memory
+    // Saves happen on: Add item, Edit item, Delete item (explicit calls)
     
-    /* DISABLED
-    console.log('AUTO-SAVE useEffect triggered', { 
-      firebaseReady, 
-      dataLoaded, 
-      inventoryLength: inventory?.length,
-      initialLoadComplete: initialLoadComplete.current 
-    });
-    
-    // Don't save during initial load
-    if (!firebaseReady || !dataLoaded) {
-      console.log('AUTO-SAVE SKIPPED: Not ready yet', { firebaseReady, dataLoaded });
-      return;
-    }
-    
-    // Don't save null inventory
-    if (inventory === null) {
-      console.log('AUTO-SAVE SKIPPED: Inventory is null');
-      return;
-    }
-    
-    // Mark initial load as complete after first successful load
+    // Just track initial load for other purposes
+    if (!firebaseReady || !dataLoaded || inventory === null) return;
     if (!initialLoadComplete.current) {
       initialLoadComplete.current = true;
       lastSavedInventoryLength.current = inventory.length;
-      console.log('AUTO-SAVE: Initial load complete, recorded baseline of', inventory.length, 'items');
-      // Don't save on first load - data came FROM Firebase
-      return;
+      console.log('Initial load complete:', inventory.length, 'items');
     }
-    
-    // Check if inventory actually changed
-    if (inventory.length === lastSavedInventoryLength.current && inventory.length === 0) {
-      console.log('AUTO-SAVE SKIPPED: Inventory still empty, nothing to save');
-      return;
-    }
-    
-    // Save IMMEDIATELY - no timeout (mobile browsers kill timeouts when backgrounded)
-    console.log(`AUTO-SAVE EXECUTING: Saving ${inventory.length} items NOW`);
-    FirebaseService.saveInventory(inventory).then(success => {
-      if (success) {
-        lastSavedInventoryLength.current = inventory.length;
-        console.log('AUTO-SAVE SUCCESS: Updated baseline to', inventory.length, 'items');
-      } else {
-        console.error('AUTO-SAVE FAILED: Save returned false');
-      }
-    });
-    */
-    
   }, [inventory, firebaseReady, dataLoaded]);
   
   // Also save on page unload (backup for mobile)
