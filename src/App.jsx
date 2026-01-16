@@ -2933,6 +2933,7 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
         premium: premium * quantity,
         marketValue: marketValue * quantity,
         buyPrice: buyPrice * quantity,
+        originalBuyPrice: buyPrice * quantity,
         buyModifier,
         retailPremium,
         quantity,
@@ -2982,6 +2983,7 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
         premium: premium * quantity,
         marketValue: marketValue * quantity,
         buyPrice: buyPrice * quantity,
+        originalBuyPrice: buyPrice * quantity,
         buyPercent: adjustedBuyPercent,
         quantity,
         isGraded,
@@ -4078,6 +4080,43 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                         +
                       </button>
                     </div>
+                  </div>
+                  
+                  {/* MANUAL PRICE OVERRIDE */}
+                  <div className="mb-3 bg-gray-700 rounded-lg p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-300 text-sm">Custom Price:</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-400">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder={evaluatingItem.buyPrice?.toFixed(2)}
+                          value={evaluatingItem.customPrice || ''}
+                          onChange={(e) => setEvaluatingItem({ 
+                            ...evaluatingItem, 
+                            customPrice: e.target.value,
+                            buyPrice: e.target.value ? parseFloat(e.target.value) : evaluatingItem.originalBuyPrice || evaluatingItem.buyPrice
+                          })}
+                          className="w-24 bg-gray-800 text-white text-right py-1 px-2 rounded border border-gray-600 focus:border-teal-500 focus:outline-none"
+                        />
+                        {evaluatingItem.customPrice && (
+                          <button
+                            onClick={() => setEvaluatingItem({ 
+                              ...evaluatingItem, 
+                              customPrice: '',
+                              buyPrice: evaluatingItem.originalBuyPrice || evaluatingItem.buyPrice
+                            })}
+                            className="text-gray-400 hover:text-white"
+                          >
+                            <X size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {evaluatingItem.customPrice && (
+                      <div className="text-xs text-amber-400 mt-1 text-right">Using custom price</div>
+                    )}
                   </div>
                   
                   {/* PRIMARY ACTIONS - Pass or Add to running list */}
@@ -9917,7 +9956,7 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
             <HardDrive size={18} /> App Information
           </h3>
           <div className="text-sm text-gray-600 space-y-1">
-            <p><strong>Version:</strong> 102</p>
+            <p><strong>Version:</strong> 103</p>
             <p><strong>Firebase Project:</strong> ses-inventory</p>
             <p><strong>Last Updated:</strong> January 2026</p>
           </div>
