@@ -101,75 +101,89 @@ const FirebaseService = {
       const { doc, setDoc } = this.firestore;
       
       for (const item of inventory) {
-        // Handle photos - save directly if small enough for Firestore
-        let photoToSave = null;
-        let photoBackToSave = null;
-        
-        // Firestore document limit is ~1MB, so keep photos under 400KB each
-        if (item.photo) {
-          if (item.photo.startsWith('http')) {
-            // Already a URL (from Storage), keep it
-            photoToSave = item.photo;
-          } else if (item.photo.length < 400000) {
-            // Small enough for Firestore
-            photoToSave = item.photo;
-          } else {
-            // Too big - try to upload to Storage with timeout
-            console.log(`Photo for ${item.id} is large (${Math.round(item.photo.length/1000)}KB), trying Storage...`);
-            try {
-              const uploadPromise = this.uploadPhoto(item.id, item.photo);
-              const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Upload timeout')), 10000)
-              );
-              const url = await Promise.race([uploadPromise, timeoutPromise]);
-              if (url) {
-                photoToSave = url;
-                console.log(`Photo uploaded to Storage: ${url.substring(0, 50)}...`);
-              }
-            } catch (uploadErr) {
-              console.warn(`Photo upload failed for ${item.id}:`, uploadErr.message);
-              // Skip the photo rather than failing the whole save
-            }
-          }
-        }
-        
-        if (item.photoBack) {
-          if (item.photoBack.startsWith('http')) {
-            photoBackToSave = item.photoBack;
-          } else if (item.photoBack.length < 400000) {
-            photoBackToSave = item.photoBack;
-          } else {
-            console.log(`Back photo for ${item.id} is large, trying Storage...`);
-            try {
-              const uploadPromise = this.uploadPhoto(`${item.id}_back`, item.photoBack);
-              const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Upload timeout')), 10000)
-              );
-              const url = await Promise.race([uploadPromise, timeoutPromise]);
-              if (url) {
-                photoBackToSave = url;
-              }
-            } catch (uploadErr) {
-              console.warn(`Back photo upload failed for ${item.id}:`, uploadErr.message);
-            }
-          }
-        }
-        
-        const itemData = this.cleanObject({ 
-          ...item, 
-          photo: photoToSave,
-          photoBack: photoBackToSave
-        });
-        
-        console.log(`SAVING item: ${item.id}`);
-        await setDoc(doc(this.db, this.getCollectionName('inventory'), item.id), itemData);
-        console.log(`SAVED item: ${item.id} - SUCCESS`);
+        await this.saveItem(item);
       }
       
       console.log(`SAVE COMPLETE: ${inventory.length} items saved`);
       return true;
     } catch (error) {
       console.error('SAVE FAILED:', error);
+      return false;
+    }
+  },
+  
+  // Save a SINGLE item to Firestore (much faster than saving all)
+  async saveItem(item) {
+    if (!this.initialized) {
+      console.error('SAVE BLOCKED: Firebase not initialized');
+      return false;
+    }
+    
+    try {
+      const { doc, setDoc } = this.firestore;
+      
+      // Handle photos - save directly if small enough for Firestore
+      let photoToSave = null;
+      let photoBackToSave = null;
+      
+      // Firestore document limit is ~1MB, so keep photos under 400KB each
+      if (item.photo) {
+        if (item.photo.startsWith('http')) {
+          photoToSave = item.photo;
+        } else if (item.photo.length < 400000) {
+          photoToSave = item.photo;
+        } else {
+          console.log(`Photo for ${item.id} is large (${Math.round(item.photo.length/1000)}KB), trying Storage...`);
+          try {
+            const uploadPromise = this.uploadPhoto(item.id, item.photo);
+            const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Upload timeout')), 10000)
+            );
+            const url = await Promise.race([uploadPromise, timeoutPromise]);
+            if (url) {
+              photoToSave = url;
+              console.log(`Photo uploaded to Storage: ${url.substring(0, 50)}...`);
+            }
+          } catch (uploadErr) {
+            console.warn(`Photo upload failed for ${item.id}:`, uploadErr.message);
+          }
+        }
+      }
+      
+      if (item.photoBack) {
+        if (item.photoBack.startsWith('http')) {
+          photoBackToSave = item.photoBack;
+        } else if (item.photoBack.length < 400000) {
+          photoBackToSave = item.photoBack;
+        } else {
+          console.log(`Back photo for ${item.id} is large, trying Storage...`);
+          try {
+            const uploadPromise = this.uploadPhoto(`${item.id}_back`, item.photoBack);
+            const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Upload timeout')), 10000)
+            );
+            const url = await Promise.race([uploadPromise, timeoutPromise]);
+            if (url) {
+              photoBackToSave = url;
+            }
+          } catch (uploadErr) {
+            console.warn(`Back photo upload failed for ${item.id}:`, uploadErr.message);
+          }
+        }
+      }
+      
+      const itemData = this.cleanObject({ 
+        ...item, 
+        photo: photoToSave,
+        photoBack: photoBackToSave
+      });
+      
+      console.log(`SAVING item: ${item.id}`);
+      await setDoc(doc(this.db, this.getCollectionName('inventory'), item.id), itemData);
+      console.log(`SAVED item: ${item.id} - SUCCESS`);
+      return true;
+    } catch (error) {
+      console.error(`SAVE FAILED for ${item.id}:`, error);
       return false;
     }
   },
@@ -7732,11 +7746,11 @@ FOR FLATWARE/STERLING:
 
 Return ONLY a valid JSON object (no markdown, no explanation) with these fields:
 {
-  "description": "Full description (e.g., '1976-S Washington Quarter Proof', '14K Yellow Gold Cuban Link Bracelet 7 inch', '10oz Engelhard Silver Bar')",
+  "description": "Full description (e.g., '1921 Morgan Dollar', '14K Yellow Gold Cuban Link Bracelet 7 inch', '10oz Engelhard Silver Bar')",
   "category": "One of: Coins - Silver, Coins - Gold, Silver - Sterling, Silver - Bullion, Gold - Jewelry, Gold - Bullion, Gold - Scrap, Platinum, Palladium, Other",
   "metalType": "Gold, Silver, Platinum, Palladium, or Other",
   "purity": "e.g., 999, 925, 14K, 10K, 18K, 90%, 40%",
-  "estimatedWeightOz": number or null (estimate based on item type/size if possible),
+  "aswOz": number - THE ACTUAL PRECIOUS METAL WEIGHT IN TROY OUNCES (not total weight - this is critical for melt calculation),
   "year": "year if visible or applicable" or null,
   "mint": "mint mark if visible (P, D, S, O, CC, W)" or null,
   "grade": "grade from holder/flip/slab or condition assessment" or null,
@@ -7746,13 +7760,19 @@ Return ONLY a valid JSON object (no markdown, no explanation) with these fields:
   "confidence": "high, medium, or low"
 }
 
-Common weights reference:
-- Morgan/Peace Dollar: 0.7734 oz ASW (90% silver)
-- Washington Quarter (pre-1965): 0.1808 oz ASW
-- 1976 Bicentennial Quarter (40% silver S-mint): 0.0739 oz ASW
-- American Silver Eagle: 1.0 oz (999 fine)
-- Average men's 14K gold chain (20"): 0.5-1.5 oz total weight
-- Average women's 14K bracelet: 0.2-0.5 oz total weight
+CRITICAL - aswOz MUST BE THE PURE METAL CONTENT:
+- Morgan/Peace Dollar: aswOz = 0.7734 (NOT 0.859 total weight)
+- Walking Liberty/Franklin/Kennedy Half (90%): aswOz = 0.3617
+- Washington Quarter (pre-1965): aswOz = 0.1808
+- Roosevelt/Mercury Dime: aswOz = 0.0723
+- American Silver Eagle: aswOz = 1.0 (999 fine, so ASW = total weight)
+- 10oz Silver Bar (999): aswOz = 10.0
+- 14K gold jewelry: aswOz = total weight × 0.583
+- 18K gold jewelry: aswOz = total weight × 0.750
+- Sterling silver (925): aswOz = total weight × 0.925
+
+For coins, use the KNOWN ASW from numismatic references.
+For jewelry/scrap, estimate total weight and multiply by purity.
 
 Return ONLY the JSON object.`
       });
@@ -7802,9 +7822,13 @@ Return ONLY the JSON object.`
       console.log('Parsed AI result:', aiResult);
       
       // Update form with AI results
-      const weightOz = aiResult.estimatedWeightOz || 0;
-      const weightGrams = weightOz ? (weightOz * GRAMS_PER_OZ).toFixed(2) : '';
-      const meltVal = calculateMeltValue(aiResult.metalType, aiResult.purity, weightOz);
+      // aswOz is the ACTUAL SILVER/GOLD WEIGHT - purity already factored in
+      const aswOz = aiResult.aswOz || aiResult.estimatedWeightOz || 0;
+      const weightGrams = aswOz ? (aswOz * GRAMS_PER_OZ).toFixed(2) : '';
+      
+      // Calculate melt directly: ASW × spot price (no purity multiplier needed)
+      const spot = liveSpotPrices?.[aiResult.metalType?.toLowerCase()] || 0;
+      const meltVal = spot && aswOz ? (aswOz * spot).toFixed(2) : '';
       
       setForm(prev => ({
         ...prev,
@@ -8075,8 +8099,8 @@ Return ONLY the JSON object.`
           
           {/* Metal Weight - Full Width */}
           <div>
-            <label className="block text-sm font-medium mb-1">Metal Weight</label>
-            <p className="text-xs text-gray-500 mb-1">Pure metal content only</p>
+            <label className="block text-sm font-medium mb-1">ASW (Actual Silver/Gold Weight)</label>
+            <p className="text-xs text-gray-500 mb-1">Pure metal content in troy oz - NOT total weight</p>
             <div className="flex gap-1">
               <input 
                 type="number" 
@@ -8187,7 +8211,11 @@ Return ONLY the JSON object.`
               </div>
               <button 
                 type="button"
-                onClick={() => setForm({...form, meltValue: calculateMelt(form.metalType, form.purity, getWeightInOz())})} 
+                onClick={() => {
+                  const spot = liveSpotPrices?.[form.metalType?.toLowerCase()] || 0;
+                  const asw = getWeightInOz();
+                  setForm({...form, meltValue: (asw * spot).toFixed(2)});
+                }} 
                 className="bg-amber-500 text-white px-4 rounded text-sm font-medium flex-shrink-0"
               >
                 Calc
@@ -8202,13 +8230,16 @@ Return ONLY the JSON object.`
                 <div>
                   <div className="text-xs text-green-600 font-medium">Current Melt Value (Live)</div>
                   <div className="text-xl font-bold text-green-700">
-                    ${calculateMeltValue(form.metalType, form.purity, getWeightInOz())}
+                    ${(getWeightInOz() * (liveSpotPrices?.[form.metalType?.toLowerCase()] || 0)).toFixed(2)}
                   </div>
                 </div>
                 <div className="text-right text-xs text-gray-500">
                   <div>{form.metalType} Spot</div>
                   <div className="font-medium">${liveSpotPrices?.[form.metalType?.toLowerCase()]?.toFixed(2) || 'N/A'}/oz</div>
                 </div>
+              </div>
+              <div className="text-xs text-green-600 mt-1">
+                {getWeightInOz().toFixed(4)} oz ASW × ${liveSpotPrices?.[form.metalType?.toLowerCase()]?.toFixed(2) || '0'}/oz
               </div>
             </div>
           )}
@@ -9887,7 +9918,7 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
             <HardDrive size={18} /> App Information
           </h3>
           <div className="text-sm text-gray-600 space-y-1">
-            <p><strong>Version:</strong> 100</p>
+            <p><strong>Version:</strong> 101</p>
             <p><strong>Firebase Project:</strong> ses-inventory</p>
             <p><strong>Last Updated:</strong> January 2026</p>
           </div>
@@ -11451,7 +11482,14 @@ export default function SESInventoryApp() {
     });
     return defaults;
   });
+  const [toast, setToast] = useState(null); // { message, type: 'success' | 'error' }
   const fileInputRef = useRef(null);
+  
+  // Show toast notification
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
   
   // Check for eBay connection on mount and handle OAuth callback
   useEffect(() => {
@@ -12082,52 +12120,47 @@ export default function SESInventoryApp() {
   if (view === 'dashboard') return <DashboardView inventory={inventory} onBack={() => setView('list')} />;
   if (view === 'tax') return <TaxReportView inventory={inventory} onBack={() => setView('list')} />;
   if (view === 'ebayListings') return <EbayListingsView inventory={inventory} onBack={() => setView('list')} onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }} onListItem={(item) => { setSelectedItem(item); setView('ebayListing'); }} />;
-  if (view === 'add') return <AddItemView clients={clients} liveSpotPrices={liveSpotPrices} onSave={(item) => { 
+  if (view === 'add') return <AddItemView clients={clients} liveSpotPrices={liveSpotPrices} onSave={async (item) => { 
     const newItem = { ...item, id: getNextId('SES') };
     const currentInv = inventory || [];
-    const newInventory = [...currentInv, newItem];
-    setInventory(newInventory); 
-    // Save to Firebase with user feedback
-    alert('About to save ' + newInventory.length + ' items to Firebase...');
-    console.log('ADD ITEM: Saving', newInventory.length, 'items');
-    
-    try {
-      FirebaseService.saveInventory(newInventory).then(success => {
-        alert('Save completed! Result: ' + success);
-        console.log('ADD ITEM: Save result:', success);
-        // Also check what Firebase actually has
-        FirebaseService.loadInventory().then(loaded => {
-          const firebaseCount = loaded ? loaded.length : 0;
-          alert('Firebase verification: ' + firebaseCount + ' items in database');
-        }).catch(loadErr => {
-          alert('Load error: ' + loadErr.message);
-        });
-      }).catch(err => {
-        alert('Save error: ' + err.message);
-        console.error('ADD ITEM: Save error:', err);
-      });
-    } catch (syncErr) {
-      alert('Sync error: ' + syncErr.message);
-    }
-    
+    setInventory([...currentInv, newItem]); 
     setView('list'); 
+    
+    // Save ONLY the new item to Firebase (fast!)
+    try {
+      const success = await FirebaseService.saveItem(newItem);
+      if (success) {
+        showToast(`✓ ${newItem.id} saved to cloud`, 'success');
+      } else {
+        showToast(`⚠ ${newItem.id} may not have saved`, 'error');
+      }
+    } catch (err) {
+      console.error('Save error:', err);
+      showToast(`✗ Save failed: ${err.message}`, 'error');
+    }
   }} onCancel={() => setView('list')} calculateMelt={calculateMelt} />;
   if (view === 'detail' && selectedItem) return <DetailView 
     item={selectedItem} 
     clients={clients} 
     liveSpotPrices={liveSpotPrices} 
-    onUpdate={(u) => { 
+    onUpdate={async (u) => { 
       const newInventory = inventory.map(i => i.id === u.id ? u : i);
       setInventory(newInventory); 
       setSelectedItem(u);
-      // Explicitly save to Firebase
-      FirebaseService.saveInventory(newInventory);
+      // Save only the updated item
+      const success = await FirebaseService.saveItem(u);
+      if (success) {
+        showToast(`✓ ${u.id} updated`, 'success');
+      }
     }} 
-    onDelete={() => { 
+    onDelete={async () => { 
       const newInventory = inventory.filter(i => i.id !== selectedItem.id);
       setInventory(newInventory); 
-      // Explicitly delete from Firebase
-      FirebaseService.deleteItem('inventory', selectedItem.id);
+      // Delete from Firebase
+      const success = await FirebaseService.deleteItem('inventory', selectedItem.id);
+      if (success) {
+        showToast(`✓ ${selectedItem.id} deleted`, 'success');
+      }
       setView('list'); 
     }} 
     onBack={() => { setView('list'); setSelectedItem(null); }}
@@ -12290,6 +12323,15 @@ export default function SESInventoryApp() {
 
   return (
     <div className="min-h-screen bg-gray-100">
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-white font-medium ${
+          toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+        }`}>
+          {toast.message}
+        </div>
+      )}
+      
       {/* Demo Mode Banner */}
       {demoMode && (
         <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 py-2 text-center">
