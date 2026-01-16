@@ -122,52 +122,92 @@ const FirebaseService = {
     try {
       const { doc, setDoc } = this.firestore;
       
-      // Handle photos - save directly if small enough for Firestore
+      // Handle photos - compress if needed and save directly to Firestore
       let photoToSave = null;
       let photoBackToSave = null;
       
-      // Firestore document limit is ~1MB, so keep photos under 400KB each
+      // Helper to compress base64 image
+      const compressPhoto = async (base64Data, maxSize = 300000) => {
+        return new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            
+            // Scale down if too large
+            const maxDim = 1200;
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round(height * maxDim / width);
+                width = maxDim;
+              } else {
+                width = Math.round(width * maxDim / height);
+                height = maxDim;
+              }
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Try different quality levels
+            let quality = 0.7;
+            let result = canvas.toDataURL('image/jpeg', quality).split(',')[1];
+            
+            while (result.length > maxSize && quality > 0.3) {
+              quality -= 0.1;
+              result = canvas.toDataURL('image/jpeg', quality).split(',')[1];
+            }
+            
+            console.log(`Compressed photo: ${Math.round(result.length/1000)}KB at quality ${quality.toFixed(1)}`);
+            resolve(result);
+          };
+          img.onerror = () => {
+            console.error('Failed to load image for compression');
+            resolve(base64Data); // Return original if compression fails
+          };
+          // Handle both with and without data URL prefix
+          img.src = base64Data.startsWith('data:') ? base64Data : `data:image/jpeg;base64,${base64Data}`;
+        });
+      };
+      
+      // Process front photo
       if (item.photo) {
         if (item.photo.startsWith('http')) {
+          // Already a URL
           photoToSave = item.photo;
-        } else if (item.photo.length < 400000) {
-          photoToSave = item.photo;
+          console.log(`Photo for ${item.id}: using existing URL`);
         } else {
-          console.log(`Photo for ${item.id} is large (${Math.round(item.photo.length/1000)}KB), trying Storage...`);
-          try {
-            const uploadPromise = this.uploadPhoto(item.id, item.photo);
-            const timeoutPromise = new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Upload timeout')), 10000)
-            );
-            const url = await Promise.race([uploadPromise, timeoutPromise]);
-            if (url) {
-              photoToSave = url;
-              console.log(`Photo uploaded to Storage: ${url.substring(0, 50)}...`);
-            }
-          } catch (uploadErr) {
-            console.warn(`Photo upload failed for ${item.id}:`, uploadErr.message);
+          // Base64 data - compress if needed
+          const photoSize = item.photo.length;
+          console.log(`Photo for ${item.id}: ${Math.round(photoSize/1000)}KB base64`);
+          
+          if (photoSize > 350000) {
+            // Compress large photos
+            console.log(`Compressing photo for ${item.id}...`);
+            photoToSave = await compressPhoto(item.photo);
+          } else {
+            photoToSave = item.photo;
           }
         }
       }
       
+      // Process back photo
       if (item.photoBack) {
         if (item.photoBack.startsWith('http')) {
           photoBackToSave = item.photoBack;
-        } else if (item.photoBack.length < 400000) {
-          photoBackToSave = item.photoBack;
+          console.log(`Back photo for ${item.id}: using existing URL`);
         } else {
-          console.log(`Back photo for ${item.id} is large, trying Storage...`);
-          try {
-            const uploadPromise = this.uploadPhoto(`${item.id}_back`, item.photoBack);
-            const timeoutPromise = new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Upload timeout')), 10000)
-            );
-            const url = await Promise.race([uploadPromise, timeoutPromise]);
-            if (url) {
-              photoBackToSave = url;
-            }
-          } catch (uploadErr) {
-            console.warn(`Back photo upload failed for ${item.id}:`, uploadErr.message);
+          const photoSize = item.photoBack.length;
+          console.log(`Back photo for ${item.id}: ${Math.round(photoSize/1000)}KB base64`);
+          
+          if (photoSize > 350000) {
+            console.log(`Compressing back photo for ${item.id}...`);
+            photoBackToSave = await compressPhoto(item.photoBack);
+          } else {
+            photoBackToSave = item.photoBack;
           }
         }
       }
@@ -178,7 +218,7 @@ const FirebaseService = {
         photoBack: photoBackToSave
       });
       
-      console.log(`SAVING item: ${item.id}`);
+      console.log(`SAVING item: ${item.id} (photo: ${photoToSave ? Math.round(photoToSave.length/1000) + 'KB' : 'none'}, photoBack: ${photoBackToSave ? Math.round(photoBackToSave.length/1000) + 'KB' : 'none'})`);
       await setDoc(doc(this.db, this.getCollectionName('inventory'), item.id), itemData);
       console.log(`SAVED item: ${item.id} - SUCCESS`);
       return true;
@@ -7901,25 +7941,60 @@ Return ONLY the JSON object.`
       return;
     }
     
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const base64 = event.target.result.split(',')[1];
-      console.log('Photo captured, step:', captureStep, 'size:', Math.round(base64.length/1024), 'KB');
-      
-      if (captureStep === 'front') {
-        setForm(prev => ({...prev, photo: base64}));
-        setCaptureStep('idle');
-      } else if (captureStep === 'back') {
-        setForm(prev => ({...prev, photoBack: base64}));
-        setCaptureStep('idle');
-        // Auto-analyze after both photos captured
-        const frontPhoto = form.photo;
-        if (frontPhoto) {
-          await analyzePhotosWithAI(frontPhoto, base64);
-        }
-      }
+    // Compress photo to keep size manageable
+    const compressImage = (file) => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            
+            // Scale down if too large
+            const maxDim = 1200;
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round(height * maxDim / width);
+                width = maxDim;
+              } else {
+                width = Math.round(width * maxDim / height);
+                height = maxDim;
+              }
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Compress to JPEG at 70% quality
+            const base64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+            console.log(`Photo compressed: ${Math.round(base64.length/1024)}KB`);
+            resolve(base64);
+          };
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
     };
-    reader.readAsDataURL(file);
+    
+    const base64 = await compressImage(file);
+    console.log('Photo captured, step:', captureStep, 'size:', Math.round(base64.length/1024), 'KB');
+    
+    if (captureStep === 'front') {
+      setForm(prev => ({...prev, photo: base64}));
+      setCaptureStep('idle');
+    } else if (captureStep === 'back') {
+      setForm(prev => ({...prev, photoBack: base64}));
+      setCaptureStep('idle');
+      // Auto-analyze after both photos captured
+      const frontPhoto = form.photo;
+      if (frontPhoto) {
+        await analyzePhotosWithAI(frontPhoto, base64);
+      }
+    }
     e.target.value = ''; // Reset input
   };
   
@@ -8362,21 +8437,55 @@ function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay, l
   const holdStatus = getHoldStatus(item);
   const profit = item.status === 'Sold' ? (item.salePrice - item.purchasePrice) : (item.meltValue - item.purchasePrice);
   
-  // Handle adding/updating photos
+  // Handle adding/updating photos with compression
   const handlePhotoCapture = (side) => async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64 = event.target.result.split(',')[1];
-      if (side === 'front') {
-        onUpdate({ ...item, photo: base64 });
-      } else {
-        onUpdate({ ...item, photoBack: base64 });
-      }
+    // Compress photo
+    const compressImage = (file) => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            
+            // Scale down if too large
+            const maxDim = 1200;
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round(height * maxDim / width);
+                width = maxDim;
+              } else {
+                width = Math.round(width * maxDim / height);
+                height = maxDim;
+              }
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            const base64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+            console.log(`Photo compressed: ${Math.round(base64.length/1024)}KB`);
+            resolve(base64);
+          };
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
     };
-    reader.readAsDataURL(file);
+    
+    const base64 = await compressImage(file);
+    if (side === 'front') {
+      onUpdate({ ...item, photo: base64 });
+    } else {
+      onUpdate({ ...item, photoBack: base64 });
+    }
     e.target.value = ''; // Reset input
   };
   
@@ -9956,7 +10065,7 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
             <HardDrive size={18} /> App Information
           </h3>
           <div className="text-sm text-gray-600 space-y-1">
-            <p><strong>Version:</strong> 103</p>
+            <p><strong>Version:</strong> 104</p>
             <p><strong>Firebase Project:</strong> ses-inventory</p>
             <p><strong>Last Updated:</strong> January 2026</p>
           </div>
