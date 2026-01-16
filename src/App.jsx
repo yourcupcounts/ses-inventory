@@ -9797,7 +9797,7 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
             <HardDrive size={18} /> App Information
           </h3>
           <div className="text-sm text-gray-600 space-y-1">
-            <p><strong>Version:</strong> 97</p>
+            <p><strong>Version:</strong> 98</p>
             <p><strong>Firebase Project:</strong> ses-inventory</p>
             <p><strong>Last Updated:</strong> January 2026</p>
           </div>
@@ -11542,6 +11542,13 @@ export default function SESInventoryApp() {
   
   // Save immediately when inventory changes (no debounce - mobile browsers kill timeouts)
   useEffect(() => {
+    // AUTO-SAVE DISABLED FOR DEBUGGING
+    // The issue is items keep coming back after delete
+    // Saves are now explicit only (on add, edit, delete)
+    console.log('AUTO-SAVE DISABLED - saves are explicit only');
+    return;
+    
+    /* DISABLED
     console.log('AUTO-SAVE useEffect triggered', { 
       firebaseReady, 
       dataLoaded, 
@@ -11586,6 +11593,7 @@ export default function SESInventoryApp() {
         console.error('AUTO-SAVE FAILED: Save returned false');
       }
     });
+    */
     
   }, [inventory, firebaseReady, dataLoaded]);
   
