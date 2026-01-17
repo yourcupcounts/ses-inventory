@@ -7548,7 +7548,11 @@ function ClientDetailView({ client, transactions, onEdit, onBack }) {
 }
 
 // ============ SIMPLIFIED OTHER VIEWS ============
-function DashboardView({ inventory, spotPrices, onBack, onOpenTax }) {
+function DashboardView({ inventory, spotPrices, onBack, onOpenTax, onSelectItem }) {
+  // State for metal detail modal
+  const [selectedMetal, setSelectedMetal] = useState(null);
+  const [metalViewMode, setMetalViewMode] = useState('grid'); // 'grid' or 'list'
+  
   // Filter by status
   const sold = inventory.filter(i => i.status === 'Sold');
   const available = inventory.filter(i => i.status === 'Available');
@@ -7674,10 +7678,11 @@ function DashboardView({ inventory, spotPrices, onBack, onOpenTax }) {
           </div>
         </div>
         
-        {/* Inventory by Metal - Visual Cards */}
+        {/* Inventory by Metal - Visual Cards (Clickable) */}
         <div>
           <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
             <TrendingUp size={18} /> Holdings by Metal
+            <span className="text-xs text-gray-400 font-normal">(tap to view items)</span>
           </h3>
           <div className="grid grid-cols-2 gap-3">
             {metalBreakdown.map(metal => {
@@ -7689,7 +7694,11 @@ function DashboardView({ inventory, spotPrices, onBack, onOpenTax }) {
                 'from-orange-400 to-orange-500';
               
               return (
-                <div key={metal.name} className={`bg-gradient-to-br ${colorClass} rounded-xl shadow-lg p-4 text-white`}>
+                <div 
+                  key={metal.name} 
+                  onClick={() => setSelectedMetal(metal.name)}
+                  className={`bg-gradient-to-br ${colorClass} rounded-xl shadow-lg p-4 text-white cursor-pointer hover:shadow-xl transition-shadow active:scale-95`}
+                >
                   <div className="flex justify-between items-start">
                     <div className="text-lg font-bold">{metal.name}</div>
                     <div className="text-xs bg-white/20 rounded-full px-2 py-0.5">{metal.count}</div>
@@ -7839,6 +7848,234 @@ function DashboardView({ inventory, spotPrices, onBack, onOpenTax }) {
           </div>
         </div>
       </div>
+      
+      {/* Metal Detail Modal */}
+      {selectedMetal && (() => {
+        const metalItems = allHoldings.filter(i => i.metalType === selectedMetal);
+        
+        // Export functions
+        const exportCSV = () => {
+          const headers = ['ID', 'Description', 'Purity', 'Weight (oz)', 'Cost', 'Current Value', 'Equity', 'ROI %', 'Status', 'Date Acquired'];
+          const rows = metalItems.map(item => {
+            const value = calcLiveSpotValue(item);
+            const equity = value - (parseFloat(item.purchasePrice) || 0);
+            const roiPct = item.purchasePrice > 0 ? (equity / item.purchasePrice * 100) : 0;
+            return [
+              item.id,
+              `"${item.description?.replace(/"/g, '""') || ''}"`,
+              item.purity || '',
+              item.weightOz || '',
+              item.purchasePrice || 0,
+              value.toFixed(2),
+              equity.toFixed(2),
+              roiPct.toFixed(1),
+              item.status || '',
+              item.dateAcquired || ''
+            ].join(',');
+          });
+          const csv = [headers.join(','), ...rows].join('\n');
+          const blob = new Blob([csv], { type: 'text/csv' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${selectedMetal.toLowerCase()}-inventory-${new Date().toISOString().split('T')[0]}.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+        };
+        
+        const exportExcel = () => {
+          // Create a simple Excel-compatible XML format
+          const rows = metalItems.map(item => {
+            const value = calcLiveSpotValue(item);
+            const equity = value - (parseFloat(item.purchasePrice) || 0);
+            const roiPct = item.purchasePrice > 0 ? (equity / item.purchasePrice * 100) : 0;
+            return `<Row>
+              <Cell><Data ss:Type="String">${item.id}</Data></Cell>
+              <Cell><Data ss:Type="String">${item.description?.replace(/&/g, '&amp;') || ''}</Data></Cell>
+              <Cell><Data ss:Type="String">${item.purity || ''}</Data></Cell>
+              <Cell><Data ss:Type="Number">${item.weightOz || 0}</Data></Cell>
+              <Cell><Data ss:Type="Number">${item.purchasePrice || 0}</Data></Cell>
+              <Cell><Data ss:Type="Number">${value.toFixed(2)}</Data></Cell>
+              <Cell><Data ss:Type="Number">${equity.toFixed(2)}</Data></Cell>
+              <Cell><Data ss:Type="Number">${roiPct.toFixed(1)}</Data></Cell>
+              <Cell><Data ss:Type="String">${item.status || ''}</Data></Cell>
+              <Cell><Data ss:Type="String">${item.dateAcquired || ''}</Data></Cell>
+            </Row>`;
+          }).join('');
+          
+          const xml = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+<Worksheet ss:Name="${selectedMetal} Inventory">
+<Table>
+<Row>
+  <Cell><Data ss:Type="String">ID</Data></Cell>
+  <Cell><Data ss:Type="String">Description</Data></Cell>
+  <Cell><Data ss:Type="String">Purity</Data></Cell>
+  <Cell><Data ss:Type="String">Weight (oz)</Data></Cell>
+  <Cell><Data ss:Type="String">Cost</Data></Cell>
+  <Cell><Data ss:Type="String">Current Value</Data></Cell>
+  <Cell><Data ss:Type="String">Equity</Data></Cell>
+  <Cell><Data ss:Type="String">ROI %</Data></Cell>
+  <Cell><Data ss:Type="String">Status</Data></Cell>
+  <Cell><Data ss:Type="String">Date Acquired</Data></Cell>
+</Row>
+${rows}
+</Table>
+</Worksheet>
+</Workbook>`;
+          
+          const blob = new Blob([xml], { type: 'application/vnd.ms-excel' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${selectedMetal.toLowerCase()}-inventory-${new Date().toISOString().split('T')[0]}.xls`;
+          a.click();
+          URL.revokeObjectURL(url);
+        };
+        
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto">
+            <div className="min-h-screen p-4">
+              <div className="bg-white rounded-xl max-w-lg mx-auto">
+                {/* Header */}
+                <div className={`p-4 rounded-t-xl text-white ${
+                  selectedMetal === 'Gold' ? 'bg-gradient-to-r from-yellow-500 to-yellow-600' :
+                  selectedMetal === 'Silver' ? 'bg-gradient-to-r from-gray-400 to-gray-500' :
+                  selectedMetal === 'Platinum' ? 'bg-gradient-to-r from-slate-500 to-slate-600' :
+                  'bg-gradient-to-r from-orange-500 to-orange-600'
+                }`}>
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-xl font-bold">{selectedMetal} Holdings</h2>
+                    <button onClick={() => setSelectedMetal(null)} className="p-1 hover:bg-white/20 rounded">
+                      <X size={24} />
+                    </button>
+                  </div>
+                  <div className="text-sm opacity-90 mt-1">{metalItems.length} items</div>
+                </div>
+                
+                {/* Controls */}
+                <div className="p-3 border-b flex justify-between items-center">
+                  <div className="flex border rounded-lg overflow-hidden">
+                    <button 
+                      onClick={() => setMetalViewMode('grid')}
+                      className={`px-3 py-1.5 text-sm ${metalViewMode === 'grid' ? 'bg-amber-600 text-white' : 'bg-white text-gray-600'}`}
+                    >
+                      Grid
+                    </button>
+                    <button 
+                      onClick={() => setMetalViewMode('list')}
+                      className={`px-3 py-1.5 text-sm ${metalViewMode === 'list' ? 'bg-amber-600 text-white' : 'bg-white text-gray-600'}`}
+                    >
+                      List
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={exportCSV} className="px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-sm font-medium hover:bg-green-200">
+                      CSV
+                    </button>
+                    <button onClick={exportExcel} className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-200">
+                      Excel
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Items */}
+                <div className="p-3 max-h-[60vh] overflow-y-auto">
+                  {metalViewMode === 'grid' ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      {metalItems.map(item => {
+                        const value = calcLiveSpotValue(item);
+                        const equity = value - (parseFloat(item.purchasePrice) || 0);
+                        const equityPct = item.purchasePrice > 0 ? (equity / item.purchasePrice * 100) : 0;
+                        
+                        return (
+                          <div 
+                            key={item.id}
+                            onClick={() => onSelectItem && onSelectItem(item)}
+                            className="bg-white rounded-xl shadow-md overflow-hidden cursor-pointer hover:shadow-lg"
+                          >
+                            <div className="relative h-24 bg-gray-100">
+                              {item.photo ? (
+                                <img src={getPhotoSrc(item.photo)} className="w-full h-full object-cover" alt={item.description} />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-gray-300">
+                                  <Camera size={28} />
+                                </div>
+                              )}
+                              <div className={`absolute top-1 left-1 px-1.5 py-0.5 rounded text-xs font-medium ${
+                                item.status === 'Stash' ? 'bg-purple-500 text-white' : 'bg-green-500 text-white'
+                              }`}>
+                                {item.status === 'Available' ? 'Sell' : item.status}
+                              </div>
+                            </div>
+                            <div className="p-2">
+                              <div className="font-medium text-xs truncate">{item.description}</div>
+                              <div className={`mt-1 p-1.5 rounded ${equity >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-gray-500">Equity</span>
+                                  <span className={`font-bold ${equity >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {equity >= 0 ? '+' : ''}${equity.toFixed(0)}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {metalItems.map(item => {
+                        const value = calcLiveSpotValue(item);
+                        const equity = value - (parseFloat(item.purchasePrice) || 0);
+                        
+                        return (
+                          <div 
+                            key={item.id}
+                            onClick={() => onSelectItem && onSelectItem(item)}
+                            className="bg-gray-50 p-3 rounded-lg cursor-pointer hover:bg-gray-100 flex justify-between items-center"
+                          >
+                            <div className="flex gap-3 items-center">
+                              {item.photo && (
+                                <img src={getPhotoSrc(item.photo)} className="w-10 h-10 rounded object-cover" />
+                              )}
+                              <div>
+                                <div className="font-medium text-sm">{item.description}</div>
+                                <div className="text-xs text-gray-500">{item.id} • {item.weightOz} oz</div>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className={`font-bold ${equity >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {equity >= 0 ? '+' : ''}${equity.toFixed(0)}
+                              </div>
+                              <div className="text-xs text-gray-400">${value.toFixed(0)} value</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Summary Footer */}
+                <div className="p-3 border-t bg-gray-50 rounded-b-xl">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Total Value:</span>
+                    <span className="font-bold">${metalItems.reduce((s, i) => s + calcLiveSpotValue(i), 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Total Equity:</span>
+                    <span className={`font-bold ${metalItems.reduce((s, i) => s + calcLiveSpotValue(i) - (parseFloat(i.purchasePrice) || 0), 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      ${metalItems.reduce((s, i) => s + calcLiveSpotValue(i) - (parseFloat(i.purchasePrice) || 0), 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -9508,6 +9745,26 @@ function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay, l
     status: item.status || 'Available'
   });
   
+  // Sync editForm when item changes or when opening edit mode
+  useEffect(() => {
+    setEditForm({
+      description: item.description || '',
+      category: item.category || 'Silver - Sterling',
+      metalType: item.metalType || 'Silver',
+      purity: item.purity || '',
+      weightOz: item.weightOz || '',
+      purchasePrice: item.purchasePrice || '',
+      meltValue: item.meltValue || '',
+      notes: item.notes || '',
+      serialNumber: item.serialNumber || '',
+      year: item.year || '',
+      mint: item.mint || '',
+      grade: item.grade || '',
+      clientId: item.clientId || '',
+      status: item.status || 'Available'
+    });
+  }, [item.id, isEditing]);
+  
   // Photo management refs
   const photoCameraRef = useRef(null);
   const photoGalleryRef = useRef(null);
@@ -10054,8 +10311,9 @@ Ships fast and packed well. Questions? Just ask.`;
                 <div>
                   <label className="block text-sm font-medium mb-1">Status</label>
                   <select value={editForm.status} onChange={(e) => setEditForm({...editForm, status: e.target.value})} className="w-full border rounded p-2 bg-white">
-                    <option value="Available">Available</option>
+                    <option value="Available">Available (Sell)</option>
                     <option value="Stash">Stash</option>
+                    <option value="Hold">Hold</option>
                     <option value="Sold">Sold</option>
                     <option value="Listed">Listed</option>
                   </select>
@@ -11120,7 +11378,7 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
             <HardDrive size={18} /> App Information
           </h3>
           <div className="text-sm text-gray-600 space-y-1">
-            <p><strong>Version:</strong> 117</p>
+            <p><strong>Version:</strong> 118</p>
             <p><strong>Firebase Project:</strong> ses-inventory</p>
             <p><strong>Last Updated:</strong> January 2026</p>
           </div>
@@ -12674,7 +12932,7 @@ export default function SESInventoryApp() {
   const [loadError, setLoadError] = useState(null); // Critical error state - blocks app if set
   const [kpiExpanded, setKpiExpanded] = useState(true); // KPI dashboard expanded by default
   const [inventoryListExpanded, setInventoryListExpanded] = useState(false); // Inventory list collapsed by default
-  const [inventoryViewMode, setInventoryViewMode] = useState('list'); // 'list' or 'grid'
+  const [inventoryViewMode, setInventoryViewMode] = useState('grid'); // 'list' or 'grid' - grid is default
   const [kpiFilter, setKpiFilter] = useState(null); // Filter for KPI drill-down: 'stash', 'hold', 'sell', 'available', 'silver', 'gold', 'platinum', 'sold'
   const [view, setView] = useState('list');
   const [selectedItem, setSelectedItem] = useState(null);
@@ -13383,7 +13641,7 @@ export default function SESInventoryApp() {
     }}
   />;
   if (view === 'spotValue') return <SpotValueView inventory={inventory} onBack={() => setView('list')} liveSpotPrices={liveSpotPrices} />;
-  if (view === 'dashboard') return <DashboardView inventory={inventory} spotPrices={liveSpotPrices} onBack={() => setView('list')} onOpenTax={() => setView('tax')} />;
+  if (view === 'dashboard') return <DashboardView inventory={inventory} spotPrices={liveSpotPrices} onBack={() => setView('list')} onOpenTax={() => setView('tax')} onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }} />;
   if (view === 'tax') return <TaxReportView 
     inventory={inventory} 
     mileageLog={mileageLog}
