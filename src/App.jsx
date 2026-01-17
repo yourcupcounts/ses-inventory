@@ -1066,6 +1066,28 @@ const ImageUtils = {
   }
 };
 
+// ============ HELPER UTILITIES ============
+// Parse purity string to decimal (e.g., "925" -> 0.925, "14K" -> 0.583)
+const parsePurity = (purity) => {
+  if (!purity) return 1;
+  const p = purity.toString().toUpperCase();
+  if (p.includes('K')) {
+    return parseInt(p.replace('K', '')) / 24;
+  } else if (p.includes('%')) {
+    return parseFloat(p.replace('%', '')) / 100;
+  } else {
+    const num = parseFloat(p);
+    return num > 1 ? num / 1000 : num;
+  }
+};
+
+// Get photo source URL from photo data (handles base64 and URLs)
+const getPhotoSrc = (photo) => {
+  if (!photo) return null;
+  if (photo.startsWith('http')) return photo;
+  return `data:image/jpeg;base64,${photo}`;
+};
+
 // Default spot prices (will be updated by SpotPriceService)
 const spotPrices = { gold: 4600.00, silver: 90.00, platinum: 985.00, palladium: 945.00 };
 
@@ -1403,6 +1425,23 @@ Ships securely in protective packaging. Thanks for looking!`;
     }
   }, [item, generatedListing]);
   
+  // Auto-suggest category on mount if not set by coinKey
+  useEffect(() => {
+    const autoSuggestCategory = async () => {
+      if (!categoryId && title && CONFIG.features.useEbayListing) {
+        const suggestions = await EbayListingService.suggestCategory(title);
+        if (suggestions && suggestions.length > 0) {
+          setCategorySuggestions(suggestions);
+          // Auto-select the first suggestion
+          setCategoryId(suggestions[0].categoryId);
+        }
+      }
+    };
+    // Delay slightly to ensure title is set
+    const timer = setTimeout(autoSuggestCategory, 500);
+    return () => clearTimeout(timer);
+  }, [title]);
+  
   // Load business policies on mount
   useEffect(() => {
     const loadPolicies = async () => {
@@ -1493,11 +1532,26 @@ Ships securely in protective packaging. Thanks for looking!`;
   };
   
   // Search for category
+  const [isSearchingCategory, setIsSearchingCategory] = useState(false);
+  
   const searchCategory = async () => {
-    const suggestions = await EbayListingService.suggestCategory(title);
-    if (suggestions) {
-      setCategorySuggestions(suggestions);
+    if (!title) {
+      setError('Please enter a title first');
+      return;
     }
+    setIsSearchingCategory(true);
+    try {
+      const suggestions = await EbayListingService.suggestCategory(title);
+      if (suggestions && suggestions.length > 0) {
+        setCategorySuggestions(suggestions);
+      } else {
+        setError('No category suggestions found. Try a different title or enter category ID manually.');
+      }
+    } catch (err) {
+      console.error('Category search error:', err);
+      setError('Failed to search categories. Check eBay connection.');
+    }
+    setIsSearchingCategory(false);
   };
   
   // Condition options
@@ -2020,9 +2074,11 @@ Ships securely in protective packaging. Thanks for looking!`;
             />
             <button
               onClick={searchCategory}
-              className="bg-gray-200 px-4 rounded-lg"
+              disabled={isSearchingCategory}
+              className="bg-gray-200 px-4 rounded-lg disabled:opacity-50 flex items-center gap-2"
             >
-              Find
+              {isSearchingCategory ? <Loader className="animate-spin" size={16} /> : null}
+              {isSearchingCategory ? 'Searching...' : 'Find'}
             </button>
           </div>
           
@@ -8302,6 +8358,17 @@ function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay, l
   const [lotNotes, setLotNotes] = useState(item.notes || '');
   const [showPhotoManager, setShowPhotoManager] = useState(false);
   
+  // Reset state when item changes (prev/next navigation)
+  useEffect(() => {
+    setEbayPrices(null);
+    setShowPricingAnalysis(false);
+    setGeneratedListing(null);
+    setShowSold(false);
+    setSalePrice(item.meltValue || '');
+    setLotDescription(item.description);
+    setLotNotes(item.notes || '');
+  }, [item.id]);
+  
   // Photo management refs
   const photoCameraRef = useRef(null);
   const photoGalleryRef = useRef(null);
@@ -9664,7 +9731,7 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
             <HardDrive size={18} /> App Information
           </h3>
           <div className="text-sm text-gray-600 space-y-1">
-            <p><strong>Version:</strong> 72</p>
+            <p><strong>Version:</strong> 121</p>
             <p><strong>Firebase Project:</strong> ses-inventory</p>
             <p><strong>Last Updated:</strong> January 2026</p>
           </div>
@@ -10989,7 +11056,12 @@ export default function SESInventoryApp() {
   const [dataLoaded, setDataLoaded] = useState(false); // Track if initial load is complete
   const [kpiExpanded, setKpiExpanded] = useState(true); // KPI dashboard expanded by default
   const [kpiFilter, setKpiFilter] = useState(null); // Filter for KPI drill-down: 'stash', 'hold', 'sell', 'available', 'silver', 'gold', 'platinum', 'sold'
-  const [view, setView] = useState('list');
+  const [view, setView] = useState(() => {
+    // Restore view from localStorage on mount
+    const savedView = localStorage.getItem('ses-current-view');
+    const restorableViews = ['list', 'stash', 'clients', 'lots', 'settings', 'tax', 'dashboard', 'mileage', 'receipts'];
+    return (savedView && restorableViews.includes(savedView)) ? savedView : 'list';
+  });
   const [selectedItem, setSelectedItem] = useState(null);
   const [pendingListing, setPendingListing] = useState(null); // Store generated listing for eBay
   const [selectedClient, setSelectedClient] = useState(null);
@@ -11002,6 +11074,7 @@ export default function SESInventoryApp() {
   const [ebayConnected, setEbayConnected] = useState(false);
   const [bulkSelectedIds, setBulkSelectedIds] = useState([]); // Bulk selection for multi-item actions
   const [bulkMode, setBulkMode] = useState(false); // Whether bulk selection mode is active
+  const [inventoryViewMode, setInventoryViewMode] = useState('grid'); // 'list' or 'grid' - grid is default
   const [coinBuyPercents, setCoinBuyPercents] = useState(() => {
     // Load from localStorage or use defaults from coinReference
     const saved = localStorage.getItem('ses-coin-buy-percents');
@@ -11016,6 +11089,11 @@ export default function SESInventoryApp() {
     return defaults;
   });
   const fileInputRef = useRef(null);
+  
+  // Persist view to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('ses-current-view', view);
+  }, [view]);
   
   // Check for eBay connection on mount and handle OAuth callback
   useEffect(() => {
@@ -11958,6 +12036,23 @@ export default function SESInventoryApp() {
             <option value="available">Available</option>
             <option value="sold">Sold</option>
           </select>
+          {/* View Toggle */}
+          <div className="flex border rounded-lg overflow-hidden">
+            <button 
+              onClick={() => setInventoryViewMode('list')}
+              className={`px-3 py-2 ${inventoryViewMode === 'list' ? 'bg-amber-600 text-white' : 'bg-white text-gray-600'}`}
+              title="List View"
+            >
+              <Package size={18} />
+            </button>
+            <button 
+              onClick={() => setInventoryViewMode('grid')}
+              className={`px-3 py-2 ${inventoryViewMode === 'grid' ? 'bg-amber-600 text-white' : 'bg-white text-gray-600'}`}
+              title="Grid View"
+            >
+              <Layers size={18} />
+            </button>
+          </div>
         </div>
         
         {/* Inventory Count */}
@@ -12012,116 +12107,228 @@ export default function SESInventoryApp() {
           </div>
         </div>
         
-        {/* Inventory Items */}
-        <div className="space-y-2 pb-24">
-          {filteredInventory.map(item => {
-            const holdStatus = getHoldStatus(item);
-            const profit = item.status === 'Sold' ? (item.salePrice - item.purchasePrice) : (item.meltValue - item.purchasePrice);
-            const isSelected = bulkSelectedIds.includes(item.id);
-            
-            // Long press handler
-            let pressTimer = null;
-            const handleTouchStart = () => {
-              pressTimer = setTimeout(() => {
-                // Long press detected - enter bulk mode and select this item
-                if (!bulkMode) {
-                  setBulkMode(true);
-                }
-                if (!isSelected) {
-                  setBulkSelectedIds(prev => [...prev, item.id]);
-                }
-              }, 500); // 500ms for long press
-            };
-            const handleTouchEnd = () => {
-              if (pressTimer) {
-                clearTimeout(pressTimer);
-              }
-            };
-            const handleClick = () => {
-              if (bulkMode) {
-                // In bulk mode, toggle selection
-                if (isSelected) {
-                  setBulkSelectedIds(prev => prev.filter(id => id !== item.id));
+        {/* Inventory Items - List or Grid View */}
+        {inventoryViewMode === 'grid' ? (
+          /* GRID VIEW */
+          <div className="grid grid-cols-2 gap-3 pb-24">
+            {filteredInventory.map(item => {
+              const spot = liveSpotPrices?.[item.metalType?.toLowerCase()] || 0;
+              const purityDecimal = parsePurity(item.purity);
+              const currentMelt = (parseFloat(item.weightOz) || 0) * spot * purityDecimal;
+              const equity = currentMelt - (parseFloat(item.purchasePrice) || 0);
+              const equityPercent = item.purchasePrice > 0 ? (equity / item.purchasePrice * 100) : 0;
+              const isSelected = bulkSelectedIds.includes(item.id);
+              
+              // Long press handler
+              let pressTimer = null;
+              const handleTouchStart = () => {
+                pressTimer = setTimeout(() => {
+                  if (!bulkMode) setBulkMode(true);
+                  if (!isSelected) setBulkSelectedIds(prev => [...prev, item.id]);
+                }, 500);
+              };
+              const handleTouchEnd = () => { if (pressTimer) clearTimeout(pressTimer); };
+              const handleClick = () => {
+                if (bulkMode) {
+                  if (isSelected) {
+                    setBulkSelectedIds(prev => prev.filter(id => id !== item.id));
+                  } else {
+                    setBulkSelectedIds(prev => [...prev, item.id]);
+                  }
                 } else {
-                  setBulkSelectedIds(prev => [...prev, item.id]);
+                  setSelectedItem(item);
+                  setView('detail');
                 }
-              } else {
-                // Normal mode - open detail view
-                setSelectedItem(item);
-                setView('detail');
-              }
-            };
-            
-            return (
-              <div 
-                key={item.id} 
-                onClick={handleClick}
-                onTouchStart={handleTouchStart}
-                onTouchEnd={handleTouchEnd}
-                onMouseDown={handleTouchStart}
-                onMouseUp={handleTouchEnd}
-                onMouseLeave={handleTouchEnd}
-                className={`bg-white p-3 rounded-lg shadow cursor-pointer hover:shadow-md transition-all ${
-                  item.status === 'Sold' ? 'opacity-60' : ''
-                } ${isSelected ? 'ring-2 ring-purple-500 bg-purple-50' : ''}`}
-              >
-                <div className="flex justify-between items-start">
-                  <div className="flex gap-3">
-                    {/* Checkbox for bulk mode */}
+              };
+              
+              return (
+                <div 
+                  key={item.id} 
+                  onClick={handleClick}
+                  onTouchStart={handleTouchStart}
+                  onTouchEnd={handleTouchEnd}
+                  onMouseDown={handleTouchStart}
+                  onMouseUp={handleTouchEnd}
+                  onMouseLeave={handleTouchEnd}
+                  className={`bg-white rounded-xl shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-all ${
+                    item.status === 'Sold' ? 'opacity-60' : ''
+                  } ${isSelected ? 'ring-2 ring-purple-500' : ''}`}
+                >
+                  {/* Photo */}
+                  <div className="relative h-28 bg-gray-100">
+                    {item.photo ? (
+                      <img src={getPhotoSrc(item.photo)} className="w-full h-full object-cover" alt={item.description} />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-300">
+                        <Camera size={32} />
+                      </div>
+                    )}
+                    {/* Bulk select checkbox */}
                     {bulkMode && (
-                      <div className="flex items-center justify-center w-6 h-12">
+                      <div className="absolute top-1 left-1">
                         {isSelected ? (
-                          <CheckSquare size={22} className="text-purple-600" />
+                          <CheckSquare size={20} className="text-purple-600 bg-white rounded" />
                         ) : (
-                          <Square size={22} className="text-gray-400" />
+                          <Square size={20} className="text-gray-400 bg-white rounded" />
                         )}
                       </div>
                     )}
-                    {item.photo && (
-                      <img src={`data:image/jpeg;base64,${item.photo}`} className="w-12 h-12 rounded object-cover" />
-                    )}
-                    <div>
-                      <div className="font-medium">{item.description}</div>
-                      <div className="text-xs text-gray-500">{item.id} • {item.category}</div>
-                      <div className="flex gap-1 mt-1">
-                        {item.status === 'Stash' && (
-                          <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded flex items-center gap-1">
-                            <Star size={10} /> Stash
-                          </span>
-                        )}
-                        {item.plannedDisposition === 'hold' && (
-                          <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Hold</span>
-                        )}
-                        {item.plannedDisposition === 'sell' && (
-                          <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">Sell</span>
-                        )}
-                        {item.ebayListingId && (
-                          <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded flex items-center gap-1">
-                            <ExternalLink size={10} /> eBay
-                          </span>
-                        )}
-                        {item.status === 'Available' && !item.plannedDisposition && (
-                          <span className={`text-xs px-1.5 py-0.5 rounded flex items-center gap-1 ${
-                            holdStatus.status === 'hold' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-                          }`}>
-                            {holdStatus.status === 'hold' ? <><Lock size={10} /> {holdStatus.daysLeft}d</> : <><Unlock size={10} /> Ready</>}
-                          </span>
-                        )}
-                      </div>
+                    {/* Status Badge */}
+                    <div className={`absolute ${bulkMode ? 'top-1 left-7' : 'top-1 left-1'} px-1.5 py-0.5 rounded text-xs font-medium ${
+                      item.status === 'Stash' ? 'bg-purple-500 text-white' :
+                      item.status === 'Sold' ? 'bg-gray-500 text-white' :
+                      item.plannedDisposition === 'hold' ? 'bg-blue-500 text-white' :
+                      'bg-green-500 text-white'
+                    }`}>
+                      {item.status === 'Stash' ? 'Stash' : 
+                       item.status === 'Sold' ? 'Sold' :
+                       item.plannedDisposition === 'hold' ? 'Hold' : 'Sell'}
+                    </div>
+                    {/* Metal Badge */}
+                    <div className={`absolute top-1 right-1 px-1.5 py-0.5 rounded text-xs font-medium ${
+                      item.metalType === 'Gold' ? 'bg-yellow-400 text-yellow-900' :
+                      item.metalType === 'Platinum' ? 'bg-gray-300 text-gray-800' :
+                      'bg-gray-200 text-gray-700'
+                    }`}>
+                      {item.metalType}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="font-bold text-amber-700">${item.meltValue}</div>
-                    <div className="text-xs text-gray-400">Cost: ${item.purchasePrice}</div>
-                    <div className={`text-xs font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {profit >= 0 ? '+' : ''}${profit.toFixed(0)}
+                  
+                  {/* Info */}
+                  <div className="p-2">
+                    <div className="font-medium text-sm truncate">{item.description}</div>
+                    <div className="text-xs text-gray-400">{item.id}</div>
+                    
+                    {/* Equity Display */}
+                    <div className={`mt-2 p-2 rounded-lg ${equity >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-gray-500">Equity</span>
+                        <span className={`font-bold text-sm ${equity >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {equity >= 0 ? '+' : ''}${equity.toFixed(0)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-gray-400">ROI</span>
+                        <span className={equity >= 0 ? 'text-green-600' : 'text-red-600'}>
+                          {equityPercent >= 0 ? '+' : ''}{equityPercent.toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {/* Cost & Value */}
+                    <div className="mt-1 flex justify-between text-xs text-gray-500">
+                      <span>Cost: ${item.purchasePrice}</span>
+                      <span>Melt: ${currentMelt.toFixed(0)}</span>
                     </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        ) : (
+          /* LIST VIEW */
+          <div className="space-y-2 pb-24">
+            {filteredInventory.map(item => {
+              const holdStatus = getHoldStatus(item);
+              const spot = liveSpotPrices?.[item.metalType?.toLowerCase()] || 0;
+              const purityDecimal = parsePurity(item.purity);
+              const currentMelt = (parseFloat(item.weightOz) || 0) * spot * purityDecimal;
+              const equity = currentMelt - (parseFloat(item.purchasePrice) || 0);
+              const isSelected = bulkSelectedIds.includes(item.id);
+              
+              // Long press handler
+              let pressTimer = null;
+              const handleTouchStart = () => {
+                pressTimer = setTimeout(() => {
+                  if (!bulkMode) setBulkMode(true);
+                  if (!isSelected) setBulkSelectedIds(prev => [...prev, item.id]);
+                }, 500);
+              };
+              const handleTouchEnd = () => { if (pressTimer) clearTimeout(pressTimer); };
+              const handleClick = () => {
+                if (bulkMode) {
+                  if (isSelected) {
+                    setBulkSelectedIds(prev => prev.filter(id => id !== item.id));
+                  } else {
+                    setBulkSelectedIds(prev => [...prev, item.id]);
+                  }
+                } else {
+                  setSelectedItem(item);
+                  setView('detail');
+                }
+              };
+              
+              return (
+                <div 
+                  key={item.id} 
+                  onClick={handleClick}
+                  onTouchStart={handleTouchStart}
+                  onTouchEnd={handleTouchEnd}
+                  onMouseDown={handleTouchStart}
+                  onMouseUp={handleTouchEnd}
+                  onMouseLeave={handleTouchEnd}
+                  className={`bg-white p-3 rounded-lg shadow cursor-pointer hover:shadow-md transition-all ${
+                    item.status === 'Sold' ? 'opacity-60' : ''
+                  } ${isSelected ? 'ring-2 ring-purple-500 bg-purple-50' : ''}`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="flex gap-3">
+                      {/* Checkbox for bulk mode */}
+                      {bulkMode && (
+                        <div className="flex items-center justify-center w-6 h-12">
+                          {isSelected ? (
+                            <CheckSquare size={22} className="text-purple-600" />
+                          ) : (
+                            <Square size={22} className="text-gray-400" />
+                          )}
+                        </div>
+                      )}
+                      {item.photo && (
+                        <img src={getPhotoSrc(item.photo)} className="w-12 h-12 rounded object-cover" />
+                      )}
+                      <div>
+                        <div className="font-medium">{item.description}</div>
+                        <div className="text-xs text-gray-500">{item.id} • {item.category}</div>
+                        <div className="flex gap-1 mt-1">
+                          {item.status === 'Stash' && (
+                            <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded flex items-center gap-1">
+                              <Star size={10} /> Stash
+                            </span>
+                          )}
+                          {item.plannedDisposition === 'hold' && (
+                            <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Hold</span>
+                          )}
+                          {item.plannedDisposition === 'sell' && (
+                            <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">Sell</span>
+                          )}
+                          {item.ebayListingId && (
+                            <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded flex items-center gap-1">
+                              <ExternalLink size={10} /> eBay
+                            </span>
+                          )}
+                          {item.status === 'Available' && !item.plannedDisposition && (
+                            <span className={`text-xs px-1.5 py-0.5 rounded flex items-center gap-1 ${
+                              holdStatus.status === 'hold' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                            }`}>
+                              {holdStatus.status === 'hold' ? <><Lock size={10} /> {holdStatus.daysLeft}d</> : <><Unlock size={10} /> Ready</>}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold text-amber-700">${currentMelt.toFixed(0)}</div>
+                      <div className="text-xs text-gray-400">Cost: ${item.purchasePrice}</div>
+                      <div className={`text-xs font-bold ${equity >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {equity >= 0 ? '+' : ''}${equity.toFixed(0)} equity
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
         
         {/* Bulk Action Bar */}
         {bulkMode && bulkSelectedIds.length > 0 && (
