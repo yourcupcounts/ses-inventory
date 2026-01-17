@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Package, Plus, X, Trash2, Search, Settings, Download, Upload, Camera, Loader, BarChart3, TrendingUp, TrendingDown, Clock, AlertTriangle, AlertCircle, FileText, Filter, Users, UserPlus, Edit2, Edit3, Check, MapPin, Calendar, CreditCard, Building, User, Lock, Unlock, ShieldCheck, DollarSign, RefreshCw, Calculator, Layers, Star, ExternalLink, Flame, Archive, Zap, Shield, Database, FileSpreadsheet, AlertOctagon, Wifi, WifiOff, HardDrive, Cloud, CloudOff, Home, ChevronDown, ChevronRight, ChevronLeft, Link2, UserCheck, RotateCw, Car } from 'lucide-react';
+import { Package, Plus, X, Trash2, Search, Settings, Download, Upload, Camera, Loader, BarChart3, TrendingUp, TrendingDown, Clock, AlertTriangle, AlertCircle, FileText, Filter, Users, UserPlus, Edit2, Check, MapPin, Calendar, CreditCard, Building, User, Lock, Unlock, ShieldCheck, DollarSign, RefreshCw, Calculator, Layers, Star, ExternalLink, Flame, Archive, Zap, Shield, Database, FileSpreadsheet, AlertOctagon, Wifi, WifiOff, HardDrive, Cloud, CloudOff, ChevronLeft, ChevronRight, CheckSquare, Square } from 'lucide-react';
 
 // ============ CONFIGURATION - ADD YOUR API KEYS HERE ============
 const CONFIG = {
@@ -32,74 +32,6 @@ const CONFIG = {
   }
 };
 
-// ============ UNIVERSAL PURITY PARSER ============
-// Converts any purity format to a decimal (0-1)
-// Handles: 9999, 999, 925, 900, 800, 90, 50, 99, 0.999, 90%, 50%, 14K, 24K, etc.
-const parsePurity = (purity) => {
-  if (!purity) return 1;
-  
-  const p = purity.toString().trim().toUpperCase();
-  
-  // Handle karat gold (24K, 18K, 14K, 10K, etc.)
-  if (p.includes('K')) {
-    const karat = parseInt(p.replace('K', ''));
-    return karat / 24;
-  }
-  
-  // Handle percentage format (90%, 50%, 92.5%)
-  if (p.includes('%')) {
-    return parseFloat(p.replace('%', '')) / 100;
-  }
-  
-  // Handle numeric values
-  const num = parseFloat(p);
-  if (isNaN(num)) return 1;
-  
-  // Already a decimal (0.999, 0.925, 0.90, etc.)
-  if (num <= 1) {
-    return num;
-  }
-  
-  // 4-digit millesimal (9999 → 0.9999, 9995 → 0.9995)
-  if (num >= 1000) {
-    return num / 10000;
-  }
-  
-  // 3-digit millesimal (999, 925, 900, 800, 500, etc.)
-  if (num >= 100) {
-    return num / 1000;
-  }
-  
-  // 2-digit percentage (90 → 0.90, 50 → 0.50, 99 → 0.99)
-  // This catches common formats like "90" for 90% silver
-  if (num >= 10 && num <= 99) {
-    return num / 100;
-  }
-  
-  // Single digit - assume it's a fraction already or invalid
-  // (rare case, default to treating as-is if small)
-  return num > 1 ? num / 100 : num;
-};
-
-// Test the parser (uncomment to debug):
-// console.log('Purity tests:', {
-//   '9999': parsePurity('9999'),   // 0.9999
-//   '999': parsePurity('999'),     // 0.999
-//   '925': parsePurity('925'),     // 0.925
-//   '900': parsePurity('900'),     // 0.9
-//   '800': parsePurity('800'),     // 0.8
-//   '90': parsePurity('90'),       // 0.9
-//   '50': parsePurity('50'),       // 0.5
-//   '99': parsePurity('99'),       // 0.99
-//   '0.999': parsePurity('0.999'), // 0.999
-//   '0.90': parsePurity('0.90'),   // 0.9
-//   '90%': parsePurity('90%'),     // 0.9
-//   '50%': parsePurity('50%'),     // 0.5
-//   '14K': parsePurity('14K'),     // 0.583
-//   '24K': parsePurity('24K'),     // 1.0
-//   '18K': parsePurity('18K'),     // 0.75
-// });
-
 // ============ FIREBASE SERVICE ============
 // Import Firebase at top level
 import { initializeApp } from 'firebase/app';
@@ -110,18 +42,6 @@ const FirebaseService = {
   db: null,
   storage: null,
   initialized: false,
-  demoMode: false, // Demo mode uses separate collections
-  
-  // Set demo mode
-  setDemoMode(enabled) {
-    this.demoMode = enabled;
-    console.log(`Demo mode: ${enabled ? 'ENABLED' : 'DISABLED'}`);
-  },
-  
-  // Get collection name (prefixed with demo_ in demo mode)
-  getCollectionName(baseName) {
-    return this.demoMode ? `demo_${baseName}` : baseName;
-  },
   
   // Initialize Firebase
   async init() {
@@ -157,101 +77,47 @@ const FirebaseService = {
     return cleaned;
   },
   
-  // Save inventory to Firestore with photo handling
+  // Save inventory to Firestore
   async saveInventory(inventory) {
-    if (!this.initialized) {
-      console.error('SAVE BLOCKED: Firebase not initialized');
-      return false;
-    }
-    
+    if (!this.initialized) return false;
     try {
-      console.log(`SAVING: ${inventory.length} items to Firebase...`);
       const { doc, setDoc } = this.firestore;
-      
       for (const item of inventory) {
-        await this.saveItem(item);
+        // Store photo separately in Storage if exists
+        let photoUrl = null;
+        let photoBackUrl = null;
+        if (item.photo && item.photo.length > 1000) {
+          photoUrl = await this.uploadPhoto(item.id, item.photo);
+        }
+        if (item.photoBack && item.photoBack.length > 1000) {
+          photoBackUrl = await this.uploadPhoto(`${item.id}_back`, item.photoBack);
+        }
+        
+        const itemData = this.cleanObject({ 
+          ...item, 
+          photo: photoUrl || item.photo || null,
+          photoBack: photoBackUrl || item.photoBack || null
+        });
+        await setDoc(doc(this.db, 'inventory', item.id), itemData);
       }
-      
-      console.log(`SAVE COMPLETE: ${inventory.length} items saved`);
       return true;
     } catch (error) {
-      console.error('SAVE FAILED:', error);
-      return false;
-    }
-  },
-  
-  // Save a SINGLE item to Firestore (much faster than saving all)
-  async saveItem(item) {
-    if (!this.initialized) {
-      console.error('SAVE BLOCKED: Firebase not initialized');
-      return false;
-    }
-    
-    try {
-      const { doc, setDoc } = this.firestore;
-      const startTime = Date.now();
-      
-      // Photos are already compressed during capture, so just handle URLs vs base64
-      let photoToSave = item.photo || null;
-      let photoBackToSave = item.photoBack || null;
-      
-      // Only upload to Storage if photo is very large (>500KB after capture compression)
-      // Otherwise save inline to Firestore for faster access
-      if (photoToSave && !photoToSave.startsWith('http') && photoToSave.length > 500000) {
-        console.log(`Photo too large (${Math.round(photoToSave.length/1000)}KB), uploading to Storage...`);
-        const url = await this.uploadPhoto(`${item.id}_photo`, photoToSave);
-        if (url) photoToSave = url;
-      }
-      
-      if (photoBackToSave && !photoBackToSave.startsWith('http') && photoBackToSave.length > 500000) {
-        console.log(`Back photo too large (${Math.round(photoBackToSave.length/1000)}KB), uploading to Storage...`);
-        const url = await this.uploadPhoto(`${item.id}_photoBack`, photoBackToSave);
-        if (url) photoBackToSave = url;
-      }
-      
-      const itemData = this.cleanObject({ 
-        ...item, 
-        photo: photoToSave,
-        photoBack: photoBackToSave
-      });
-      
-      const photoInfo = photoToSave ? (photoToSave.startsWith('http') ? 'URL' : `${Math.round(photoToSave.length/1000)}KB`) : 'none';
-      console.log(`SAVING item: ${item.id} (photo: ${photoInfo})`);
-      
-      await setDoc(doc(this.db, this.getCollectionName('inventory'), item.id), itemData);
-      
-      const elapsed = Date.now() - startTime;
-      console.log(`SAVED item: ${item.id} - SUCCESS in ${elapsed}ms`);
-      return true;
-    } catch (error) {
-      console.error(`SAVE FAILED for ${item.id}:`, error);
+      console.error('Error saving inventory:', error);
       return false;
     }
   },
   
   // Load inventory from Firestore
   async loadInventory() {
-    if (!this.initialized) {
-      console.error('LOAD BLOCKED: Firebase not initialized');
-      return null;
-    }
+    if (!this.initialized) return null;
     try {
-      console.log(`LOADING: Fetching inventory from Firebase (${this.demoMode ? 'DEMO' : 'PRODUCTION'})...`);
       const { collection, getDocs } = this.firestore;
-      const snapshot = await getDocs(collection(this.db, this.getCollectionName('inventory')));
+      const snapshot = await getDocs(collection(this.db, 'inventory'));
       const inventory = [];
-      snapshot.forEach(doc => {
-        console.log(`LOADED item: ${doc.id}`);
-        inventory.push({ id: doc.id, ...doc.data() });
-      });
-      
-      // Track last known count to prevent accidental wipes
-      this._lastKnownInventoryCount = inventory.length;
-      
-      console.log(`LOAD COMPLETE: ${inventory.length} items from Firebase`);
+      snapshot.forEach(doc => inventory.push({ id: doc.id, ...doc.data() }));
       return inventory;
     } catch (error) {
-      console.error('LOAD FAILED:', error);
+      console.error('Error loading inventory:', error);
       return null;
     }
   },
@@ -283,7 +149,7 @@ const FirebaseService = {
           idPhotoBack: idPhotoBackUrl,
           signature: signatureUrl
         });
-        await setDoc(doc(this.db, this.getCollectionName('clients'), client.id), clientData);
+        await setDoc(doc(this.db, 'clients', client.id), clientData);
       }
       return true;
     } catch (error) {
@@ -294,19 +160,15 @@ const FirebaseService = {
   
   // Load clients from Firestore
   async loadClients() {
-    if (!this.initialized) {
-      console.log('Firebase not initialized, cannot load clients');
-      return null;
-    }
+    if (!this.initialized) return null;
     try {
       const { collection, getDocs } = this.firestore;
-      const snapshot = await getDocs(collection(this.db, this.getCollectionName('clients')));
+      const snapshot = await getDocs(collection(this.db, 'clients'));
       const clients = [];
       snapshot.forEach(doc => clients.push({ id: doc.id, ...doc.data() }));
-      console.log(`Loaded ${clients.length} clients from Firebase`);
       return clients;
     } catch (error) {
-      console.error('Error loading clients from Firebase:', error);
+      console.error('Error loading clients:', error);
       return null;
     }
   },
@@ -318,7 +180,7 @@ const FirebaseService = {
       const { doc, setDoc } = this.firestore;
       for (const lot of lots) {
         const lotData = this.cleanObject(lot);
-        await setDoc(doc(this.db, this.getCollectionName('lots'), lot.id), lotData);
+        await setDoc(doc(this.db, 'lots', lot.id), lotData);
       }
       return true;
     } catch (error) {
@@ -329,222 +191,25 @@ const FirebaseService = {
   
   // Load lots from Firestore
   async loadLots() {
-    if (!this.initialized) {
-      console.log('Firebase not initialized, cannot load lots');
-      return null;
-    }
+    if (!this.initialized) return null;
     try {
       const { collection, getDocs } = this.firestore;
-      const snapshot = await getDocs(collection(this.db, this.getCollectionName('lots')));
+      const snapshot = await getDocs(collection(this.db, 'lots'));
       const lots = [];
       snapshot.forEach(doc => lots.push({ id: doc.id, ...doc.data() }));
-      console.log(`Loaded ${lots.length} lots from Firebase`);
       return lots;
     } catch (error) {
-      console.error('Error loading lots from Firebase:', error);
+      console.error('Error loading lots:', error);
       return null;
     }
   },
   
-  // Save a SINGLE client to Firestore
-  async saveClient(client) {
-    if (!this.initialized) {
-      console.error('SAVE BLOCKED: Firebase not initialized');
-      return false;
-    }
-    try {
-      const { doc, setDoc } = this.firestore;
-      
-      // Handle ID photos and signature
-      let idPhotoFrontUrl = client.idPhotoFront || null;
-      let idPhotoBackUrl = client.idPhotoBack || null;
-      let signatureUrl = client.signature || null;
-      
-      if (client.idPhotoFront && client.idPhotoFront.length > 1000 && !client.idPhotoFront.startsWith('http')) {
-        idPhotoFrontUrl = await this.uploadPhoto(`${client.id}_id_front`, client.idPhotoFront);
-      }
-      if (client.idPhotoBack && client.idPhotoBack.length > 1000 && !client.idPhotoBack.startsWith('http')) {
-        idPhotoBackUrl = await this.uploadPhoto(`${client.id}_id_back`, client.idPhotoBack);
-      }
-      if (client.signature && client.signature.length > 1000 && !client.signature.startsWith('http')) {
-        signatureUrl = await this.uploadPhoto(`${client.id}_signature`, client.signature);
-      }
-      
-      const clientData = this.cleanObject({
-        ...client,
-        idPhotoFront: idPhotoFrontUrl,
-        idPhotoBack: idPhotoBackUrl,
-        signature: signatureUrl
-      });
-      
-      console.log(`SAVING client: ${client.id}`);
-      await setDoc(doc(this.db, this.getCollectionName('clients'), client.id), clientData);
-      console.log(`SAVED client: ${client.id} - SUCCESS`);
-      return true;
-    } catch (error) {
-      console.error(`SAVE FAILED for client ${client.id}:`, error);
-      return false;
-    }
-  },
-  
-  // Save a SINGLE receipt to Firestore (with file in Storage)
-  async saveReceipt(receipt) {
-    if (!this.initialized) {
-      console.error('SAVE BLOCKED: Firebase not initialized');
-      return false;
-    }
-    try {
-      const { doc, setDoc } = this.firestore;
-      
-      // If receipt has large fileData, upload to Storage first
-      let fileUrl = receipt.fileUrl || null;
-      if (receipt.fileData && receipt.fileData.length > 1000 && !receipt.fileData.startsWith('http')) {
-        console.log(`Uploading receipt file ${receipt.id} to Storage (${Math.round(receipt.fileData.length/1000)}KB)...`);
-        fileUrl = await this.uploadReceiptFile(receipt.id, receipt.fileData, receipt.fileType);
-        if (!fileUrl) {
-          console.error(`Failed to upload receipt file for ${receipt.id}`);
-          // Continue anyway, but file won't be saved
-        }
-      }
-      
-      // Save receipt metadata to Firestore (WITHOUT the large fileData)
-      const receiptData = this.cleanObject({
-        ...receipt,
-        fileData: null, // Don't save base64 to Firestore
-        fileUrl: fileUrl // Save the Storage URL instead
-      });
-      
-      console.log(`SAVING receipt: ${receipt.id}`);
-      await setDoc(doc(this.db, this.getCollectionName('receipts'), receipt.id), receiptData);
-      console.log(`SAVED receipt: ${receipt.id} - SUCCESS`);
-      return true;
-    } catch (error) {
-      console.error(`SAVE FAILED for receipt ${receipt.id}:`, error);
-      return false;
-    }
-  },
-  
-  // Upload receipt file to Firebase Storage
-  async uploadReceiptFile(id, base64Data, mimeType = 'application/pdf') {
-    if (!this.initialized || !this.storage) {
-      console.error('Cannot upload receipt - Storage not initialized');
-      return null;
-    }
-    try {
-      const { ref, uploadString, getDownloadURL } = this.storageHelpers;
-      // Determine file extension from mime type
-      const ext = mimeType.includes('pdf') ? 'pdf' : mimeType.includes('png') ? 'png' : 'jpg';
-      const filePath = this.demoMode ? `demo_receipts/${id}.${ext}` : `receipts/${id}.${ext}`;
-      const storageRef = ref(this.storage, filePath);
-      
-      // Upload as base64
-      await uploadString(storageRef, base64Data, 'base64', { contentType: mimeType });
-      const downloadUrl = await getDownloadURL(storageRef);
-      console.log(`Receipt file uploaded: ${filePath}`);
-      return downloadUrl;
-    } catch (error) {
-      console.error('Error uploading receipt file:', error);
-      return null;
-    }
-  },
-  
-  // Load receipts from Firestore
-  async loadReceipts() {
-    if (!this.initialized) {
-      console.log('Firebase not initialized, cannot load receipts');
-      return null;
-    }
-    try {
-      const { collection, getDocs } = this.firestore;
-      const snapshot = await getDocs(collection(this.db, this.getCollectionName('receipts')));
-      const receipts = [];
-      snapshot.forEach(doc => receipts.push({ id: doc.id, ...doc.data() }));
-      console.log(`Loaded ${receipts.length} receipts from Firebase`);
-      return receipts;
-    } catch (error) {
-      console.error('Error loading receipts from Firebase:', error);
-      return null;
-    }
-  },
-  
-  // Save mileage trip
-  async saveMileage(trip) {
-    if (!this.initialized) {
-      console.error('SAVE BLOCKED: Firebase not initialized');
-      return false;
-    }
-    try {
-      const { doc, setDoc } = this.firestore;
-      const tripData = this.cleanObject(trip);
-      console.log(`SAVING mileage: ${trip.id}`);
-      await setDoc(doc(this.db, this.getCollectionName('mileage'), trip.id), tripData);
-      console.log(`SAVED mileage: ${trip.id} - SUCCESS`);
-      return true;
-    } catch (error) {
-      console.error(`SAVE FAILED for mileage ${trip.id}:`, error);
-      return false;
-    }
-  },
-  
-  // Load mileage from Firestore
-  async loadMileage() {
-    if (!this.initialized) return null;
-    try {
-      const { collection, getDocs } = this.firestore;
-      const snapshot = await getDocs(collection(this.db, this.getCollectionName('mileage')));
-      const mileage = [];
-      snapshot.forEach(doc => mileage.push({ id: doc.id, ...doc.data() }));
-      console.log(`Loaded ${mileage.length} mileage trips from Firebase`);
-      return mileage;
-    } catch (error) {
-      console.error('Error loading mileage from Firebase:', error);
-      return null;
-    }
-  },
-  
-  // Save vehicle
-  async saveVehicle(vehicle) {
-    if (!this.initialized) {
-      console.error('SAVE BLOCKED: Firebase not initialized');
-      return false;
-    }
-    try {
-      const { doc, setDoc } = this.firestore;
-      const vehicleData = this.cleanObject(vehicle);
-      console.log(`SAVING vehicle: ${vehicle.id}`);
-      await setDoc(doc(this.db, this.getCollectionName('vehicles'), vehicle.id), vehicleData);
-      console.log(`SAVED vehicle: ${vehicle.id} - SUCCESS`);
-      return true;
-    } catch (error) {
-      console.error(`SAVE FAILED for vehicle ${vehicle.id}:`, error);
-      return false;
-    }
-  },
-  
-  // Load vehicles from Firestore
-  async loadVehicles() {
-    if (!this.initialized) return null;
-    try {
-      const { collection, getDocs } = this.firestore;
-      const snapshot = await getDocs(collection(this.db, this.getCollectionName('vehicles')));
-      const vehicles = [];
-      snapshot.forEach(doc => vehicles.push({ id: doc.id, ...doc.data() }));
-      console.log(`Loaded ${vehicles.length} vehicles from Firebase`);
-      return vehicles;
-    } catch (error) {
-      console.error('Error loading vehicles from Firebase:', error);
-      return null;
-    }
-  },
-
   // Upload photo to Firebase Storage
   async uploadPhoto(id, base64Data) {
     if (!this.initialized || !this.storage) return null;
     try {
       const { ref, uploadString, getDownloadURL } = this.storageHelpers;
-      // Use demo_ prefix for photos in demo mode
-      const photoPath = this.demoMode ? `demo_photos/${id}.jpg` : `photos/${id}.jpg`;
-      const storageRef = ref(this.storage, photoPath);
+      const storageRef = ref(this.storage, `photos/${id}.jpg`);
       await uploadString(storageRef, base64Data, 'base64');
       return await getDownloadURL(storageRef);
     } catch (error) {
@@ -558,61 +223,13 @@ const FirebaseService = {
     if (!this.initialized) return false;
     try {
       const { doc, deleteDoc } = this.firestore;
-      await deleteDoc(doc(this.db, this.getCollectionName(collectionName), itemId));
+      await deleteDoc(doc(this.db, collectionName, itemId));
       return true;
     } catch (error) {
       console.error('Error deleting item:', error);
       return false;
     }
-  },
-  
-  // Clear all demo data (admin function)
-  async clearDemoData() {
-    if (!this.initialized) return false;
-    try {
-      const { collection, getDocs } = this.firestore;
-      const { doc, deleteDoc } = this.firestore;
-      
-      // Clear demo_inventory
-      const invSnapshot = await getDocs(collection(this.db, 'demo_inventory'));
-      for (const docSnap of invSnapshot.docs) {
-        await deleteDoc(doc(this.db, 'demo_inventory', docSnap.id));
-      }
-      
-      // Clear demo_clients
-      const clientSnapshot = await getDocs(collection(this.db, 'demo_clients'));
-      for (const docSnap of clientSnapshot.docs) {
-        await deleteDoc(doc(this.db, 'demo_clients', docSnap.id));
-      }
-      
-      // Clear demo_lots
-      const lotSnapshot = await getDocs(collection(this.db, 'demo_lots'));
-      for (const docSnap of lotSnapshot.docs) {
-        await deleteDoc(doc(this.db, 'demo_lots', docSnap.id));
-      }
-      
-      console.log('Demo data cleared');
-      return true;
-    } catch (error) {
-      console.error('Error clearing demo data:', error);
-      return false;
-    }
   }
-};
-
-// Helper function to get photo src - handles both base64 and URL formats
-const getPhotoSrc = (photo) => {
-  if (!photo) return null;
-  // If it's already a URL (from Firebase Storage), use it directly
-  if (photo.startsWith('http://') || photo.startsWith('https://')) {
-    return photo;
-  }
-  // If it's a data URL, use it directly
-  if (photo.startsWith('data:')) {
-    return photo;
-  }
-  // Otherwise assume it's base64 and add the prefix
-  return `data:image/jpeg;base64,${photo}`;
 };
 
 // ============ SPOT PRICE SERVICE ============
@@ -620,7 +237,7 @@ const SpotPriceService = {
   lastPrices: { gold: 4600.00, silver: 90.00, platinum: 985.00, palladium: 945.00 },
   lastUpdate: null,
   
-  // Fetch live spot prices from multiple sources
+  // Fetch live spot prices from goldprice.org (free, CORS-friendly)
   async fetchFromMetalsLive() {
     try {
       console.log('Fetching spot prices from goldprice.org...');
@@ -634,38 +251,14 @@ const SpotPriceService = {
         const item = data.items[0];
         if (item.xauPrice) this.lastPrices.gold = item.xauPrice;
         if (item.xagPrice) this.lastPrices.silver = item.xagPrice;
-        // goldprice.org also has platinum and palladium
-        if (item.xptPrice) this.lastPrices.platinum = item.xptPrice;
-        if (item.xpdPrice) this.lastPrices.palladium = item.xpdPrice;
         this.lastUpdate = new Date();
         console.log('Spot prices updated successfully:', this.lastPrices);
         return this.lastPrices;
       }
       throw new Error('Invalid response format');
     } catch (error) {
-      console.log('goldprice.org fetch failed, trying backup...', error.message);
-      return null;
-    }
-  },
-  
-  // Backup: Fetch from metals-api via our serverless function
-  async fetchFromBackup() {
-    try {
-      console.log('Fetching from backup spot price API...');
-      const response = await fetch('/api/spot-prices');
-      if (!response.ok) throw new Error('Backup API error: ' + response.status);
-      const data = await response.json();
-      
-      if (data.gold) this.lastPrices.gold = data.gold;
-      if (data.silver) this.lastPrices.silver = data.silver;
-      if (data.platinum) this.lastPrices.platinum = data.platinum;
-      if (data.palladium) this.lastPrices.palladium = data.palladium;
-      this.lastUpdate = new Date();
-      console.log('Backup spot prices loaded:', this.lastPrices);
+      console.log('Spot price fetch failed, using defaults:', error.message);
       return this.lastPrices;
-    } catch (error) {
-      console.log('Backup API failed:', error.message);
-      return null;
     }
   },
   
@@ -703,15 +296,10 @@ const SpotPriceService = {
   async fetchPrices() {
     if (!CONFIG.features.useLiveSpot) return this.lastPrices;
     
-    // Try goldprice.org first (free, has all 4 metals)
+    // Try Metals.live first (free)
     let prices = await this.fetchFromMetalsLive();
     
-    // Try backup API if primary failed
-    if (!prices) {
-      prices = await this.fetchFromBackup();
-    }
-    
-    // Fall back to GoldAPI if available
+    // Fall back to GoldAPI if available and Metals.live failed
     if (!prices && CONFIG.goldApiKey) {
       prices = await this.fetchFromGoldApi();
     }
@@ -1579,8 +1167,15 @@ function calculateSpotValues(inventory, spotPrices) {
     const weight = parseFloat(item.weightOz) || 0;
     
     // Calculate pure metal weight based on purity
+    let purityDecimal = 1;
     const purity = item.purity || '';
-    const purityDecimal = purity.toLowerCase() === 'plated' ? 0 : parsePurity(purity);
+    if (purity.includes('K')) purityDecimal = parseInt(purity) / 24;
+    else if (purity.includes('%')) purityDecimal = parseInt(purity) / 100;
+    else if (purity === '925') purityDecimal = 0.925;
+    else if (purity === '999') purityDecimal = 0.999;
+    else if (purity === '950') purityDecimal = 0.95;
+    else if (purity === '900') purityDecimal = 0.90;
+    else if (purity === 'Plated' || purity === 'plated') purityDecimal = 0;
     
     const pureWeight = weight * purityDecimal;
     const spotPrice = spotPrices[metal.toLowerCase()] || 0;
@@ -1637,6 +1232,96 @@ function getHoldStatus(item) {
     return { status: 'hold', message: `On Hold - ${diffDays} day${diffDays > 1 ? 's' : ''} remaining`, daysLeft: diffDays, canSell: false, releaseDate };
   }
 }
+
+// Your actual inventory from past conversations
+const starterInventory = [
+  // January 13, 2026 - Auction Purchases
+  { id: 'SES-001', description: 'Franklin Half Dollars (15 coin set)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 5.43, source: 'Auction', clientId: 'CLI-001', dateAcquired: '2026-01-13', purchasePrice: 400, meltValue: 469, status: 'Available', notes: 'Capital Plastics holder, AU/BU condition. Retail $600-675.', coinKey: 'franklin-half', quantity: 15, lotId: 'LOT-001' },
+  { id: 'SES-002', description: 'Peace Dollars (9 coin set, 1924)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 6.96, source: 'Auction', clientId: 'CLI-001', dateAcquired: '2026-01-13', purchasePrice: 550, meltValue: 601, status: 'Available', notes: 'Capital Plastics holder, VF-AU. Retail $720-855.', coinKey: 'peace-dollar', quantity: 9, lotId: 'LOT-002' },
+  { id: 'SES-003', description: '1927-D Peace Dollar NGC AU55', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.7734, source: 'Auction', clientId: 'CLI-001', dateAcquired: '2026-01-13', purchasePrice: 75, meltValue: 67, status: 'Available', notes: 'NGC Cert #1531904-041, Semi-key date (1.27M mintage). Retail $125-175.', coinKey: 'peace-dollar', year: '1927', mint: 'D', grade: 'AU55' },
+  { id: 'SES-004', description: '1922 Peace Dollar NGC MS63', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.7734, source: 'Auction', clientId: 'CLI-001', dateAcquired: '2026-01-13', purchasePrice: 75, meltValue: 67, status: 'Available', notes: 'NGC Cert #6788772-065, Common date. Retail $85-110.', coinKey: 'peace-dollar', year: '1922', grade: 'MS63' },
+  { id: 'SES-005', description: '90% Silver Quarters (60 coins)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 10.85, source: 'Auction', clientId: 'CLI-001', dateAcquired: '2026-01-13', purchasePrice: 750, meltValue: 938, status: 'Available', notes: 'Mixed Washington quarters bulk lot.', coinKey: 'washington-quarter', quantity: 60, lotId: 'LOT-003' },
+  
+  // January 12, 2026 - Victorian Lace Antique Mall
+  { id: 'SES-006', description: 'Mexican Sterling Hinged Bangle (HPL maker)', category: 'Silver - Sterling', metalType: 'Silver', purity: '925', weightOz: 2.70, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 136.96, meltValue: 225, status: 'Available', notes: 'Modernist square design, 84g. Price includes 7% tax.' },
+  { id: 'SES-007', description: 'Mexican Sterling Chevron Link Bracelet', category: 'Silver - Sterling', metalType: 'Silver', purity: '925', weightOz: 1.93, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 48.15, meltValue: 161, status: 'Available', notes: 'Leaf/wheat pattern, 60g, Mexico 925 mark, TL-01 maker. Price includes tax. Paid 32% of melt.' },
+  { id: 'SES-008', description: '2008-S Hawaii Silver Proof Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 13, meltValue: 16, status: 'Available', notes: 'State Quarter series, SGC booth', coinKey: 'washington-quarter', year: '2008', mint: 'S', grade: 'PF' },
+  { id: 'SES-009', description: '2011-S Gettysburg Silver Proof Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 11, meltValue: 16, status: 'Available', notes: 'America the Beautiful', coinKey: 'washington-quarter', year: '2011', mint: 'S', grade: 'PF' },
+  { id: 'SES-010', description: '2010-S Grand Canyon Silver Proof Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 13, meltValue: 16, status: 'Available', notes: 'America the Beautiful', coinKey: 'washington-quarter', year: '2010', mint: 'S', grade: 'PF' },
+  { id: 'SES-011', description: '1962-D Franklin Half Dollar', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.3617, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 26, meltValue: 31, status: 'Available', coinKey: 'franklin-half', year: '1962', mint: 'D' },
+  { id: 'SES-012', description: '1930 Standing Liberty Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 23, meltValue: 16, status: 'Available', notes: 'Collector premium (150% melt)', coinKey: 'standing-liberty-quarter', year: '1930' },
+  { id: 'SES-013', description: '1928 Standing Liberty Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 23, meltValue: 16, status: 'Available', coinKey: 'standing-liberty-quarter', year: '1928' },
+  { id: 'SES-014', description: '1924 Standing Liberty Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 75, meltValue: 16, status: 'Available', notes: 'Paid 488% of melt - collector piece', coinKey: 'standing-liberty-quarter', year: '1924' },
+  { id: 'SES-015', description: '1927 Standing Liberty Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 23, meltValue: 16, status: 'Available', coinKey: 'standing-liberty-quarter', year: '1927' },
+  { id: 'SES-016', description: '1925 Standing Liberty Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 23, meltValue: 16, status: 'Available', coinKey: 'standing-liberty-quarter', year: '1925' },
+  { id: 'SES-017', description: '1903-O Barber Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 13, meltValue: 16, status: 'Available', notes: 'Good buy at 85% melt', coinKey: 'barber-quarter', year: '1903', mint: 'O' },
+  { id: 'SES-018', description: '1909 Barber Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 13, meltValue: 16, status: 'Available', coinKey: 'barber-quarter', year: '1909' },
+  { id: 'SES-019', description: '1908 Barber Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 13, meltValue: 16, status: 'Available', coinKey: 'barber-quarter', year: '1908' },
+  { id: 'SES-020', description: '1909-D Barber Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 14, meltValue: 16, status: 'Available', coinKey: 'barber-quarter', year: '1909', mint: 'D' },
+  { id: 'SES-021', description: '1912 Barber Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 23, meltValue: 16, status: 'Available', notes: 'Collector premium (150% melt)', coinKey: 'barber-quarter', year: '1912' },
+  { id: 'SES-022', description: '1915 Barber Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 23, meltValue: 16, status: 'Available', coinKey: 'barber-quarter', year: '1915' },
+  { id: 'SES-023', description: '1945-S Walking Liberty Half', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.3617, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 26, meltValue: 31, status: 'Available', coinKey: 'walking-liberty-half', year: '1945', mint: 'S' },
+  { id: 'SES-024', description: '1937 Walking Liberty Half', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.3617, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 28, meltValue: 31, status: 'Available', coinKey: 'walking-liberty-half', year: '1937' },
+  { id: 'SES-025', description: '1949-S Franklin Half Dollar', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.3617, source: 'Victorian Lace Antique Mall', clientId: 'CLI-002', dateAcquired: '2026-01-12', purchasePrice: 26, meltValue: 31, status: 'Available', coinKey: 'franklin-half', year: '1949', mint: 'S' },
+  
+  // Other items from conversations
+  { id: 'SES-026', description: 'South African Threepence Coin Bracelet (8 coins)', category: 'Silver - World', metalType: 'Silver', purity: '80%', weightOz: 0.29, source: 'Walk-in', clientId: 'CLI-003', dateAcquired: '2026-01-13', purchasePrice: 18, meltValue: 25, status: 'Available', notes: 'George VI era 3d coins (1951-1952), broken bracelet, base metal bezels. Melt only.' },
+  { id: 'SES-027', description: 'Franklin Mint Apollo 13 Medal', category: 'Collectibles', metalType: 'Silver', purity: '925', weightOz: 0, source: 'Walk-in', clientId: 'CLI-003', dateAcquired: '2026-01-10', purchasePrice: 60, meltValue: 0, status: 'Available', notes: 'Space-flown metal content, presentation case & docs. Collector value $100-150, not melt.' },
+  { id: 'SES-028', description: 'Mexican Sterling Mahogany Obsidian Bracelet', category: 'Silver - Sterling', metalType: 'Silver', purity: '925', weightOz: 0.80, source: 'Walk-in', clientId: 'CLI-003', dateAcquired: '2026-01-11', purchasePrice: 42, meltValue: 67, status: 'Available', notes: 'Taxco-style, 8 oval cabochons, ~43g total (~25g silver). eBay value $80-120. Bought at 70% melt.' },
+];
+
+// Your actual clients
+const starterClients = [
+  { id: 'CLI-001', name: 'January 13 Auction', type: 'Business', email: '', phone: '', address: '', idType: 'Business', idNumber: '', idExpiry: '', idFrontPhoto: null, idBackPhoto: null, signature: null, signatureTimestamp: null, signatureLocation: null, notes: 'Auction house - Franklin set, Peace set, NGC slabs, 60 quarters. Total: $1,850', dateAdded: '2026-01-13', totalTransactions: 5, totalPurchased: 1850 },
+  { id: 'CLI-002', name: 'Victorian Lace Antique Mall', type: 'Business', email: '', phone: '', address: 'Rutherfordton, NC', businessLicense: '', taxId: '', idType: 'Business', idNumber: '', idFrontPhoto: null, idBackPhoto: null, signature: null, signatureTimestamp: null, signatureLocation: null, notes: 'Antique mall with multiple booths (SGC, WW, etc). Coins exempt from tax, jewelry taxed at 7%.', dateAdded: '2026-01-12', totalTransactions: 22, totalPurchased: 560 },
+  { id: 'CLI-003', name: 'Walk-in Sellers', type: 'Private', email: '', phone: '', address: '', idType: '', idNumber: '', idExpiry: '', idFrontPhoto: null, idBackPhoto: null, signature: null, signatureTimestamp: null, signatureLocation: null, notes: 'Miscellaneous walk-in sellers - SA bracelet, Apollo medal, obsidian bracelet', dateAdded: '2026-01-10', totalTransactions: 3, totalPurchased: 120 },
+];
+
+// Your actual lots
+const starterLots = [
+  { 
+    id: 'LOT-001', 
+    description: 'Franklin Half Dollar Set (15 coins)', 
+    totalCost: 400, 
+    totalItems: 15, 
+    source: 'Auction',
+    clientId: 'CLI-001',
+    dateAcquired: '2026-01-13',
+    status: 'intact',
+    allocationMethod: 'equal',
+    notes: 'Capital Plastics holder, AU/BU condition. Paid 85.4% of melt ($468.57). Retail value $600-675. Consider selling as set for collector premium.',
+    itemIds: ['SES-001'],
+    createdAt: '2026-01-13T00:00:00Z'
+  },
+  { 
+    id: 'LOT-002', 
+    description: 'Peace Dollar Set (9 coins, 1924)', 
+    totalCost: 550, 
+    totalItems: 9, 
+    source: 'Auction',
+    clientId: 'CLI-001',
+    dateAcquired: '2026-01-13',
+    status: 'intact',
+    allocationMethod: 'equal',
+    notes: 'Capital Plastics holder (aftermarket, not mint issued), VF-AU. Paid 91.5% of melt ($600.88). Retail $720-855. Test for authenticity before resale.',
+    itemIds: ['SES-002'],
+    createdAt: '2026-01-13T00:00:00Z'
+  },
+  { 
+    id: 'LOT-003', 
+    description: '90% Silver Quarters (60 coins)', 
+    totalCost: 750, 
+    totalItems: 60, 
+    source: 'Auction',
+    clientId: 'CLI-001',
+    dateAcquired: '2026-01-13',
+    status: 'intact',
+    allocationMethod: 'equal',
+    notes: 'Mixed Washington quarters. $15 face value. Paid $50/face ($12.50/coin). Junk silver for melt or resale.',
+    itemIds: ['SES-005'],
+    createdAt: '2026-01-13T00:00:00Z'
+  }
+];
 
 // ============ EBAY LISTING VIEW ============
 function EbayListingView({ item, generatedListing, onBack, onListingCreated }) {
@@ -2469,7 +2154,7 @@ Ships securely in protective packaging. Thanks for looking!`;
 }
 
 // ============ PERSONAL STASH VIEW ============
-function PersonalStashView({ inventory, spotPrices, onBack, onSelectItem, onMoveToStash, onMoveToInventory, onGoHome }) {
+function PersonalStashView({ inventory, spotPrices, onBack, onSelectItem, onMoveToStash, onMoveToInventory }) {
   const [view, setView] = useState('stash'); // stash, add
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItems, setSelectedItems] = useState([]);
@@ -2481,7 +2166,11 @@ function PersonalStashView({ inventory, spotPrices, onBack, onSelectItem, onMove
   // Calculate stash totals
   const calculateMetalValue = (item) => {
     const weight = parseFloat(item.weightOz) || 0;
-    const purityDecimal = parsePurity(item.purity);
+    let purityDecimal = 1;
+    if (item.purity?.includes('K')) purityDecimal = parseInt(item.purity) / 24;
+    else if (item.purity?.includes('%')) purityDecimal = parseInt(item.purity) / 100;
+    else if (item.purity === '925') purityDecimal = 0.925;
+    else if (item.purity === '999' || item.purity === '9999') purityDecimal = 0.999;
     const spot = spotPrices[item.metalType?.toLowerCase()] || 0;
     return weight * purityDecimal * spot;
   };
@@ -2528,14 +2217,7 @@ function PersonalStashView({ inventory, spotPrices, onBack, onSelectItem, onMove
       {/* Header */}
       <div className="bg-gradient-to-r from-amber-700 to-yellow-600 text-white p-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <button onClick={onBack} className="text-white">← Back</button>
-            {onGoHome && (
-              <button onClick={onGoHome} className="p-1 hover:bg-white hover:bg-opacity-20 rounded">
-                <Home size={18} />
-              </button>
-            )}
-          </div>
+          <button onClick={onBack} className="text-white">← Back</button>
           <h1 className="text-xl font-bold flex items-center gap-2">
             <Star size={24} /> Personal Stash
           </h1>
@@ -2642,7 +2324,7 @@ function PersonalStashView({ inventory, spotPrices, onBack, onSelectItem, onMove
                       >
                         {item.photo && (
                           <img 
-                            src={getPhotoSrc(item.photo)} 
+                            src={`data:image/jpeg;base64,${item.photo}`} 
                             className="w-12 h-12 rounded object-cover"
                           />
                         )}
@@ -2726,7 +2408,7 @@ function PersonalStashView({ inventory, spotPrices, onBack, onSelectItem, onMove
                           </div>
                           {item.photo && (
                             <img 
-                              src={getPhotoSrc(item.photo)} 
+                              src={`data:image/jpeg;base64,${item.photo}`} 
                               className="w-10 h-10 rounded object-cover"
                             />
                           )}
@@ -3093,10 +2775,6 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
   const [analyzing, setAnalyzing] = useState(false);
   const [apiError, setApiError] = useState(null);
   
-  // Sales tax state
-  const [taxable, setTaxable] = useState(false);
-  const [taxRate, setTaxRate] = useState(6.75);
-  
   // Two-photo capture state
   const [captureStep, setCaptureStep] = useState('idle'); // idle, front, back
   const [frontPhoto, setFrontPhoto] = useState(null);
@@ -3108,9 +2786,7 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
   // Calculate totals
   const totalOffer = sessionItems.reduce((sum, item) => sum + item.buyPrice, 0);
   const discountAmount = parseFloat(bulkDiscount) || 0;
-  const subtotalAfterDiscount = totalOffer - discountAmount;
-  const salesTax = taxable ? Math.round(subtotalAfterDiscount * (taxRate / 100) * 100) / 100 : 0;
-  const finalOffer = subtotalAfterDiscount + salesTax;
+  const finalOffer = totalOffer - discountAmount;
   
   // Calculate value for a coin from reference
   const calculateCoinValue = (coinKey, grade, quantity = 1) => {
@@ -3160,7 +2836,6 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
         premium: premium * quantity,
         marketValue: marketValue * quantity,
         buyPrice: buyPrice * quantity,
-        originalBuyPrice: buyPrice * quantity,
         buyModifier,
         retailPremium,
         quantity,
@@ -3210,7 +2885,6 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
         premium: premium * quantity,
         marketValue: marketValue * quantity,
         buyPrice: buyPrice * quantity,
-        originalBuyPrice: buyPrice * quantity,
         buyPercent: adjustedBuyPercent,
         quantity,
         isGraded,
@@ -3538,14 +3212,6 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
         adjustedPrice = item.buyPrice - (discountAmount * proportion);
       }
       
-      // Apply sales tax proportionally if taxable
-      let taxPortion = 0;
-      if (taxable && salesTax > 0) {
-        const proportion = adjustedPrice / subtotalAfterDiscount;
-        taxPortion = salesTax * proportion;
-      }
-      
-      const totalItemCost = adjustedPrice + taxPortion;
       const coin = item.coinKey ? coinReference[item.coinKey] : null;
       
       return {
@@ -3554,11 +3220,7 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
         metalType: coin?.metal || 'Silver',
         purity: coin ? `${(coin.purity * 100).toFixed(0)}%` : '90%',
         weightOz: coin?.aswOz || coin?.agwOz || coin?.apwOz || 0,
-        purchasePrice: Math.round(totalItemCost * 100) / 100, // Total including proportional tax
-        priceBeforeTax: Math.round(adjustedPrice * 100) / 100,
-        salesTax: Math.round(taxPortion * 100) / 100,
-        taxable: taxable,
-        taxRate: taxable ? taxRate : null,
+        purchasePrice: Math.round(adjustedPrice * 100) / 100,
         meltValue: Math.round((item.meltValue || 0) * 100) / 100,
         photo: item.photo,
         photoBack: item.photoBack,
@@ -3574,9 +3236,6 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
       items: inventoryItems,
       totalPaid: finalOffer,
       discount: discountAmount,
-      salesTax: salesTax,
-      taxRate: taxable ? taxRate : null,
-      taxable: taxable,
       notes: sessionNotes,
       sessionDate: new Date().toISOString()
     });
@@ -3926,7 +3585,7 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                       <div key={item.id} className="flex items-center justify-between bg-gray-700 p-2 rounded">
                         <div className="flex items-center gap-2">
                           {item.photo && (
-                            <img src={getPhotoSrc(item.photo)} className="w-8 h-8 rounded object-cover" />
+                            <img src={`data:image/jpeg;base64,${item.photo}`} className="w-8 h-8 rounded object-cover" />
                           )}
                           <div>
                             <div className="text-white text-sm">{item.description}</div>
@@ -3978,7 +3637,7 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
               {evaluatingItem.photo && (
                 <div className="aspect-video bg-black">
                   <img 
-                    src={getPhotoSrc(evaluatingItem.photo)} 
+                    src={`data:image/jpeg;base64,${evaluatingItem.photo}`} 
                     className="w-full h-full object-contain"
                   />
                 </div>
@@ -4294,10 +3953,7 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                         onClick={() => {
                           const newQty = Math.max(1, (evaluatingItem.quantity || 1) - 1);
                           const valuation = calculateCoinValue(evaluatingItem.coinKey, evaluatingItem.grade, newQty);
-                          // If custom unit price is set, recalculate buyPrice from it
-                          const customUnit = evaluatingItem.customUnitPrice ? parseFloat(evaluatingItem.customUnitPrice) : null;
-                          const newBuyPrice = customUnit ? (customUnit * newQty) : valuation.buyPrice;
-                          setEvaluatingItem({ ...evaluatingItem, ...valuation, quantity: newQty, buyPrice: newBuyPrice });
+                          setEvaluatingItem({ ...evaluatingItem, ...valuation, quantity: newQty });
                         }}
                         className="w-8 h-8 bg-gray-700 text-white rounded"
                       >
@@ -4309,10 +3965,7 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                         onChange={(e) => {
                           const newQty = Math.max(1, parseInt(e.target.value) || 1);
                           const valuation = calculateCoinValue(evaluatingItem.coinKey, evaluatingItem.grade, newQty);
-                          // If custom unit price is set, recalculate buyPrice from it
-                          const customUnit = evaluatingItem.customUnitPrice ? parseFloat(evaluatingItem.customUnitPrice) : null;
-                          const newBuyPrice = customUnit ? (customUnit * newQty) : valuation.buyPrice;
-                          setEvaluatingItem({ ...evaluatingItem, ...valuation, quantity: newQty, buyPrice: newBuyPrice });
+                          setEvaluatingItem({ ...evaluatingItem, ...valuation, quantity: newQty });
                         }}
                         className="w-16 bg-gray-700 text-white text-center py-1 rounded"
                         min="1"
@@ -4321,64 +3974,13 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                         onClick={() => {
                           const newQty = (evaluatingItem.quantity || 1) + 1;
                           const valuation = calculateCoinValue(evaluatingItem.coinKey, evaluatingItem.grade, newQty);
-                          // If custom unit price is set, recalculate buyPrice from it
-                          const customUnit = evaluatingItem.customUnitPrice ? parseFloat(evaluatingItem.customUnitPrice) : null;
-                          const newBuyPrice = customUnit ? (customUnit * newQty) : valuation.buyPrice;
-                          setEvaluatingItem({ ...evaluatingItem, ...valuation, quantity: newQty, buyPrice: newBuyPrice });
+                          setEvaluatingItem({ ...evaluatingItem, ...valuation, quantity: newQty });
                         }}
                         className="w-8 h-8 bg-gray-700 text-white rounded"
                       >
                         +
                       </button>
                     </div>
-                  </div>
-                  
-                  {/* MANUAL PRICE OVERRIDE */}
-                  <div className="mb-3 bg-gray-700 rounded-lg p-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-300 text-sm">
-                        Custom Price {(evaluatingItem.quantity || 1) > 1 ? '(per item):' : ':'}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-400">$</span>
-                        <input
-                          type="number"
-                          step="0.01"
-                          placeholder={(evaluatingItem.originalBuyPrice / (evaluatingItem.quantity || 1))?.toFixed(2)}
-                          value={evaluatingItem.customUnitPrice || ''}
-                          onChange={(e) => {
-                            const unitPrice = e.target.value ? parseFloat(e.target.value) : null;
-                            const qty = evaluatingItem.quantity || 1;
-                            setEvaluatingItem({ 
-                              ...evaluatingItem, 
-                              customUnitPrice: e.target.value,
-                              buyPrice: unitPrice ? (unitPrice * qty) : evaluatingItem.originalBuyPrice
-                            });
-                          }}
-                          className="w-24 bg-gray-800 text-white text-right py-1 px-2 rounded border border-gray-600 focus:border-teal-500 focus:outline-none"
-                        />
-                        {evaluatingItem.customUnitPrice && (
-                          <button
-                            onClick={() => setEvaluatingItem({ 
-                              ...evaluatingItem, 
-                              customUnitPrice: '',
-                              buyPrice: evaluatingItem.originalBuyPrice
-                            })}
-                            className="text-gray-400 hover:text-white"
-                          >
-                            <X size={16} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    {evaluatingItem.customUnitPrice && (evaluatingItem.quantity || 1) > 1 && (
-                      <div className="text-xs text-amber-400 mt-1 text-right">
-                        ${evaluatingItem.customUnitPrice} × {evaluatingItem.quantity} = ${evaluatingItem.buyPrice?.toFixed(2)} total
-                      </div>
-                    )}
-                    {evaluatingItem.customUnitPrice && (evaluatingItem.quantity || 1) === 1 && (
-                      <div className="text-xs text-amber-400 mt-1 text-right">Using custom price</div>
-                    )}
                   </div>
                   
                   {/* PRIMARY ACTIONS - Pass or Add to running list */}
@@ -4966,7 +4568,7 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                   <div className="flex gap-3">
                     {item.photo && (
                       <img 
-                        src={getPhotoSrc(item.photo)} 
+                        src={`data:image/jpeg;base64,${item.photo}`} 
                         className="w-16 h-16 rounded object-cover"
                       />
                     )}
@@ -5057,48 +4659,6 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
             </div>
           )}
           
-          {/* Sales Tax Section */}
-          {sessionItems.length > 0 && (
-            <div className="bg-gray-50 rounded-lg shadow p-4">
-              <div className="flex items-center justify-between">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    checked={taxable} 
-                    onChange={(e) => setTaxable(e.target.checked)}
-                    className="w-5 h-5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
-                  />
-                  <span className="font-medium">Taxable Purchase</span>
-                  <span className="text-xs text-gray-500">(e.g., estate sale company, retail)</span>
-                </label>
-                {taxable && (
-                  <div className="flex items-center gap-1">
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      value={taxRate} 
-                      onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
-                      className="w-16 border rounded px-2 py-1 text-sm text-right"
-                    />
-                    <span className="text-sm text-gray-500">%</span>
-                  </div>
-                )}
-              </div>
-              {taxable && subtotalAfterDiscount > 0 && (
-                <div className="mt-3 pt-3 border-t border-gray-200 space-y-1 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Subtotal (after discount):</span>
-                    <span>${subtotalAfterDiscount.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Sales Tax ({taxRate}%):</span>
-                    <span className="text-amber-600 font-medium">+${salesTax.toFixed(2)}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          
           {/* Notes */}
           <div className="bg-white rounded-lg shadow p-4">
             <label className="block text-sm font-medium mb-1">Session Notes</label>
@@ -5122,12 +4682,6 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
             <div className="flex justify-between items-center mb-3 text-red-600">
               <span>Discount:</span>
               <span>-${discountAmount.toFixed(2)}</span>
-            </div>
-          )}
-          {taxable && salesTax > 0 && (
-            <div className="flex justify-between items-center mb-3 text-amber-600">
-              <span>Sales Tax ({taxRate}%):</span>
-              <span>+${salesTax.toFixed(2)}</span>
             </div>
           )}
           <div className="flex justify-between items-center mb-4">
@@ -5258,12 +4812,6 @@ function AppraisalSessionView({ clients, spotPrices, buyPercentages, coinBuyPerc
                     <span>-${discountAmount.toFixed(2)}</span>
                   </div>
                 </>
-              )}
-              {taxable && salesTax > 0 && (
-                <div className="flex justify-between text-amber-600 mb-2">
-                  <span>Sales Tax ({taxRate}%):</span>
-                  <span>+${salesTax.toFixed(2)}</span>
-                </div>
               )}
               <div className="flex justify-between items-center">
                 <span className="text-xl font-bold">TOTAL OFFER</span>
@@ -5502,19 +5050,239 @@ function LotPurchaseView({ clients, onSave, onCancel }) {
   
   // Common coin presets
   const coinPresets = [
-    { name: 'Morgan Dollar', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.859 },
-    { name: 'Peace Dollar', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.859 },
-    { name: 'Walking Liberty Half', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.3617 },
-    { name: 'Franklin Half', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.3617 },
-    { name: 'Kennedy Half (64)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.3617 },
-    { name: 'Washington Quarter', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808 },
-    { name: 'Roosevelt Dime', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.0723 },
-    { name: 'Mercury Dime', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.0723 },
-    { name: 'Silver Eagle', category: 'Silver - Bullion', metalType: 'Silver', purity: '999', weightOz: 1.0 },
-    { name: 'Gold Eagle 1oz', category: 'Gold - Coins', metalType: 'Gold', purity: '22K', weightOz: 1.0 },
-    { name: 'Gold Eagle 1/2oz', category: 'Gold - Coins', metalType: 'Gold', purity: '22K', weightOz: 0.5 },
-    { name: 'Gold Eagle 1/4oz', category: 'Gold - Coins', metalType: 'Gold', purity: '22K', weightOz: 0.25 },
-    { name: 'Gold Eagle 1/10oz', category: 'Gold - Coins', metalType: 'Gold', purity: '22K', weightOz: 0.1 },
+    // ==================== US CONSTITUTIONAL SILVER (90%) ====================
+    // Silver Dollars - 0.7734 oz ASW (26.73g total, 90% silver)
+    { name: 'Morgan Dollar (1878-1921)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.7734 },
+    { name: 'Peace Dollar (1921-1935)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.7734 },
+    { name: 'Trade Dollar (1873-1885)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.7874 },
+    { name: 'Seated Liberty Dollar (1840-1873)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.7734 },
+    { name: 'Eisenhower Dollar 40% (1971-1976 S)', category: 'Coins - Silver', metalType: 'Silver', purity: '40%', weightOz: 0.3161 },
+    
+    // Half Dollars - 0.3617 oz ASW for 90% (12.5g total)
+    { name: 'Walking Liberty Half (1916-1947)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.3617 },
+    { name: 'Franklin Half (1948-1963)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.3617 },
+    { name: 'Kennedy Half 90% (1964)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.3617 },
+    { name: 'Kennedy Half 40% (1965-1970)', category: 'Coins - Silver', metalType: 'Silver', purity: '40%', weightOz: 0.1479 },
+    { name: 'Barber Half (1892-1915)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.3617 },
+    { name: 'Seated Liberty Half (1839-1891)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.3617 },
+    { name: 'Capped Bust Half (1807-1839)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.3617 },
+    
+    // Quarters - 0.1808 oz ASW (6.25g total, 90% silver)
+    { name: 'Washington Quarter 90% (1932-1964)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808 },
+    { name: 'Standing Liberty Quarter (1916-1930)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808 },
+    { name: 'Barber Quarter (1892-1916)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808 },
+    { name: 'Seated Liberty Quarter (1838-1891)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808 },
+    { name: 'Capped Bust Quarter (1815-1838)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.1808 },
+    
+    // Dimes - 0.0723 oz ASW (2.5g total, 90% silver)
+    { name: 'Roosevelt Dime 90% (1946-1964)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.0723 },
+    { name: 'Mercury Dime (1916-1945)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.0723 },
+    { name: 'Barber Dime (1892-1916)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.0723 },
+    { name: 'Seated Liberty Dime (1837-1891)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.0723 },
+    { name: 'Capped Bust Dime (1809-1837)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.0723 },
+    
+    // War Nickels - 0.0563 oz ASW (35% silver)
+    { name: 'War Nickel 35% (1942-1945 P/D/S)', category: 'Coins - Silver', metalType: 'Silver', purity: '35%', weightOz: 0.0563 },
+    
+    // Half Dimes - 0.0388 oz ASW
+    { name: 'Seated Liberty Half Dime (1837-1873)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.0388 },
+    
+    // Three Cent Silver
+    { name: 'Three Cent Silver (1851-1873)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.0241 },
+
+    // ==================== US PRE-1933 GOLD ====================
+    // Double Eagles ($20) - 0.9675 oz AGW
+    { name: '$20 Liberty Double Eagle (1850-1907)', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.9675 },
+    { name: '$20 Saint-Gaudens Double Eagle (1907-1933)', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.9675 },
+    
+    // Eagles ($10) - 0.4838 oz AGW
+    { name: '$10 Liberty Eagle (1838-1907)', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.4838 },
+    { name: '$10 Indian Eagle (1907-1933)', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.4838 },
+    
+    // Half Eagles ($5) - 0.2419 oz AGW
+    { name: '$5 Liberty Half Eagle (1839-1908)', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.2419 },
+    { name: '$5 Indian Half Eagle (1908-1929)', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.2419 },
+    
+    // Quarter Eagles ($2.50) - 0.1209 oz AGW
+    { name: '$2.50 Liberty Quarter Eagle (1840-1907)', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.1209 },
+    { name: '$2.50 Indian Quarter Eagle (1908-1929)', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.1209 },
+    
+    // Gold Dollars - 0.0484 oz AGW
+    { name: '$1 Gold Dollar (1849-1889)', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.0484 },
+    
+    // $3 Gold - 0.1451 oz AGW
+    { name: '$3 Gold Princess (1854-1889)', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.1451 },
+
+    // ==================== US MODERN BULLION - SILVER ====================
+    { name: 'American Silver Eagle 1oz', category: 'Silver - Bullion', metalType: 'Silver', purity: '999', weightOz: 1.0 },
+    
+    // ==================== US MODERN BULLION - GOLD ====================
+    // American Gold Eagles (22K - contains stated pure gold content)
+    { name: 'American Gold Eagle 1oz', category: 'Gold - Coins', metalType: 'Gold', purity: '22K', weightOz: 1.0 },
+    { name: 'American Gold Eagle 1/2oz', category: 'Gold - Coins', metalType: 'Gold', purity: '22K', weightOz: 0.5 },
+    { name: 'American Gold Eagle 1/4oz', category: 'Gold - Coins', metalType: 'Gold', purity: '22K', weightOz: 0.25 },
+    { name: 'American Gold Eagle 1/10oz', category: 'Gold - Coins', metalType: 'Gold', purity: '22K', weightOz: 0.1 },
+    
+    // American Gold Buffalo (24K - .9999 fine)
+    { name: 'American Gold Buffalo 1oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 1.0 },
+    
+    // American Platinum Eagles
+    { name: 'American Platinum Eagle 1oz', category: 'Platinum - Coins', metalType: 'Platinum', purity: '9995', weightOz: 1.0 },
+    { name: 'American Platinum Eagle 1/2oz', category: 'Platinum - Coins', metalType: 'Platinum', purity: '9995', weightOz: 0.5 },
+    { name: 'American Platinum Eagle 1/4oz', category: 'Platinum - Coins', metalType: 'Platinum', purity: '9995', weightOz: 0.25 },
+    { name: 'American Platinum Eagle 1/10oz', category: 'Platinum - Coins', metalType: 'Platinum', purity: '9995', weightOz: 0.1 },
+
+    // ==================== CANADA - GOLD MAPLE LEAFS (24K .9999) ====================
+    { name: 'Canadian Gold Maple 1oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 1.0 },
+    { name: 'Canadian Gold Maple 1/2oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 0.5 },
+    { name: 'Canadian Gold Maple 1/4oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 0.25 },
+    { name: 'Canadian Gold Maple 1/10oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 0.1 },
+    { name: 'Canadian Gold Maple 1/20oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 0.05 },
+    
+    // Canada Silver Maple Leafs (.9999)
+    { name: 'Canadian Silver Maple 1oz', category: 'Silver - Bullion', metalType: 'Silver', purity: '9999', weightOz: 1.0 },
+
+    // ==================== SOUTH AFRICA - KRUGERRANDS (22K) ====================
+    // Krugerrands contain stated pure gold but total weight is higher due to 22K alloy
+    { name: 'Krugerrand 1oz', category: 'Gold - Coins', metalType: 'Gold', purity: '22K', weightOz: 1.0 },
+    { name: 'Krugerrand 1/2oz', category: 'Gold - Coins', metalType: 'Gold', purity: '22K', weightOz: 0.5 },
+    { name: 'Krugerrand 1/4oz', category: 'Gold - Coins', metalType: 'Gold', purity: '22K', weightOz: 0.25 },
+    { name: 'Krugerrand 1/10oz', category: 'Gold - Coins', metalType: 'Gold', purity: '22K', weightOz: 0.1 },
+    
+    // Krugerrand Silver (since 2018)
+    { name: 'Krugerrand Silver 1oz', category: 'Silver - Bullion', metalType: 'Silver', purity: '999', weightOz: 1.0 },
+
+    // ==================== AUSTRALIA - KANGAROOS/NUGGETS (.9999) ====================
+    { name: 'Australian Gold Kangaroo 1oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 1.0 },
+    { name: 'Australian Gold Kangaroo 1/2oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 0.5 },
+    { name: 'Australian Gold Kangaroo 1/4oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 0.25 },
+    { name: 'Australian Gold Kangaroo 1/10oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 0.1 },
+    { name: 'Australian Gold Kangaroo 1/20oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 0.05 },
+    
+    // Australia Silver
+    { name: 'Australian Silver Kangaroo 1oz', category: 'Silver - Bullion', metalType: 'Silver', purity: '9999', weightOz: 1.0 },
+    { name: 'Australian Silver Kookaburra 1oz', category: 'Silver - Bullion', metalType: 'Silver', purity: '999', weightOz: 1.0 },
+    { name: 'Australian Silver Koala 1oz', category: 'Silver - Bullion', metalType: 'Silver', purity: '999', weightOz: 1.0 },
+    
+    // Australia Platinum
+    { name: 'Australian Platinum Kangaroo 1oz', category: 'Platinum - Coins', metalType: 'Platinum', purity: '9995', weightOz: 1.0 },
+
+    // ==================== UNITED KINGDOM - BRITANNIAS & SOVEREIGNS ====================
+    // Gold Britannias (24K since 2013, 22K prior)
+    { name: 'British Gold Britannia 1oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 1.0 },
+    { name: 'British Gold Britannia 1/2oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 0.5 },
+    { name: 'British Gold Britannia 1/4oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 0.25 },
+    { name: 'British Gold Britannia 1/10oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 0.1 },
+    
+    // British Sovereigns (22K - 0.2354 oz AGW)
+    { name: 'British Gold Sovereign', category: 'Gold - Coins', metalType: 'Gold', purity: '22K', weightOz: 0.2354 },
+    { name: 'British Gold Half Sovereign', category: 'Gold - Coins', metalType: 'Gold', purity: '22K', weightOz: 0.1177 },
+    { name: 'British Gold Double Sovereign', category: 'Gold - Coins', metalType: 'Gold', purity: '22K', weightOz: 0.4708 },
+    { name: 'British Gold Quintuple Sovereign (5x)', category: 'Gold - Coins', metalType: 'Gold', purity: '22K', weightOz: 1.177 },
+    
+    // Silver Britannias
+    { name: 'British Silver Britannia 1oz', category: 'Silver - Bullion', metalType: 'Silver', purity: '999', weightOz: 1.0 },
+    
+    // Platinum Britannias
+    { name: 'British Platinum Britannia 1oz', category: 'Platinum - Coins', metalType: 'Platinum', purity: '9995', weightOz: 1.0 },
+
+    // ==================== AUSTRIA - PHILHARMONICS (.9999) ====================
+    { name: 'Austrian Gold Philharmonic 1oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 1.0 },
+    { name: 'Austrian Gold Philharmonic 1/2oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 0.5 },
+    { name: 'Austrian Gold Philharmonic 1/4oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 0.25 },
+    { name: 'Austrian Gold Philharmonic 1/10oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 0.1 },
+    { name: 'Austrian Gold Philharmonic 1/25oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 0.04 },
+    
+    { name: 'Austrian Silver Philharmonic 1oz', category: 'Silver - Bullion', metalType: 'Silver', purity: '999', weightOz: 1.0 },
+    
+    { name: 'Austrian Platinum Philharmonic 1oz', category: 'Platinum - Coins', metalType: 'Platinum', purity: '9995', weightOz: 1.0 },
+    
+    // Austria - Historic/Restrike
+    { name: 'Austrian 100 Corona Restrike', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.9802 },
+    { name: 'Austrian 4 Ducat Restrike', category: 'Gold - Coins', metalType: 'Gold', purity: '986', weightOz: 0.4430 },
+    { name: 'Austrian 1 Ducat Restrike', category: 'Gold - Coins', metalType: 'Gold', purity: '986', weightOz: 0.1107 },
+    { name: 'Maria Theresa Thaler (Silver)', category: 'Coins - Silver', metalType: 'Silver', purity: '833', weightOz: 0.752 },
+
+    // ==================== MEXICO - LIBERTADS ====================
+    // Gold Libertads (.999)
+    { name: 'Mexican Gold Libertad 1oz', category: 'Gold - Coins', metalType: 'Gold', purity: '999', weightOz: 1.0 },
+    { name: 'Mexican Gold Libertad 1/2oz', category: 'Gold - Coins', metalType: 'Gold', purity: '999', weightOz: 0.5 },
+    { name: 'Mexican Gold Libertad 1/4oz', category: 'Gold - Coins', metalType: 'Gold', purity: '999', weightOz: 0.25 },
+    { name: 'Mexican Gold Libertad 1/10oz', category: 'Gold - Coins', metalType: 'Gold', purity: '999', weightOz: 0.1 },
+    { name: 'Mexican Gold Libertad 1/20oz', category: 'Gold - Coins', metalType: 'Gold', purity: '999', weightOz: 0.05 },
+    
+    // Silver Libertads (.999)
+    { name: 'Mexican Silver Libertad 1oz', category: 'Silver - Bullion', metalType: 'Silver', purity: '999', weightOz: 1.0 },
+    { name: 'Mexican Silver Libertad 2oz', category: 'Silver - Bullion', metalType: 'Silver', purity: '999', weightOz: 2.0 },
+    { name: 'Mexican Silver Libertad 5oz', category: 'Silver - Bullion', metalType: 'Silver', purity: '999', weightOz: 5.0 },
+    
+    // Mexico - Historic Gold Pesos (90% gold)
+    { name: 'Mexican 50 Peso Gold (Centenario)', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 1.2057 },
+    { name: 'Mexican 20 Peso Gold (Azteca)', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.4823 },
+    { name: 'Mexican 10 Peso Gold', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.2411 },
+    { name: 'Mexican 5 Peso Gold', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.1206 },
+    { name: 'Mexican 2.5 Peso Gold (Dos y Medio)', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.0603 },
+    { name: 'Mexican 2 Peso Gold', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.0482 },
+
+    // ==================== CHINA - PANDAS ====================
+    // Gold Pandas (.999) - Note: Changed from oz to grams in 2016, these are pre-2016 oz weights
+    { name: 'Chinese Gold Panda 1oz (30g)', category: 'Gold - Coins', metalType: 'Gold', purity: '999', weightOz: 1.0 },
+    { name: 'Chinese Gold Panda 1/2oz (15g)', category: 'Gold - Coins', metalType: 'Gold', purity: '999', weightOz: 0.5 },
+    { name: 'Chinese Gold Panda 1/4oz (8g)', category: 'Gold - Coins', metalType: 'Gold', purity: '999', weightOz: 0.25 },
+    { name: 'Chinese Gold Panda 1/10oz (3g)', category: 'Gold - Coins', metalType: 'Gold', purity: '999', weightOz: 0.1 },
+    { name: 'Chinese Gold Panda 1/20oz (1g)', category: 'Gold - Coins', metalType: 'Gold', purity: '999', weightOz: 0.05 },
+    
+    // Silver Pandas
+    { name: 'Chinese Silver Panda 1oz (30g)', category: 'Silver - Bullion', metalType: 'Silver', purity: '999', weightOz: 1.0 },
+
+    // ==================== SWITZERLAND ====================
+    { name: 'Swiss 20 Franc Gold (Helvetia/Vreneli)', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.1867 },
+    { name: 'Swiss 10 Franc Gold', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.0933 },
+
+    // ==================== FRANCE ====================
+    { name: 'French 20 Franc Gold (Rooster/Napoleon)', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.1867 },
+    { name: 'French 10 Franc Gold', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.0933 },
+
+    // ==================== NETHERLANDS ====================
+    { name: 'Dutch 10 Guilder Gold', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.1947 },
+
+    // ==================== BELGIUM ====================
+    { name: 'Belgian 20 Franc Gold', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.1867 },
+
+    // ==================== ITALY ====================
+    { name: 'Italian 20 Lire Gold', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.1867 },
+
+    // ==================== RUSSIA/SOVIET ====================
+    { name: 'Russian 5 Rouble Gold', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.1244 },
+    { name: 'Russian 10 Rouble Gold (Chervonets)', category: 'Gold - Coins', metalType: 'Gold', purity: '90%', weightOz: 0.2489 },
+
+    // ==================== ISLE OF MAN - NOBLE (.9999) ====================
+    { name: 'Isle of Man Gold Noble 1oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 1.0 },
+    { name: 'Isle of Man Platinum Noble 1oz', category: 'Platinum - Coins', metalType: 'Platinum', purity: '9995', weightOz: 1.0 },
+
+    // ==================== NEW ZEALAND ====================
+    { name: 'NZ Silver Kiwi 1oz', category: 'Silver - Bullion', metalType: 'Silver', purity: '999', weightOz: 1.0 },
+
+    // ==================== SOMALIA ====================
+    { name: 'Somali Gold Elephant 1oz', category: 'Gold - Coins', metalType: 'Gold', purity: '9999', weightOz: 1.0 },
+    { name: 'Somali Silver Elephant 1oz', category: 'Silver - Bullion', metalType: 'Silver', purity: '9999', weightOz: 1.0 },
+
+    // ==================== GENERIC ROUNDS/BARS ====================
+    { name: 'Generic Silver Round 1oz', category: 'Silver - Bullion', metalType: 'Silver', purity: '999', weightOz: 1.0 },
+    { name: 'Generic Silver Bar 1oz', category: 'Silver - Bullion', metalType: 'Silver', purity: '999', weightOz: 1.0 },
+    { name: 'Generic Silver Bar 5oz', category: 'Silver - Bullion', metalType: 'Silver', purity: '999', weightOz: 5.0 },
+    { name: 'Generic Silver Bar 10oz', category: 'Silver - Bullion', metalType: 'Silver', purity: '999', weightOz: 10.0 },
+    { name: 'Generic Silver Bar 100oz', category: 'Silver - Bullion', metalType: 'Silver', purity: '999', weightOz: 100.0 },
+    { name: 'Generic Gold Bar 1oz', category: 'Gold - Coins', metalType: 'Gold', purity: '999', weightOz: 1.0 },
+    { name: 'Generic Gold Bar 10oz', category: 'Gold - Coins', metalType: 'Gold', purity: '999', weightOz: 10.0 },
+    { name: 'Generic Platinum Bar 1oz', category: 'Platinum - Coins', metalType: 'Platinum', purity: '9995', weightOz: 1.0 },
+    
+    // ==================== 90% JUNK SILVER BY FACE VALUE ====================
+    // These calculate oz based on face value: $1 face = 0.715 oz ASW (except dollars = 0.7734)
+    { name: 'Junk Silver $1 Face (Mixed)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 0.715 },
+    { name: 'Junk Silver $10 Face (Mixed)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 7.15 },
+    { name: 'Junk Silver $100 Face (Mixed)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 71.5 },
+    { name: 'Junk Silver $1000 Face (Bag)', category: 'Coins - Silver', metalType: 'Silver', purity: '90%', weightOz: 715.0 },
   ];
   
   const applyPreset = (preset) => {
@@ -5774,15 +5542,38 @@ function LotPurchaseView({ clients, onSave, onCancel }) {
             </div>
             
             <div className="p-4 space-y-4">
-              {/* Quick Presets */}
+              {/* Quick Presets with Search */}
               <div>
-                <label className="block text-sm font-medium mb-2">Quick Presets</label>
-                <div className="flex flex-wrap gap-2">
-                  {coinPresets.slice(0, 8).map(preset => (
+                <label className="block text-sm font-medium mb-2">Quick Presets <span className="text-gray-400 font-normal">({coinPresets.length} coins)</span></label>
+                <input
+                  type="text"
+                  placeholder="Search presets (e.g., Morgan, Eagle, Maple)..."
+                  onChange={(e) => {
+                    const searchEl = e.target;
+                    searchEl.dataset.search = e.target.value.toLowerCase();
+                    // Force re-render of presets
+                    searchEl.dispatchEvent(new Event('input', { bubbles: true }));
+                  }}
+                  className="w-full border rounded p-2 mb-2 text-sm"
+                  id="preset-search"
+                />
+                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                  {coinPresets
+                    .filter(p => {
+                      const searchInput = document.getElementById('preset-search');
+                      const search = searchInput?.dataset?.search || searchInput?.value?.toLowerCase() || '';
+                      return !search || p.name.toLowerCase().includes(search);
+                    })
+                    .slice(0, 20)
+                    .map(preset => (
                     <button
                       key={preset.name}
                       onClick={() => applyPreset(preset)}
-                      className="text-xs bg-gray-100 hover:bg-purple-100 px-2 py-1 rounded"
+                      className={`text-xs px-2 py-1 rounded ${
+                        preset.metalType === 'Gold' ? 'bg-yellow-100 hover:bg-yellow-200 text-yellow-800' :
+                        preset.metalType === 'Platinum' ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' :
+                        'bg-gray-100 hover:bg-purple-100 text-gray-700'
+                      }`}
                     >
                       {preset.name}
                     </button>
@@ -5908,7 +5699,7 @@ function LotPurchaseView({ clients, onSave, onCancel }) {
 }
 
 // ============ LOTS MANAGEMENT VIEW ============
-function LotsView({ lots, inventory, liveSpotPrices, onBack, onUpdateLot, onBreakLot, onSelectItem, onGoHome }) {
+function LotsView({ lots, inventory, liveSpotPrices, onBack, onUpdateLot, onBreakLot, onSelectItem }) {
   const [selectedLot, setSelectedLot] = useState(null);
   const [showBreakConfirm, setShowBreakConfirm] = useState(null);
   
@@ -5962,14 +5753,7 @@ function LotsView({ lots, inventory, liveSpotPrices, onBack, onUpdateLot, onBrea
     <div className="min-h-screen bg-gray-100">
       <div className="bg-purple-700 text-white p-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <button onClick={onBack} className="flex items-center gap-1">← Back</button>
-            {onGoHome && (
-              <button onClick={onGoHome} className="p-1 hover:bg-purple-600 rounded">
-                <Home size={18} />
-              </button>
-            )}
-          </div>
+          <button onClick={onBack} className="flex items-center gap-1">← Back</button>
           <h1 className="text-xl font-bold flex items-center gap-2">
             <Package size={24} /> Lot Management
           </h1>
@@ -6140,7 +5924,7 @@ function LotsView({ lots, inventory, liveSpotPrices, onBack, onUpdateLot, onBrea
 }
 
 // ============ SCRAP CALCULATOR VIEW ============
-function ScrapCalculatorView({ spotPrices: propSpotPrices, onRefresh, isLoading: propIsLoading, onBack, onGoHome }) {
+function ScrapCalculatorView({ spotPrices: propSpotPrices, onRefresh, isLoading: propIsLoading, onBack }) {
   const [goldSpot, setGoldSpot] = useState(propSpotPrices?.gold || 4600.00);
   const [silverSpot, setSilverSpot] = useState(propSpotPrices?.silver || 90.00);
   const [platinumSpot, setPlatinumSpot] = useState(propSpotPrices?.platinum || 985.00);
@@ -6475,14 +6259,7 @@ function ScrapCalculatorView({ spotPrices: propSpotPrices, onRefresh, isLoading:
       {/* Header */}
       <div className="bg-gray-800 text-white p-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <button onClick={onBack} className="text-white">← Back</button>
-            {onGoHome && (
-              <button onClick={onGoHome} className="p-1 hover:bg-gray-600 rounded">
-                <Home size={18} />
-              </button>
-            )}
-          </div>
+          <button onClick={onBack} className="text-white">← Back</button>
           <h1 className="text-lg font-bold">Scrap Calculator</h1>
           <button onClick={() => setShowSettings(true)} className="bg-gray-600 px-3 py-1 rounded text-sm">Settings</button>
         </div>
@@ -7167,7 +6944,7 @@ function SignaturePad({ onSave, onCancel }) {
 }
 
 // ============ CLIENT VIEWS ============
-function ClientListView({ clients, onSelect, onAdd, onBack, onGoHome }) {
+function ClientListView({ clients, onSelect, onAdd, onBack }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   
@@ -7181,14 +6958,7 @@ function ClientListView({ clients, onSelect, onAdd, onBack, onGoHome }) {
     <div className="min-h-screen bg-gray-100">
       <div className="bg-gradient-to-r from-indigo-700 to-indigo-800 text-white p-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <button onClick={onBack}>← Back</button>
-            {onGoHome && (
-              <button onClick={onGoHome} className="p-1 hover:bg-indigo-600 rounded">
-                <Home size={18} />
-              </button>
-            )}
-          </div>
+          <button onClick={onBack}>← Back</button>
           <h1 className="text-xl font-bold flex items-center gap-2"><Users size={24} /> Clients</h1>
           <button onClick={onAdd} className="p-2"><UserPlus size={20} /></button>
         </div>
@@ -7548,7 +7318,7 @@ function ClientDetailView({ client, transactions, onEdit, onBack }) {
 }
 
 // ============ SIMPLIFIED OTHER VIEWS ============
-function DashboardView({ inventory, spotPrices, onBack, onOpenTax }) {
+function DashboardView({ inventory, onBack }) {
   // Filter by status
   const sold = inventory.filter(i => i.status === 'Sold');
   const available = inventory.filter(i => i.status === 'Available');
@@ -7567,27 +7337,16 @@ function DashboardView({ inventory, spotPrices, onBack, onOpenTax }) {
   const readyToSellCount = readyToSellItems.length;
   const exemptCount = exemptItems.length;
   
-  // Helper to calculate live spot value
-  const calcLiveSpotValue = (item) => {
-    if (!item.weightOz || !item.metalType) return parseFloat(item.meltValue) || 0;
-    const spot = spotPrices?.[item.metalType?.toLowerCase()] || 0;
-    if (!spot) return parseFloat(item.meltValue) || 0;
-    
-    const purityDecimal = parsePurity(item.purity);
-    return (parseFloat(item.weightOz) || 0) * spot * purityDecimal;
-  };
-  
   // Financial - Sales
   const totalRevenue = sold.reduce((s, i) => s + (parseFloat(i.salePrice) || 0), 0);
   const soldCost = sold.reduce((s, i) => s + (parseFloat(i.purchasePrice) || 0), 0);
   const realizedProfit = totalRevenue - soldCost;
   const avgMargin = soldCost > 0 ? ((realizedProfit / soldCost) * 100) : 0;
   
-  // Financial - Inventory (using LIVE spot prices)
-  const allHoldings = [...available, ...stash];
-  const totalCost = allHoldings.reduce((s, i) => s + (parseFloat(i.purchasePrice) || 0), 0);
-  const totalLiveValue = allHoldings.reduce((s, i) => s + calcLiveSpotValue(i), 0);
-  const unrealizedGain = totalLiveValue - totalCost;
+  // Financial - Inventory
+  const totalCost = available.reduce((s, i) => s + (parseFloat(i.purchasePrice) || 0), 0);
+  const totalMeltValue = available.reduce((s, i) => s + (parseFloat(i.meltValue) || 0), 0);
+  const unrealizedGain = totalMeltValue - totalCost;
   const roi = totalCost > 0 ? ((unrealizedGain / totalCost) * 100) : 0;
   
   // Capital deployed (available inventory cost)
@@ -7596,121 +7355,52 @@ function DashboardView({ inventory, spotPrices, onBack, onOpenTax }) {
   // Total profit (realized)
   const totalProfit = realizedProfit;
   
-  // Metal breakdown with LIVE values
+  // Metal breakdown
   const metalBreakdown = ['Gold', 'Silver', 'Platinum', 'Palladium'].map(metal => {
-    const items = allHoldings.filter(i => i.metalType === metal);
-    const liveValue = items.reduce((s, i) => s + calcLiveSpotValue(i), 0);
+    const items = available.filter(i => i.metalType === metal);
     return {
       name: metal,
       count: items.length,
       weight: items.reduce((s, i) => s + (parseFloat(i.weightOz) || 0), 0),
-      value: liveValue,
-      cost: items.reduce((s, i) => s + (parseFloat(i.purchasePrice) || 0), 0),
-      spot: spotPrices?.[metal.toLowerCase()] || 0
+      value: items.reduce((s, i) => s + (parseFloat(i.meltValue) || 0), 0),
+      cost: items.reduce((s, i) => s + (parseFloat(i.purchasePrice) || 0), 0)
     };
   }).filter(m => m.count > 0);
   
   // Top items by value
-  const topItems = [...allHoldings]
-    .map(i => ({ ...i, liveValue: calcLiveSpotValue(i) }))
-    .sort((a, b) => b.liveValue - a.liveValue)
+  const topItems = [...available]
+    .sort((a, b) => (parseFloat(b.meltValue) || 0) - (parseFloat(a.meltValue) || 0))
     .slice(0, 5);
 
   return (
     <div className="min-h-screen bg-gray-100">
       <div className="bg-gradient-to-r from-amber-700 to-amber-800 text-white p-4">
         <div className="flex items-center justify-between">
-          <button onClick={onBack} className="flex items-center gap-1">
-            <ChevronLeft size={20} /> Back
-          </button>
-          <h1 className="text-xl font-bold flex items-center gap-2"><BarChart3 size={24} /> Dashboard</h1>
+          <button onClick={onBack}>← Back</button>
+          <h1 className="text-xl font-bold flex items-center gap-2"><BarChart3 size={24} /> Analytics</h1>
           <div className="w-16"></div>
-        </div>
-        {/* Live Spot Prices Bar */}
-        <div className="flex justify-center gap-6 mt-3 text-sm">
-          <span>Au: <span className="font-bold">${spotPrices?.gold?.toLocaleString() || '—'}</span></span>
-          <span>Ag: <span className="font-bold">${spotPrices?.silver?.toFixed(2) || '—'}</span></span>
-          <span>Pt: <span className="font-bold">${spotPrices?.platinum?.toLocaleString() || '—'}</span></span>
         </div>
       </div>
       
       <div className="p-4 space-y-4">
         {/* Top Summary Cards */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-4 text-white">
-            <div className="text-xs text-green-100 uppercase tracking-wide">Realized Profit</div>
-            <div className="text-2xl font-bold mt-1">
-              ${totalProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-            </div>
-            <div className="text-xs text-green-200 mt-1">{soldCount} items sold</div>
-          </div>
-          <div className="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl shadow-lg p-4 text-white">
-            <div className="text-xs text-amber-100 uppercase tracking-wide">Portfolio Value</div>
-            <div className="text-2xl font-bold mt-1">
-              ${totalLiveValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-            </div>
-            <div className="text-xs text-amber-200 mt-1">@ live spot prices</div>
-          </div>
-        </div>
-        
-        {/* Unrealized P&L */}
-        <div className={`rounded-xl shadow-lg p-4 ${unrealizedGain >= 0 ? 'bg-gradient-to-r from-emerald-50 to-green-50 border border-green-200' : 'bg-gradient-to-r from-red-50 to-rose-50 border border-red-200'}`}>
-          <div className="flex justify-between items-center">
-            <div>
-              <div className="text-xs text-gray-500 uppercase tracking-wide">Unrealized P&L</div>
-              <div className={`text-2xl font-bold ${unrealizedGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {unrealizedGain >= 0 ? '+' : ''}${unrealizedGain.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-              </div>
-            </div>
-            <div className="text-right">
-              <div className={`text-3xl font-bold ${roi >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {roi >= 0 ? '+' : ''}{roi.toFixed(1)}%
-              </div>
-              <div className="text-xs text-gray-500">ROI</div>
+          <div className="bg-white rounded-lg shadow p-4">
+            <div className="text-xs text-gray-500">Total Profit</div>
+            <div className={`text-2xl font-bold ${totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              ${totalProfit.toLocaleString()}
             </div>
           </div>
-          <div className="text-xs text-gray-500 mt-2">
-            Cost basis: ${totalCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-          </div>
-        </div>
-        
-        {/* Inventory by Metal - Visual Cards */}
-        <div>
-          <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
-            <TrendingUp size={18} /> Holdings by Metal
-          </h3>
-          <div className="grid grid-cols-2 gap-3">
-            {metalBreakdown.map(metal => {
-              const gain = metal.value - metal.cost;
-              const metalRoi = metal.cost > 0 ? ((gain / metal.cost) * 100) : 0;
-              const colorClass = metal.name === 'Gold' ? 'from-yellow-400 to-yellow-500' :
-                metal.name === 'Silver' ? 'from-gray-300 to-gray-400' :
-                metal.name === 'Platinum' ? 'from-slate-400 to-slate-500' :
-                'from-orange-400 to-orange-500';
-              
-              return (
-                <div key={metal.name} className={`bg-gradient-to-br ${colorClass} rounded-xl shadow-lg p-4 text-white`}>
-                  <div className="flex justify-between items-start">
-                    <div className="text-lg font-bold">{metal.name}</div>
-                    <div className="text-xs bg-white/20 rounded-full px-2 py-0.5">{metal.count}</div>
-                  </div>
-                  <div className="text-2xl font-bold mt-2">
-                    ${metal.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                  </div>
-                  <div className="text-sm opacity-90">{metal.weight.toFixed(2)} oz</div>
-                  <div className="text-xs mt-2 opacity-75">
-                    Spot: ${metal.spot?.toLocaleString()} • {metalRoi >= 0 ? '+' : ''}{metalRoi.toFixed(0)}% ROI
-                  </div>
-                </div>
-              );
-            })}
+          <div className="bg-white rounded-lg shadow p-4">
+            <div className="text-xs text-gray-500">Capital Deployed</div>
+            <div className="text-2xl font-bold text-amber-700">${capitalDeployed.toLocaleString()}</div>
           </div>
         </div>
         
         {/* Inventory Overview */}
-        <div className="bg-white rounded-xl shadow-lg p-4">
+        <div className="bg-white rounded-lg shadow p-4">
           <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
-            <Package size={18} /> Inventory Status
+            <Package size={18} /> Inventory Overview
           </h3>
           <div className="grid grid-cols-4 gap-2 text-center">
             <div className="bg-blue-50 rounded-lg p-3">
@@ -7732,22 +7422,51 @@ function DashboardView({ inventory, spotPrices, onBack, onOpenTax }) {
           </div>
         </div>
         
-        {/* Sales Performance */}
-        <div className="bg-white rounded-xl shadow-lg p-4">
+        {/* Financial Summary */}
+        <div className="bg-white rounded-lg shadow p-4">
           <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
-            <DollarSign size={18} /> Sales Performance
+            <DollarSign size={18} /> Financial Summary
+          </h3>
+          <div className="space-y-2">
+            <div className="flex justify-between py-2 border-b">
+              <span className="text-gray-600">Total Cost Basis</span>
+              <span className="font-bold">${totalCost.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between py-2 border-b">
+              <span className="text-gray-600">Current Melt Value</span>
+              <span className="font-bold text-amber-700">${totalMeltValue.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between py-2 border-b">
+              <span className="text-gray-600">Unrealized Gain/Loss</span>
+              <span className={`font-bold ${unrealizedGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {unrealizedGain >= 0 ? '+' : ''}${unrealizedGain.toLocaleString()}
+              </span>
+            </div>
+            <div className="flex justify-between py-2">
+              <span className="text-gray-600">ROI</span>
+              <span className={`font-bold ${roi >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {roi >= 0 ? '+' : ''}{roi.toFixed(1)}%
+              </span>
+            </div>
+          </div>
+        </div>
+        
+        {/* Sales Performance */}
+        <div className="bg-white rounded-lg shadow p-4">
+          <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
+            <TrendingUp size={18} /> Sales Performance
           </h3>
           <div className="grid grid-cols-2 gap-3">
+            <div className="bg-gray-50 rounded-lg p-3">
+              <div className="text-xs text-gray-500">Items Sold</div>
+              <div className="text-xl font-bold">{soldCount}</div>
+            </div>
             <div className="bg-gray-50 rounded-lg p-3">
               <div className="text-xs text-gray-500">Revenue</div>
               <div className="text-xl font-bold text-green-600">${totalRevenue.toLocaleString()}</div>
             </div>
             <div className="bg-gray-50 rounded-lg p-3">
-              <div className="text-xs text-gray-500">COGS</div>
-              <div className="text-xl font-bold">${soldCost.toLocaleString()}</div>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-3">
-              <div className="text-xs text-gray-500">Gross Profit</div>
+              <div className="text-xs text-gray-500">Realized Profit</div>
               <div className={`text-xl font-bold ${realizedProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 ${realizedProfit.toLocaleString()}
               </div>
@@ -7761,58 +7480,48 @@ function DashboardView({ inventory, spotPrices, onBack, onOpenTax }) {
           </div>
         </div>
         
-        {/* Top Holdings */}
-        {topItems.length > 0 && (
-          <div className="bg-white rounded-xl shadow-lg p-4">
-            <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
-              <Star size={18} /> Top Holdings by Value
-            </h3>
-            <div className="space-y-2">
-              {topItems.map((item, idx) => (
-                <div key={item.id} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                    idx === 0 ? 'bg-yellow-400 text-yellow-900' :
-                    idx === 1 ? 'bg-gray-300 text-gray-700' :
-                    idx === 2 ? 'bg-orange-400 text-orange-900' :
-                    'bg-gray-200 text-gray-600'
-                  }`}>
-                    {idx + 1}
+        {/* Inventory by Metal */}
+        <div className="bg-white rounded-lg shadow p-4">
+          <h3 className="font-bold text-gray-700 mb-3">Inventory by Metal</h3>
+          <div className="space-y-3">
+            {metalBreakdown.map(metal => (
+              <div key={metal.name} className="flex items-center gap-3">
+                <div className={`w-3 h-3 rounded-full ${
+                  metal.name === 'Gold' ? 'bg-yellow-500' :
+                  metal.name === 'Silver' ? 'bg-gray-400' :
+                  metal.name === 'Platinum' ? 'bg-gray-300' :
+                  'bg-orange-400'
+                }`}></div>
+                <div className="flex-1">
+                  <div className="flex justify-between">
+                    <span className="font-medium">{metal.name}</span>
+                    <span className="font-bold">${metal.value.toLocaleString()}</span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm truncate">{item.description}</div>
-                    <div className="text-xs text-gray-500">{item.metalType} • {item.weightOz} oz</div>
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>{metal.count} items</span>
+                    <span>{metal.weight.toFixed(2)} oz</span>
                   </div>
-                  <div className="text-right">
-                    <div className="font-bold text-amber-700">${item.liveValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-                    <div className="text-xs text-gray-500">Cost: ${item.purchasePrice}</div>
+                  <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+                    <div 
+                      className={`h-2 rounded-full ${
+                        metal.name === 'Gold' ? 'bg-yellow-500' :
+                        metal.name === 'Silver' ? 'bg-gray-400' :
+                        metal.name === 'Platinum' ? 'bg-gray-300' :
+                        'bg-orange-400'
+                      }`}
+                      style={{ width: `${totalMeltValue > 0 ? (metal.value / totalMeltValue * 100) : 0}%` }}
+                    ></div>
                   </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
-        )}
-        
-        {/* Tax & Mileage Reports */}
-        <button
-          onClick={onOpenTax}
-          className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl shadow-lg p-4 flex items-center justify-between"
-        >
-          <div className="flex items-center gap-3">
-            <div className="bg-white/20 p-2 rounded-lg">
-              <FileText size={24} />
-            </div>
-            <div className="text-left">
-              <div className="font-bold">Tax & Mileage Reports</div>
-              <div className="text-sm opacity-90">Schedule C, mileage log, deductions</div>
-            </div>
-          </div>
-          <ChevronRight size={24} />
-        </button>
+        </div>
         
         {/* Hold Status */}
-        <div className="bg-white rounded-xl shadow-lg p-4">
+        <div className="bg-white rounded-lg shadow p-4">
           <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
-            <Clock size={18} /> NC Hold Status
+            <Clock size={18} /> Hold Status
           </h3>
           <div className="flex gap-2">
             <div className="flex-1 bg-red-50 rounded-lg p-3 text-center">
@@ -7827,7 +7536,7 @@ function DashboardView({ inventory, spotPrices, onBack, onOpenTax }) {
                 <Unlock size={16} />
                 <span className="text-xl font-bold">{readyToSellCount}</span>
               </div>
-              <div className="text-xs text-gray-500">Ready</div>
+              <div className="text-xs text-gray-500">Ready to Sell</div>
             </div>
             <div className="flex-1 bg-blue-50 rounded-lg p-3 text-center">
               <div className="flex items-center justify-center gap-1 text-blue-600 mb-1">
@@ -7838,686 +7547,58 @@ function DashboardView({ inventory, spotPrices, onBack, onOpenTax }) {
             </div>
           </div>
         </div>
+        
+        {/* Top Items by Value */}
+        {topItems.length > 0 && (
+          <div className="bg-white rounded-lg shadow p-4">
+            <h3 className="font-bold text-gray-700 mb-3">Top Items by Value</h3>
+            <div className="space-y-2">
+              {topItems.map((item, index) => (
+                <div key={item.id} className="flex items-center gap-3 py-2 border-b last:border-b-0">
+                  <div className="w-6 h-6 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-sm font-bold">
+                    {index + 1}
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-medium text-sm">{item.description}</div>
+                    <div className="text-xs text-gray-500">{item.metalType} • {item.weightOz} oz</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-bold text-amber-700">${item.meltValue}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function TaxReportView({ inventory, mileageLog, vehicles, onBack, onAddMileage, onDeleteMileage, onAddVehicle, spotPrices }) {
-  const currentYear = new Date().getFullYear();
-  const [selectedYear, setSelectedYear] = useState(currentYear);
-  const [activeTab, setActiveTab] = useState('schedule-c');
-  const [showAddTrip, setShowAddTrip] = useState(false);
-  const [showAddVehicle, setShowAddVehicle] = useState(false);
-  const [isReadingOdometer, setIsReadingOdometer] = useState(null); // 'start' or 'end'
-  const [isGettingLocation, setIsGettingLocation] = useState(false);
-  const startOdometerRef = useRef(null);
-  const endOdometerRef = useRef(null);
-  
-  const [tripForm, setTripForm] = useState({
-    date: new Date().toISOString().split('T')[0],
-    vehicleId: vehicles?.[0]?.id || '',
-    purpose: '',
-    startLocation: '',
-    destination: '',
-    startOdometer: '',
-    endOdometer: '',
-    startPhoto: null,
-    endPhoto: null,
-    notes: ''
-  });
-  const [vehicleForm, setVehicleForm] = useState({
-    name: '',
-    make: '',
-    model: '',
-    year: '',
-    startingOdometer: ''
-  });
-  
-  // IRS mileage rates by year
-  const mileageRates = { 2023: 0.655, 2024: 0.67, 2025: 0.70, 2026: 0.725 };
-  
-  // Get unique years
-  const soldItems = inventory.filter(i => i.status === 'Sold');
-  const years = [...new Set([
-    ...soldItems.map(i => new Date(i.saleDate || i.dateAcquired || new Date()).getFullYear()),
-    ...(mileageLog || []).map(m => new Date(m.date).getFullYear()),
-    currentYear
-  ])].sort((a, b) => b - a);
-  
-  // Filter by year
-  const yearSales = soldItems.filter(i => {
-    const year = new Date(i.saleDate || i.dateAcquired || new Date()).getFullYear();
-    return year === selectedYear;
-  });
-  const yearMileage = (mileageLog || []).filter(m => new Date(m.date).getFullYear() === selectedYear);
-  
-  // Calculations
-  const grossReceipts = yearSales.reduce((s, i) => s + (parseFloat(i.salePrice) || 0), 0);
-  const cogs = yearSales.reduce((s, i) => s + (parseFloat(i.purchasePrice) || 0), 0);
-  const grossProfit = grossReceipts - cogs;
-  const totalMiles = yearMileage.reduce((s, m) => s + (parseFloat(m.miles) || 0), 0);
-  const mileageRate = mileageRates[selectedYear] || 0.70;
-  const mileageDeduction = totalMiles * mileageRate;
-  
-  // Get current location
-  const getCurrentLocation = async () => {
-    setIsGettingLocation(true);
-    try {
-      const position = await new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true });
-      });
-      
-      // Reverse geocode
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}`
-      );
-      const data = await response.json();
-      const address = data.display_name?.split(',').slice(0, 3).join(',') || 
-        `${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`;
-      
-      setTripForm(prev => ({ ...prev, startLocation: address }));
-    } catch (err) {
-      console.error('Location error:', err);
-      alert('Could not get location. Please enter manually.');
-    }
-    setIsGettingLocation(false);
-  };
-  
-  // AI Odometer Reading
-  const readOdometerPhoto = async (photoBase64, field) => {
-    setIsReadingOdometer(field);
-    try {
-      const response = await fetch('/api/anthropic', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [{
-            role: 'user',
-            content: [
-              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: photoBase64 }},
-              { type: 'text', text: `Read the odometer in this image. Return ONLY the number shown on the odometer, nothing else. Just the digits. If you cannot read it clearly, respond with "UNREADABLE".` }
-            ]
-          }],
-          max_tokens: 50
-        })
-      });
-      
-      const data = await response.json();
-      const reading = data.content?.[0]?.text?.trim();
-      
-      if (reading && reading !== 'UNREADABLE' && /^\d+$/.test(reading.replace(/,/g, ''))) {
-        const numericReading = reading.replace(/,/g, '');
-        setTripForm(prev => ({ 
-          ...prev, 
-          [field]: numericReading,
-          [`${field.replace('Odometer', '')}Photo`]: photoBase64
-        }));
-      } else {
-        alert('Could not read odometer clearly. Please enter manually or retake photo.');
-      }
-    } catch (err) {
-      console.error('Odometer read error:', err);
-      alert('Error reading odometer. Please enter manually.');
-    }
-    setIsReadingOdometer(null);
-  };
-  
-  // Handle odometer photo capture
-  const handleOdometerCapture = (field) => async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const base64 = event.target.result.split(',')[1];
-      await readOdometerPhoto(base64, field);
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
-  };
-  
-  // Add trip
-  const handleAddTrip = async () => {
-    if (!tripForm.purpose) {
-      alert('Please enter business purpose');
-      return;
-    }
-    if (!tripForm.startOdometer || !tripForm.endOdometer) {
-      alert('Please enter start and end odometer readings');
-      return;
-    }
-    
-    const miles = parseFloat(tripForm.endOdometer) - parseFloat(tripForm.startOdometer);
-    if (miles <= 0) {
-      alert('End odometer must be greater than start odometer');
-      return;
-    }
-    
-    const newTrip = {
-      id: `MILE-${Date.now()}`,
-      ...tripForm,
-      miles,
-      createdAt: new Date().toISOString()
-    };
-    
-    await onAddMileage(newTrip);
-    
-    // Reset form but keep vehicle and use end odometer as next start
-    setTripForm({
-      date: new Date().toISOString().split('T')[0],
-      vehicleId: tripForm.vehicleId,
-      purpose: '',
-      startLocation: '',
-      destination: '',
-      startOdometer: tripForm.endOdometer,
-      endOdometer: '',
-      startPhoto: null,
-      endPhoto: null,
-      notes: ''
-    });
-    setShowAddTrip(false);
-  };
-  
-  // Add vehicle
-  const handleAddVehicle = async () => {
-    if (!vehicleForm.name) {
-      alert('Please enter vehicle name');
-      return;
-    }
-    const newVehicle = {
-      id: `VEH-${Date.now()}`,
-      ...vehicleForm,
-      createdAt: new Date().toISOString()
-    };
-    await onAddVehicle(newVehicle);
-    setVehicleForm({ name: '', make: '', model: '', year: '', startingOdometer: '' });
-    setShowAddVehicle(false);
-    setTripForm(prev => ({ ...prev, vehicleId: newVehicle.id }));
-  };
+function TaxReportView({ inventory, onBack }) {
+  const yearSales = inventory.filter(i => i.status === 'Sold');
+  const totalRevenue = yearSales.reduce((s, i) => s + (i.salePrice || 0), 0);
+  const totalCOGS = yearSales.reduce((s, i) => s + (i.purchasePrice || 0), 0);
 
   return (
-    <div className="min-h-screen bg-gray-100 pb-20">
-      {/* Header */}
+    <div className="min-h-screen bg-gray-100">
       <div className="bg-gradient-to-r from-green-700 to-green-800 text-white p-4">
         <div className="flex items-center justify-between">
-          <button onClick={onBack} className="flex items-center gap-1">
-            <ChevronLeft size={20} /> Back
-          </button>
-          <h1 className="text-xl font-bold flex items-center gap-2"><FileText size={24} /> Tax & Mileage</h1>
-          <select
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-            className="bg-green-600 text-white border border-green-500 rounded px-2 py-1"
-          >
-            {years.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
+          <button onClick={onBack}>← Back</button>
+          <h1 className="text-xl font-bold flex items-center gap-2"><FileText size={24} /> Tax</h1>
+          <div className="w-16"></div>
         </div>
       </div>
-      
-      {/* Tabs */}
-      <div className="flex border-b bg-white sticky top-0 z-10">
-        {['schedule-c', 'mileage', 'vehicles'].map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-3 text-sm font-medium capitalize ${
-              activeTab === tab ? 'border-b-2 border-green-600 text-green-600' : 'text-gray-500'
-            }`}
-          >
-            {tab === 'schedule-c' ? 'Schedule C' : tab}
-          </button>
-        ))}
-      </div>
-      
-      <div className="p-4 space-y-4">
-        {/* SCHEDULE C TAB */}
-        {activeTab === 'schedule-c' && (
-          <>
-            <div className={`rounded-xl p-4 text-white ${grossProfit >= 0 ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 'bg-gradient-to-r from-red-500 to-rose-600'}`}>
-              <div className="text-sm opacity-90">Net Profit (After Mileage) - {selectedYear}</div>
-              <div className="text-3xl font-bold">${(grossProfit - mileageDeduction).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-            </div>
-            
-            <div className="bg-white rounded-xl shadow-lg p-4">
-              <h3 className="font-bold text-gray-700 mb-3">Schedule C Summary</h3>
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between py-2 border-b">
-                  <span>Gross Receipts ({yearSales.length} sales)</span>
-                  <span className="font-bold">${grossReceipts.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-                </div>
-                <div className="flex justify-between py-2 border-b">
-                  <span>Cost of Goods Sold</span>
-                  <span className="font-bold">${cogs.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-                </div>
-                <div className="flex justify-between py-2 border-b">
-                  <span>Gross Profit</span>
-                  <span className={`font-bold ${grossProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    ${grossProfit.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="flex justify-between py-2 border-b bg-amber-50 -mx-4 px-4">
-                  <span>Mileage Deduction ({totalMiles.toLocaleString()} mi × ${mileageRate})</span>
-                  <span className="font-bold text-amber-700">${mileageDeduction.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-                </div>
-                <div className="flex justify-between py-3">
-                  <span className="font-bold">Net Profit</span>
-                  <span className={`font-bold text-lg ${(grossProfit - mileageDeduction) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    ${(grossProfit - mileageDeduction).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-              </div>
-            </div>
-            
-            {/* Sales breakdown */}
-            {yearSales.length > 0 && (
-              <details className="bg-white rounded-xl shadow-lg overflow-hidden">
-                <summary className="p-4 cursor-pointer font-bold text-gray-700">
-                  Sales Detail ({yearSales.length} items)
-                </summary>
-                <div className="max-h-60 overflow-y-auto border-t">
-                  {yearSales.map(item => (
-                    <div key={item.id} className="flex justify-between p-3 border-b text-sm">
-                      <div>
-                        <div className="font-medium">{item.description}</div>
-                        <div className="text-xs text-gray-500">{item.saleDate || item.dateAcquired}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-bold text-green-600">${item.salePrice}</div>
-                        <div className="text-xs text-gray-500">Cost: ${item.purchasePrice}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </details>
-            )}
-          </>
-        )}
-        
-        {/* MILEAGE TAB */}
-        {activeTab === 'mileage' && (
-          <>
-            {/* Mileage Summary */}
-            <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl p-4 text-white">
-              <div className="flex justify-between items-center">
-                <div>
-                  <div className="text-sm opacity-90">{selectedYear} Mileage Deduction</div>
-                  <div className="text-3xl font-bold">${mileageDeduction.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-bold">{totalMiles.toLocaleString()}</div>
-                  <div className="text-sm opacity-90">miles</div>
-                </div>
-              </div>
-              <div className="text-xs mt-2 opacity-75">Rate: ${mileageRate}/mile</div>
-            </div>
-            
-            {/* Add Trip Button */}
-            <button
-              onClick={() => setShowAddTrip(true)}
-              className="w-full bg-green-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
-            >
-              <Plus size={20} /> Log New Trip
-            </button>
-            
-            {/* Trip List */}
-            <div className="space-y-2">
-              {yearMileage.length === 0 ? (
-                <div className="bg-white rounded-xl p-8 text-center text-gray-500">
-                  <Car size={48} className="mx-auto mb-2 opacity-50" />
-                  <p>No trips logged for {selectedYear}</p>
-                </div>
-              ) : (
-                yearMileage.sort((a, b) => new Date(b.date) - new Date(a.date)).map(trip => (
-                  <div key={trip.id} className="bg-white rounded-xl shadow p-4">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <div className="font-bold text-gray-800">{trip.purpose}</div>
-                        <div className="text-sm text-gray-500">{trip.date}</div>
-                        {trip.startLocation && (
-                          <div className="text-xs text-gray-400 mt-1">
-                            {trip.startLocation} → {trip.destination || 'N/A'}
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xl font-bold text-blue-600">{trip.miles} mi</div>
-                        <div className="text-sm text-green-600">${(trip.miles * mileageRate).toFixed(2)}</div>
-                      </div>
-                    </div>
-                    <div className="flex justify-between items-center mt-2 pt-2 border-t text-xs text-gray-400">
-                      <span>Odometer: {trip.startOdometer} → {trip.endOdometer}</span>
-                      <button
-                        onClick={() => onDeleteMileage(trip.id)}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </>
-        )}
-        
-        {/* VEHICLES TAB */}
-        {activeTab === 'vehicles' && (
-          <>
-            <button
-              onClick={() => setShowAddVehicle(true)}
-              className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
-            >
-              <Plus size={20} /> Add Vehicle
-            </button>
-            
-            {(vehicles || []).length === 0 ? (
-              <div className="bg-white rounded-xl p-8 text-center text-gray-500">
-                <Car size={48} className="mx-auto mb-2 opacity-50" />
-                <p>No vehicles added yet</p>
-                <p className="text-sm">Add a vehicle to start tracking mileage</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {vehicles.map(v => (
-                  <div key={v.id} className="bg-white rounded-xl shadow p-4">
-                    <div className="font-bold text-gray-800">{v.name}</div>
-                    <div className="text-sm text-gray-500">
-                      {v.year} {v.make} {v.model}
-                    </div>
-                    {v.startingOdometer && (
-                      <div className="text-xs text-gray-400 mt-1">
-                        Starting odometer: {parseInt(v.startingOdometer).toLocaleString()} mi
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-      
-      {/* ADD TRIP MODAL */}
-      {showAddTrip && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-2xl max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b p-4 flex justify-between items-center">
-              <h2 className="text-xl font-bold">Log Trip</h2>
-              <button onClick={() => setShowAddTrip(false)} className="p-2"><X size={24} /></button>
-            </div>
-            
-            <div className="p-4 space-y-4">
-              {/* Date */}
-              <div>
-                <label className="block text-sm font-medium mb-1">Date</label>
-                <input
-                  type="date"
-                  value={tripForm.date}
-                  onChange={(e) => setTripForm({ ...tripForm, date: e.target.value })}
-                  className="w-full border rounded-lg p-3"
-                />
-              </div>
-              
-              {/* Vehicle */}
-              {vehicles?.length > 0 && (
-                <div>
-                  <label className="block text-sm font-medium mb-1">Vehicle</label>
-                  <select
-                    value={tripForm.vehicleId}
-                    onChange={(e) => setTripForm({ ...tripForm, vehicleId: e.target.value })}
-                    className="w-full border rounded-lg p-3"
-                  >
-                    {vehicles.map(v => (
-                      <option key={v.id} value={v.id}>{v.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              
-              {/* Business Purpose */}
-              <div>
-                <label className="block text-sm font-medium mb-1">Business Purpose *</label>
-                <input
-                  type="text"
-                  value={tripForm.purpose}
-                  onChange={(e) => setTripForm({ ...tripForm, purpose: e.target.value })}
-                  placeholder="e.g., Meet client for gold purchase"
-                  className="w-full border rounded-lg p-3"
-                />
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {['Client purchase', 'Refiner drop-off', 'Estate sale', 'Coin show', 'Bank deposit', 'Supplies'].map(p => (
-                    <button
-                      key={p}
-                      onClick={() => setTripForm({ ...tripForm, purpose: p })}
-                      className="text-xs bg-gray-100 px-2 py-1 rounded"
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              
-              {/* Starting Location with GPS */}
-              <div>
-                <label className="block text-sm font-medium mb-1">Starting Location</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={tripForm.startLocation}
-                    onChange={(e) => setTripForm({ ...tripForm, startLocation: e.target.value })}
-                    placeholder="e.g., Home office"
-                    className="flex-1 border rounded-lg p-3"
-                  />
-                  <button
-                    onClick={getCurrentLocation}
-                    disabled={isGettingLocation}
-                    className="bg-blue-100 text-blue-700 px-4 rounded-lg flex items-center gap-1"
-                  >
-                    {isGettingLocation ? <RefreshCw size={18} className="animate-spin" /> : <MapPin size={18} />}
-                  </button>
-                </div>
-              </div>
-              
-              {/* Destination */}
-              <div>
-                <label className="block text-sm font-medium mb-1">Destination</label>
-                <input
-                  type="text"
-                  value={tripForm.destination}
-                  onChange={(e) => setTripForm({ ...tripForm, destination: e.target.value })}
-                  placeholder="e.g., Client's home, Refiner"
-                  className="w-full border rounded-lg p-3"
-                />
-              </div>
-              
-              {/* Start Odometer with Camera */}
-              <div>
-                <label className="block text-sm font-medium mb-1">Start Odometer *</label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    value={tripForm.startOdometer}
-                    onChange={(e) => setTripForm({ ...tripForm, startOdometer: e.target.value })}
-                    placeholder="e.g., 45230"
-                    className="flex-1 border rounded-lg p-3"
-                  />
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    ref={startOdometerRef}
-                    onChange={handleOdometerCapture('startOdometer')}
-                    className="hidden"
-                  />
-                  <button
-                    onClick={() => startOdometerRef.current?.click()}
-                    disabled={isReadingOdometer === 'startOdometer'}
-                    className="bg-amber-100 text-amber-700 px-4 rounded-lg flex items-center gap-1"
-                  >
-                    {isReadingOdometer === 'startOdometer' ? (
-                      <RefreshCw size={18} className="animate-spin" />
-                    ) : (
-                      <Camera size={18} />
-                    )}
-                  </button>
-                </div>
-                {tripForm.startPhoto && (
-                  <div className="mt-1 text-xs text-green-600 flex items-center gap-1">
-                    <Check size={14} /> Photo captured & read
-                  </div>
-                )}
-              </div>
-              
-              {/* End Odometer with Camera */}
-              <div>
-                <label className="block text-sm font-medium mb-1">End Odometer *</label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    value={tripForm.endOdometer}
-                    onChange={(e) => setTripForm({ ...tripForm, endOdometer: e.target.value })}
-                    placeholder="e.g., 45280"
-                    className="flex-1 border rounded-lg p-3"
-                  />
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    ref={endOdometerRef}
-                    onChange={handleOdometerCapture('endOdometer')}
-                    className="hidden"
-                  />
-                  <button
-                    onClick={() => endOdometerRef.current?.click()}
-                    disabled={isReadingOdometer === 'endOdometer'}
-                    className="bg-amber-100 text-amber-700 px-4 rounded-lg flex items-center gap-1"
-                  >
-                    {isReadingOdometer === 'endOdometer' ? (
-                      <RefreshCw size={18} className="animate-spin" />
-                    ) : (
-                      <Camera size={18} />
-                    )}
-                  </button>
-                </div>
-                {tripForm.endPhoto && (
-                  <div className="mt-1 text-xs text-green-600 flex items-center gap-1">
-                    <Check size={14} /> Photo captured & read
-                  </div>
-                )}
-              </div>
-              
-              {/* Calculated Miles */}
-              {tripForm.startOdometer && tripForm.endOdometer && (
-                <div className="bg-blue-50 rounded-xl p-4 text-center">
-                  <div className="text-sm text-blue-600">Trip Distance</div>
-                  <div className="text-3xl font-bold text-blue-700">
-                    {(parseFloat(tripForm.endOdometer) - parseFloat(tripForm.startOdometer)).toLocaleString()} miles
-                  </div>
-                  <div className="text-sm text-green-600">
-                    ≈ ${((parseFloat(tripForm.endOdometer) - parseFloat(tripForm.startOdometer)) * mileageRate).toFixed(2)} deduction
-                  </div>
-                </div>
-              )}
-              
-              {/* Notes */}
-              <div>
-                <label className="block text-sm font-medium mb-1">Notes (optional)</label>
-                <textarea
-                  value={tripForm.notes}
-                  onChange={(e) => setTripForm({ ...tripForm, notes: e.target.value })}
-                  placeholder="Additional details..."
-                  className="w-full border rounded-lg p-3"
-                  rows={2}
-                />
-              </div>
-              
-              {/* Save Button */}
-              <button
-                onClick={handleAddTrip}
-                disabled={!tripForm.purpose || !tripForm.startOdometer || !tripForm.endOdometer}
-                className="w-full bg-green-600 text-white py-4 rounded-xl font-bold disabled:bg-gray-300"
-              >
-                Save Trip
-              </button>
-            </div>
+      <div className="p-4">
+        <div className="bg-white rounded-lg shadow p-4">
+          <h3 className="font-bold mb-3">Schedule C Summary</h3>
+          <div className="space-y-2">
+            <div className="flex justify-between py-2 border-b"><span>Gross Receipts</span><span className="font-bold">${totalRevenue.toLocaleString()}</span></div>
+            <div className="flex justify-between py-2 border-b"><span>COGS</span><span className="font-bold">${totalCOGS.toLocaleString()}</span></div>
+            <div className="flex justify-between py-2"><span className="font-bold">Gross Profit</span><span className={`font-bold ${(totalRevenue - totalCOGS) >= 0 ? 'text-green-600' : 'text-red-600'}`}>${(totalRevenue - totalCOGS).toLocaleString()}</span></div>
           </div>
         </div>
-      )}
-      
-      {/* ADD VEHICLE MODAL */}
-      {showAddVehicle && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-2xl">
-            <div className="border-b p-4 flex justify-between items-center">
-              <h2 className="text-xl font-bold">Add Vehicle</h2>
-              <button onClick={() => setShowAddVehicle(false)} className="p-2"><X size={24} /></button>
-            </div>
-            
-            <div className="p-4 space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Vehicle Name *</label>
-                <input
-                  type="text"
-                  value={vehicleForm.name}
-                  onChange={(e) => setVehicleForm({ ...vehicleForm, name: e.target.value })}
-                  placeholder="e.g., Work Truck"
-                  className="w-full border rounded-lg p-3"
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Year</label>
-                  <input
-                    type="text"
-                    value={vehicleForm.year}
-                    onChange={(e) => setVehicleForm({ ...vehicleForm, year: e.target.value })}
-                    placeholder="2020"
-                    className="w-full border rounded-lg p-3"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Make</label>
-                  <input
-                    type="text"
-                    value={vehicleForm.make}
-                    onChange={(e) => setVehicleForm({ ...vehicleForm, make: e.target.value })}
-                    placeholder="Ford"
-                    className="w-full border rounded-lg p-3"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Model</label>
-                  <input
-                    type="text"
-                    value={vehicleForm.model}
-                    onChange={(e) => setVehicleForm({ ...vehicleForm, model: e.target.value })}
-                    placeholder="F-150"
-                    className="w-full border rounded-lg p-3"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Starting Odometer (for {currentYear})</label>
-                <input
-                  type="number"
-                  value={vehicleForm.startingOdometer}
-                  onChange={(e) => setVehicleForm({ ...vehicleForm, startingOdometer: e.target.value })}
-                  placeholder="e.g., 45000"
-                  className="w-full border rounded-lg p-3"
-                />
-              </div>
-              <button
-                onClick={handleAddVehicle}
-                disabled={!vehicleForm.name}
-                className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold disabled:bg-gray-300"
-              >
-                Add Vehicle
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -8618,7 +7699,7 @@ function EbayListingsView({ inventory, onBack, onSelectItem, onListItem }) {
               {/* Thumbnail */}
               {item.photo ? (
                 <img 
-                  src={getPhotoSrc(item.photo)} 
+                  src={`data:image/jpeg;base64,${item.photo}`} 
                   className="w-16 h-16 object-cover rounded"
                   alt={item.description}
                 />
@@ -8665,47 +7746,16 @@ function EbayListingsView({ inventory, onBack, onSelectItem, onListItem }) {
 }
 
 function AddItemView({ onSave, onCancel, calculateMelt, clients, liveSpotPrices }) {
-  const initialFormState = { 
+  const [form, setForm] = useState({ 
     description: '', category: 'Silver - Sterling', metalType: 'Silver', purity: '925', 
-    weight: '', clientId: '', purchasePrice: '', meltValue: '', notes: '', 
+    weight: '', source: '', clientId: '', purchasePrice: '', meltValue: '', notes: '', 
     status: 'Available', dateAcquired: new Date().toISOString().split('T')[0],
-    photo: null, photoBack: null, year: '', mint: '', grade: '', serialNumber: '',
-    taxable: false, taxRate: 6.75, salesTax: 0
-  };
-  
-  const [form, setForm] = useState(initialFormState);
+    photo: null, photoBack: null, year: '', mint: '', grade: '', serialNumber: ''
+  });
   const [weightUnit, setWeightUnit] = useState('g'); // 'g' for grams, 'oz' for troy ounces
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [aiError, setAiError] = useState(null);
   const [captureStep, setCaptureStep] = useState('idle'); // idle, front, back, done
-  const [saveCount, setSaveCount] = useState(0); // Track saves in this session
-  
-  // Scroll to top when component mounts or after save
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [saveCount]);
-  
-  // Reset form for next item
-  const resetForm = () => {
-    setForm({
-      ...initialFormState,
-      dateAcquired: new Date().toISOString().split('T')[0] // Fresh date
-    });
-    setWeightUnit('g');
-    setCaptureStep('idle');
-    setAiError(null);
-    setSaveCount(prev => prev + 1); // Trigger scroll to top
-  };
-  
-  // Calculate sales tax when price or rate changes
-  const calculateSalesTax = (price, rate, isTaxable) => {
-    if (!isTaxable) return 0;
-    return Math.round((parseFloat(price) || 0) * (parseFloat(rate) || 0) / 100 * 100) / 100;
-  };
-  
-  const salesTax = calculateSalesTax(form.purchasePrice, form.taxRate, form.taxable);
-  const totalWithTax = (parseFloat(form.purchasePrice) || 0) + salesTax;
   
   // Conversion: 1 troy oz = 31.1035 grams
   const GRAMS_PER_OZ = 31.1035;
@@ -8723,7 +7773,26 @@ function AddItemView({ onSave, onCancel, calculateMelt, clients, liveSpotPrices 
     const spot = liveSpotPrices?.[metalType?.toLowerCase()] || 0;
     if (!spot) return 0;
     
-    const purityDecimal = parsePurity(purity);
+    // Parse purity
+    let purityDecimal = 1;
+    if (purity) {
+      const p = purity.toString().toUpperCase();
+      if (p.includes('K')) {
+        // Karat gold: 24K = 1.0, 18K = 0.75, 14K = 0.583, 10K = 0.417
+        const karat = parseInt(p.replace('K', ''));
+        purityDecimal = karat / 24;
+      } else if (p.includes('%')) {
+        purityDecimal = parseFloat(p.replace('%', '')) / 100;
+      } else {
+        const num = parseFloat(p);
+        if (num > 1) {
+          purityDecimal = num / 1000; // 925 -> 0.925, 999 -> 0.999
+        } else {
+          purityDecimal = num;
+        }
+      }
+    }
+    
     return (weightOz * spot * purityDecimal).toFixed(2);
   };
   
@@ -8802,11 +7871,11 @@ FOR FLATWARE/STERLING:
 
 Return ONLY a valid JSON object (no markdown, no explanation) with these fields:
 {
-  "description": "Full description (e.g., '1921 Morgan Dollar', '14K Yellow Gold Cuban Link Bracelet 7 inch', '10oz Engelhard Silver Bar')",
+  "description": "Full description (e.g., '1976-S Washington Quarter Proof', '14K Yellow Gold Cuban Link Bracelet 7 inch', '10oz Engelhard Silver Bar')",
   "category": "One of: Coins - Silver, Coins - Gold, Silver - Sterling, Silver - Bullion, Gold - Jewelry, Gold - Bullion, Gold - Scrap, Platinum, Palladium, Other",
   "metalType": "Gold, Silver, Platinum, Palladium, or Other",
   "purity": "e.g., 999, 925, 14K, 10K, 18K, 90%, 40%",
-  "aswOz": number - THE ACTUAL PRECIOUS METAL WEIGHT IN TROY OUNCES (not total weight - this is critical for melt calculation),
+  "estimatedWeightOz": number or null (estimate based on item type/size if possible),
   "year": "year if visible or applicable" or null,
   "mint": "mint mark if visible (P, D, S, O, CC, W)" or null,
   "grade": "grade from holder/flip/slab or condition assessment" or null,
@@ -8816,19 +7885,13 @@ Return ONLY a valid JSON object (no markdown, no explanation) with these fields:
   "confidence": "high, medium, or low"
 }
 
-CRITICAL - aswOz MUST BE THE PURE METAL CONTENT:
-- Morgan/Peace Dollar: aswOz = 0.7734 (NOT 0.859 total weight)
-- Walking Liberty/Franklin/Kennedy Half (90%): aswOz = 0.3617
-- Washington Quarter (pre-1965): aswOz = 0.1808
-- Roosevelt/Mercury Dime: aswOz = 0.0723
-- American Silver Eagle: aswOz = 1.0 (999 fine, so ASW = total weight)
-- 10oz Silver Bar (999): aswOz = 10.0
-- 14K gold jewelry: aswOz = total weight × 0.583
-- 18K gold jewelry: aswOz = total weight × 0.750
-- Sterling silver (925): aswOz = total weight × 0.925
-
-For coins, use the KNOWN ASW from numismatic references.
-For jewelry/scrap, estimate total weight and multiply by purity.
+Common weights reference:
+- Morgan/Peace Dollar: 0.7734 oz ASW (90% silver)
+- Washington Quarter (pre-1965): 0.1808 oz ASW
+- 1976 Bicentennial Quarter (40% silver S-mint): 0.0739 oz ASW
+- American Silver Eagle: 1.0 oz (999 fine)
+- Average men's 14K gold chain (20"): 0.5-1.5 oz total weight
+- Average women's 14K bracelet: 0.2-0.5 oz total weight
 
 Return ONLY the JSON object.`
       });
@@ -8878,13 +7941,9 @@ Return ONLY the JSON object.`
       console.log('Parsed AI result:', aiResult);
       
       // Update form with AI results
-      // aswOz is the ACTUAL SILVER/GOLD WEIGHT - purity already factored in
-      const aswOz = aiResult.aswOz || aiResult.estimatedWeightOz || 0;
-      const weightGrams = aswOz ? (aswOz * GRAMS_PER_OZ).toFixed(2) : '';
-      
-      // Calculate melt directly: ASW × spot price (no purity multiplier needed)
-      const spot = liveSpotPrices?.[aiResult.metalType?.toLowerCase()] || 0;
-      const meltVal = spot && aswOz ? (aswOz * spot).toFixed(2) : '';
+      const weightOz = aiResult.estimatedWeightOz || 0;
+      const weightGrams = weightOz ? (weightOz * GRAMS_PER_OZ).toFixed(2) : '';
+      const meltVal = calculateMeltValue(aiResult.metalType, aiResult.purity, weightOz);
       
       setForm(prev => ({
         ...prev,
@@ -8918,92 +7977,26 @@ Return ONLY the JSON object.`
       return;
     }
     
-    // Compress photo to keep size manageable
-    const compressImage = (file) => {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const img = new Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
-            
-            // Scale down if too large
-            const maxDim = 1200;
-            if (width > maxDim || height > maxDim) {
-              if (width > height) {
-                height = Math.round(height * maxDim / width);
-                width = maxDim;
-              } else {
-                width = Math.round(width * maxDim / height);
-                height = maxDim;
-              }
-            }
-            
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            // Compress to JPEG at 70% quality
-            const base64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
-            console.log(`Photo compressed: ${Math.round(base64.length/1024)}KB`);
-            resolve(base64);
-          };
-          img.src = event.target.result;
-        };
-        reader.readAsDataURL(file);
-      });
-    };
-    
-    const base64 = await compressImage(file);
-    console.log('Photo captured, step:', captureStep, 'size:', Math.round(base64.length/1024), 'KB');
-    
-    if (captureStep === 'front') {
-      setForm(prev => ({...prev, photo: base64}));
-      setCaptureStep('idle');
-    } else if (captureStep === 'back') {
-      setForm(prev => ({...prev, photoBack: base64}));
-      setCaptureStep('idle');
-      // Auto-analyze after both photos captured
-      const frontPhoto = form.photo;
-      if (frontPhoto) {
-        await analyzePhotosWithAI(frontPhoto, base64);
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const base64 = event.target.result.split(',')[1];
+      console.log('Photo captured, step:', captureStep, 'size:', Math.round(base64.length/1024), 'KB');
+      
+      if (captureStep === 'front') {
+        setForm(prev => ({...prev, photo: base64}));
+        setCaptureStep('idle');
+      } else if (captureStep === 'back') {
+        setForm(prev => ({...prev, photoBack: base64}));
+        setCaptureStep('idle');
+        // Auto-analyze after both photos captured
+        const frontPhoto = form.photo;
+        if (frontPhoto) {
+          await analyzePhotosWithAI(frontPhoto, base64);
+        }
       }
-    }
+    };
+    reader.readAsDataURL(file);
     e.target.value = ''; // Reset input
-  };
-  
-  // Rotate photo 90 degrees clockwise
-  const rotatePhoto = (side) => {
-    const photoData = side === 'front' ? form.photo : form.photoBack;
-    if (!photoData) return;
-    
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      
-      // Swap width and height for 90 degree rotation
-      canvas.width = img.height;
-      canvas.height = img.width;
-      
-      // Rotate 90 degrees clockwise
-      ctx.translate(canvas.width, 0);
-      ctx.rotate(Math.PI / 2);
-      ctx.drawImage(img, 0, 0);
-      
-      // Get rotated base64 (without the data:image prefix)
-      const rotatedBase64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
-      
-      if (side === 'front') {
-        setForm(prev => ({...prev, photo: rotatedBase64}));
-      } else {
-        setForm(prev => ({...prev, photoBack: rotatedBase64}));
-      }
-    };
-    img.src = getPhotoSrc(photoData);
   };
   
   // Handle unit change - convert the current value
@@ -9065,17 +8058,10 @@ Return ONLY the JSON object.`
                 <div className="text-xs text-gray-500 mb-1">① Main Photo</div>
                 {form.photo ? (
                   <div className="relative">
-                    <img src={getPhotoSrc(form.photo)} className="w-full h-28 object-cover rounded-lg border-2 border-green-400" />
+                    <img src={`data:image/jpeg;base64,${form.photo}`} className="w-full h-28 object-cover rounded-lg border-2 border-green-400" />
                     <div className="absolute top-1 right-1 bg-green-500 text-white rounded-full w-5 h-5 flex items-center justify-center">
                       <Check size={12} />
                     </div>
-                    <button 
-                      onClick={() => rotatePhoto('front')}
-                      className="absolute bottom-1 right-1 bg-black bg-opacity-60 text-white rounded-full w-7 h-7 flex items-center justify-center"
-                      title="Rotate 90°"
-                    >
-                      <RotateCw size={14} />
-                    </button>
                   </div>
                 ) : (
                   <button 
@@ -9094,17 +8080,10 @@ Return ONLY the JSON object.`
                 <div className="text-xs text-gray-500 mb-1">② Back (optional)</div>
                 {form.photoBack ? (
                   <div className="relative">
-                    <img src={getPhotoSrc(form.photoBack)} className="w-full h-28 object-cover rounded-lg border-2 border-green-400" />
+                    <img src={`data:image/jpeg;base64,${form.photoBack}`} className="w-full h-28 object-cover rounded-lg border-2 border-green-400" />
                     <div className="absolute top-1 right-1 bg-green-500 text-white rounded-full w-5 h-5 flex items-center justify-center">
                       <Check size={12} />
                     </div>
-                    <button 
-                      onClick={() => rotatePhoto('back')}
-                      className="absolute bottom-1 right-1 bg-black bg-opacity-60 text-white rounded-full w-7 h-7 flex items-center justify-center"
-                      title="Rotate 90°"
-                    >
-                      <RotateCw size={14} />
-                    </button>
                   </div>
                 ) : (
                   <button 
@@ -9182,49 +8161,42 @@ Return ONLY the JSON object.`
             </div>
           </div>
           
-          {/* Purity - Full Width */}
-          <div>
-            <label className="block text-sm font-medium mb-1">Purity</label>
-            <input type="text" value={form.purity} onChange={(e) => setForm({...form, purity: e.target.value})} className="w-full border rounded p-2" placeholder="925, 999, 14K..." />
-          </div>
-          
-          {/* Metal Weight - Full Width */}
-          <div>
-            <label className="block text-sm font-medium mb-1">ASW (Actual Silver/Gold Weight)</label>
-            <p className="text-xs text-gray-500 mb-1">Pure metal content in troy oz - NOT total weight</p>
-            <div className="flex gap-1">
-              <input 
-                type="number" 
-                step="0.01" 
-                value={form.weight} 
-                onChange={(e) => setForm({...form, weight: e.target.value})} 
-                className="flex-1 min-w-0 border rounded-l p-2" 
-                placeholder={weightUnit === 'g' ? 'grams' : 'troy oz'}
-              />
-              <div className="flex border rounded-r overflow-hidden flex-shrink-0">
-                <button 
-                  type="button"
-                  onClick={() => handleUnitChange('g')}
-                  className={`px-3 py-2 text-sm font-medium transition-colors ${weightUnit === 'g' ? 'bg-amber-600 text-white' : 'bg-gray-100 text-gray-600'}`}
-                >
-                  g
-                </button>
-                <button 
-                  type="button"
-                  onClick={() => handleUnitChange('oz')}
-                  className={`px-3 py-2 text-sm font-medium transition-colors ${weightUnit === 'oz' ? 'bg-amber-600 text-white' : 'bg-gray-100 text-gray-600'}`}
-                >
-                  oz
-                </button>
+          <div className="grid grid-cols-2 gap-4">
+            <div><label className="block text-sm font-medium mb-1">Purity</label><input type="text" value={form.purity} onChange={(e) => setForm({...form, purity: e.target.value})} className="w-full border rounded p-2" placeholder="925, 999, 14K..." /></div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Weight</label>
+              <div className="flex gap-1">
+                <input 
+                  type="number" 
+                  step="0.01" 
+                  value={form.weight} 
+                  onChange={(e) => setForm({...form, weight: e.target.value})} 
+                  className="flex-1 border rounded-l p-2" 
+                  placeholder={weightUnit === 'g' ? 'grams' : 'troy oz'}
+                />
+                <div className="flex border rounded-r overflow-hidden">
+                  <button 
+                    onClick={() => handleUnitChange('g')}
+                    className={`px-2 py-2 text-sm font-medium transition-colors ${weightUnit === 'g' ? 'bg-amber-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                  >
+                    g
+                  </button>
+                  <button 
+                    onClick={() => handleUnitChange('oz')}
+                    className={`px-2 py-2 text-sm font-medium transition-colors ${weightUnit === 'oz' ? 'bg-amber-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                  >
+                    oz
+                  </button>
+                </div>
               </div>
+              {form.weight && (
+                <div className="text-xs text-gray-500 mt-1">
+                  = {weightUnit === 'g' 
+                    ? `${getWeightInOz().toFixed(4)} troy oz` 
+                    : `${(parseFloat(form.weight) * GRAMS_PER_OZ).toFixed(2)} grams`}
+                </div>
+              )}
             </div>
-            {form.weight && (
-              <div className="text-xs text-gray-500 mt-1">
-                = {weightUnit === 'g' 
-                  ? `${getWeightInOz().toFixed(4)} troy oz` 
-                  : `${(parseFloat(form.weight) * GRAMS_PER_OZ).toFixed(2)} grams`}
-              </div>
-            )}
           </div>
           
           {/* Year/Mint/Grade for coins */}
@@ -9280,194 +8252,35 @@ Return ONLY the JSON object.`
             <p className="text-xs text-gray-500 mt-1">For AML compliance: document all identifying marks</p>
           </div>
           
-          {/* Status/Basket Selector */}
-          <div>
-            <label className="block text-sm font-medium mb-2">Disposition</label>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => setForm({...form, status: 'Available'})}
-                className={`py-3 px-2 rounded-lg font-medium text-sm transition-all ${
-                  form.status === 'Available' 
-                    ? 'bg-green-500 text-white ring-2 ring-green-300' 
-                    : 'bg-green-100 text-green-700 hover:bg-green-200'
-                }`}
-              >
-                🏷️ Sell
-              </button>
-              <button
-                type="button"
-                onClick={() => setForm({...form, status: 'Stash'})}
-                className={`py-3 px-2 rounded-lg font-medium text-sm transition-all ${
-                  form.status === 'Stash' 
-                    ? 'bg-purple-500 text-white ring-2 ring-purple-300' 
-                    : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-                }`}
-              >
-                🏦 Stash
-              </button>
-              <button
-                type="button"
-                onClick={() => setForm({...form, status: 'Hold'})}
-                className={`py-3 px-2 rounded-lg font-medium text-sm transition-all ${
-                  form.status === 'Hold' 
-                    ? 'bg-amber-500 text-white ring-2 ring-amber-300' 
-                    : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-                }`}
-              >
-                ⏳ Hold
-              </button>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              {form.status === 'Available' && 'Ready to sell - appears in active inventory'}
-              {form.status === 'Stash' && 'Long-term hold - personal collection'}
-              {form.status === 'Hold' && 'Regulatory hold - waiting for release'}
-            </p>
-          </div>
-          
-          {/* Purchase Price - Full Width */}
-          <div>
-            <label className="block text-sm font-medium mb-1">Purchase Price</label>
-            <div className="flex">
-              <span className="bg-gray-100 border border-r-0 rounded-l px-3 py-2 text-gray-500">$</span>
-              <input type="number" value={form.purchasePrice} onChange={(e) => setForm({...form, purchasePrice: e.target.value})} className="flex-1 min-w-0 border rounded-r p-2" placeholder="0.00" />
-            </div>
-          </div>
-          
-          {/* Sales Tax Section */}
-          <div className="bg-gray-50 rounded-lg p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  checked={form.taxable} 
-                  onChange={(e) => setForm({...form, taxable: e.target.checked})}
-                  className="w-5 h-5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
-                />
-                <span className="text-sm font-medium">Taxable Purchase</span>
-              </label>
-              {form.taxable && (
-                <div className="flex items-center gap-1">
-                  <input 
-                    type="number" 
-                    step="0.01"
-                    value={form.taxRate} 
-                    onChange={(e) => setForm({...form, taxRate: e.target.value})}
-                    className="w-16 border rounded px-2 py-1 text-sm text-right"
-                  />
-                  <span className="text-sm text-gray-500">%</span>
-                </div>
-              )}
-            </div>
-            {form.taxable && form.purchasePrice && (
-              <div className="pt-2 border-t border-gray-200 space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Subtotal:</span>
-                  <span>${parseFloat(form.purchasePrice).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Sales Tax ({form.taxRate}%):</span>
-                  <span className="text-amber-600">${salesTax.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between font-bold">
-                  <span>Total Cost Basis:</span>
-                  <span className="text-green-600">${totalWithTax.toFixed(2)}</span>
-                </div>
-              </div>
-            )}
-          </div>
-          
-          {/* Melt at Purchase - Full Width */}
-          <div>
-            <label className="block text-sm font-medium mb-1">Melt at Purchase</label>
-            <p className="text-xs text-gray-500 mb-1">Locked value using spot when saved</p>
-            <div className="flex gap-2">
-              <div className="flex flex-1 min-w-0">
-                <span className="bg-gray-100 border border-r-0 rounded-l px-3 py-2 text-gray-500">$</span>
-                <input type="number" value={form.meltValue} onChange={(e) => setForm({...form, meltValue: e.target.value})} className="flex-1 min-w-0 border rounded-r p-2" placeholder="0.00" />
-              </div>
-              <button 
-                type="button"
-                onClick={() => {
-                  const spot = liveSpotPrices?.[form.metalType?.toLowerCase()] || 0;
-                  const asw = getWeightInOz();
-                  setForm({...form, meltValue: (asw * spot).toFixed(2)});
-                }} 
-                className="bg-amber-500 text-white px-4 rounded text-sm font-medium flex-shrink-0"
-              >
-                Calc
-              </button>
-            </div>
-          </div>
-          
-          {/* Live Melt Value Display */}
-          {form.weight && form.metalType && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-              <div className="flex justify-between items-center">
-                <div>
-                  <div className="text-xs text-green-600 font-medium">Current Melt Value (Live)</div>
-                  <div className="text-xl font-bold text-green-700">
-                    ${(getWeightInOz() * (liveSpotPrices?.[form.metalType?.toLowerCase()] || 0)).toFixed(2)}
-                  </div>
-                </div>
-                <div className="text-right text-xs text-gray-500">
-                  <div>{form.metalType} Spot</div>
-                  <div className="font-medium">${liveSpotPrices?.[form.metalType?.toLowerCase()]?.toFixed(2) || 'N/A'}/oz</div>
-                </div>
-              </div>
-              <div className="text-xs text-green-600 mt-1">
-                {getWeightInOz().toFixed(4)} oz ASW × ${liveSpotPrices?.[form.metalType?.toLowerCase()]?.toFixed(2) || '0'}/oz
+          <div><label className="block text-sm font-medium mb-1">Source</label><input type="text" value={form.source} onChange={(e) => setForm({...form, source: e.target.value})} className="w-full border rounded p-2" /></div>
+          <div className="grid grid-cols-2 gap-4">
+            <div><label className="block text-sm font-medium mb-1">Purchase $</label><input type="number" value={form.purchasePrice} onChange={(e) => setForm({...form, purchasePrice: e.target.value})} className="w-full border rounded p-2" /></div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Melt Value</label>
+              <div className="flex gap-2">
+                <input type="number" value={form.meltValue} onChange={(e) => setForm({...form, meltValue: e.target.value})} className="flex-1 border rounded p-2" />
+                <button onClick={() => setForm({...form, meltValue: calculateMelt(form.metalType, form.purity, getWeightInOz())})} className="bg-amber-100 px-2 rounded text-amber-700 text-sm">Calc</button>
               </div>
             </div>
-          )}
-          
+          </div>
           <div><label className="block text-sm font-medium mb-1">Notes</label><textarea value={form.notes} onChange={(e) => setForm({...form, notes: e.target.value})} className="w-full border rounded p-2" rows={2} /></div>
           <div className="flex gap-2 pt-2">
-            <button onClick={onCancel} disabled={isSaving} className="flex-1 border py-2 rounded disabled:opacity-50">Cancel</button>
+            <button onClick={onCancel} className="flex-1 border py-2 rounded">Cancel</button>
             <button 
-              disabled={isSaving}
-              onClick={async () => { 
-                if (!form.description) {
-                  alert('Please enter a description');
-                  return;
-                }
-                setIsSaving(true);
-                
-                try {
+              onClick={() => { 
+                if (form.description) {
                   const weightInOz = getWeightInOz();
-                  const meltAtPurchase = parseFloat(form.meltValue || calculateMelt(form.metalType, form.purity, weightInOz)) || 0;
-                  // Calculate total cost including tax if applicable
-                  const basePurchasePrice = parseFloat(form.purchasePrice) || 0;
-                  const taxAmount = form.taxable ? calculateSalesTax(form.purchasePrice, form.taxRate, true) : 0;
-                  const totalPurchasePrice = basePurchasePrice + taxAmount;
-                  
-                  await onSave({ 
+                  onSave({ 
                     ...form, 
                     weightOz: weightInOz, 
-                    purchasePrice: totalPurchasePrice,
-                    priceBeforeTax: basePurchasePrice,
-                    salesTax: taxAmount,
-                    taxRate: form.taxable ? parseFloat(form.taxRate) : null,
-                    taxable: form.taxable,
-                    meltValue: meltAtPurchase,
-                    spotAtPurchase: {
-                      gold: liveSpotPrices?.gold || 0,
-                      silver: liveSpotPrices?.silver || 0,
-                      platinum: liveSpotPrices?.platinum || 0,
-                      palladium: liveSpotPrices?.palladium || 0,
-                      date: new Date().toISOString()
-                    }
-                  }, resetForm); // Pass resetForm callback
-                } catch (error) {
-                  console.error('Save error:', error);
-                  alert('Save failed: ' + error.message);
-                } finally {
-                  setIsSaving(false);
+                    purchasePrice: parseFloat(form.purchasePrice) || 0, 
+                    meltValue: parseFloat(form.meltValue || calculateMelt(form.metalType, form.purity, weightInOz)) || 0 
+                  }); 
                 }
               }} 
-              className={`flex-1 py-2 rounded text-white font-medium ${isSaving ? 'bg-gray-400' : 'bg-amber-600'}`}
+              className="flex-1 bg-amber-600 text-white py-2 rounded"
             >
-              {isSaving ? '⏳ Saving...' : 'Save & Next'}
+              Save
             </button>
           </div>
         </div>
@@ -9476,7 +8289,7 @@ Return ONLY the JSON object.`
   );
 }
 
-function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay, liveSpotPrices, onCreateLot, onGoHome }) {
+function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay, liveSpotPrices, onCreateLot, onPrev, onNext, currentIndex, totalItems }) {
   const [showSold, setShowSold] = useState(false);
   const [salePrice, setSalePrice] = useState(item.meltValue || '');
   const [salePlatform, setSalePlatform] = useState('Refiner');
@@ -9489,25 +8302,6 @@ function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay, l
   const [lotNotes, setLotNotes] = useState(item.notes || '');
   const [showPhotoManager, setShowPhotoManager] = useState(false);
   
-  // Edit mode state
-  const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState({
-    description: item.description || '',
-    category: item.category || 'Silver - Sterling',
-    metalType: item.metalType || 'Silver',
-    purity: item.purity || '',
-    weightOz: item.weightOz || '',
-    purchasePrice: item.purchasePrice || '',
-    meltValue: item.meltValue || '',
-    notes: item.notes || '',
-    serialNumber: item.serialNumber || '',
-    year: item.year || '',
-    mint: item.mint || '',
-    grade: item.grade || '',
-    clientId: item.clientId || '',
-    status: item.status || 'Available'
-  });
-  
   // Photo management refs
   const photoCameraRef = useRef(null);
   const photoGalleryRef = useRef(null);
@@ -9518,55 +8312,21 @@ function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay, l
   const holdStatus = getHoldStatus(item);
   const profit = item.status === 'Sold' ? (item.salePrice - item.purchasePrice) : (item.meltValue - item.purchasePrice);
   
-  // Handle adding/updating photos with compression
+  // Handle adding/updating photos
   const handlePhotoCapture = (side) => async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     
-    // Compress photo
-    const compressImage = (file) => {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const img = new Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
-            
-            // Scale down if too large
-            const maxDim = 1200;
-            if (width > maxDim || height > maxDim) {
-              if (width > height) {
-                height = Math.round(height * maxDim / width);
-                width = maxDim;
-              } else {
-                width = Math.round(width * maxDim / height);
-                height = maxDim;
-              }
-            }
-            
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            const base64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
-            console.log(`Photo compressed: ${Math.round(base64.length/1024)}KB`);
-            resolve(base64);
-          };
-          img.src = event.target.result;
-        };
-        reader.readAsDataURL(file);
-      });
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target.result.split(',')[1];
+      if (side === 'front') {
+        onUpdate({ ...item, photo: base64 });
+      } else {
+        onUpdate({ ...item, photoBack: base64 });
+      }
     };
-    
-    const base64 = await compressImage(file);
-    if (side === 'front') {
-      onUpdate({ ...item, photo: base64 });
-    } else {
-      onUpdate({ ...item, photoBack: base64 });
-    }
+    reader.readAsDataURL(file);
     e.target.value = ''; // Reset input
   };
   
@@ -9576,37 +8336,6 @@ function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay, l
     } else {
       onUpdate({ ...item, photoBack: null });
     }
-  };
-  
-  // Rotate photo 90 degrees clockwise
-  const rotatePhoto = (side) => {
-    const photoData = side === 'front' ? item.photo : item.photoBack;
-    if (!photoData) return;
-    
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      
-      // Swap width and height for 90 degree rotation
-      canvas.width = img.height;
-      canvas.height = img.width;
-      
-      // Rotate 90 degrees clockwise
-      ctx.translate(canvas.width, 0);
-      ctx.rotate(Math.PI / 2);
-      ctx.drawImage(img, 0, 0);
-      
-      // Get rotated base64 (without the data:image prefix)
-      const rotatedBase64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
-      
-      if (side === 'front') {
-        onUpdate({ ...item, photo: rotatedBase64 });
-      } else {
-        onUpdate({ ...item, photoBack: rotatedBase64 });
-      }
-    };
-    img.src = getPhotoSrc(photoData);
   };
   
   // Generate casual, human eBay listing - NO cost info, conversational tone
@@ -9939,141 +8668,13 @@ Ships fast and packed well. Questions? Just ask.`;
   };
   
   const sellStrategy = ebayPrices ? getSellStrategy(ebayPrices) : null;
-  
-  // Categories for edit form
-  const categories = ['Coins - Silver', 'Coins - Gold', 'Silver - Sterling', 'Silver - Bullion', 'Gold - Jewelry', 'Gold - Bullion', 'Gold - Scrap', 'Platinum', 'Palladium', 'Collectibles', 'Other'];
-  
-  // Save edit handler
-  const handleSaveEdit = () => {
-    onUpdate({
-      ...item,
-      ...editForm,
-      weightOz: parseFloat(editForm.weightOz) || item.weightOz,
-      purchasePrice: parseFloat(editForm.purchasePrice) || item.purchasePrice,
-      meltValue: parseFloat(editForm.meltValue) || item.meltValue
-    });
-    setIsEditing(false);
-  };
 
   return (
     <div className="min-h-screen bg-amber-50 pb-24">
-      <div className="bg-amber-700 text-white p-4 flex justify-between items-center">
-        <div className="flex items-center gap-2">
-          <button onClick={onBack}>← Back</button>
-          {onGoHome && (
-            <button onClick={onGoHome} className="p-1 hover:bg-amber-600 rounded">
-              <Home size={18} />
-            </button>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          <button onClick={() => setIsEditing(true)} className="p-1 hover:bg-amber-600 rounded">
-            <Edit3 size={20} />
-          </button>
-          <button onClick={onDelete}><Trash2 size={20} /></button>
-        </div>
+      <div className="bg-amber-700 text-white p-4 flex justify-between">
+        <button onClick={onBack}>← Back</button>
+        <button onClick={onDelete}><Trash2 size={20} /></button>
       </div>
-      
-      {/* EDIT MODAL */}
-      {isEditing && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto">
-          <div className="min-h-screen p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-lg mx-auto">
-              <div className="bg-amber-600 text-white p-4 rounded-t-lg flex justify-between items-center">
-                <h3 className="font-bold text-lg">Edit Item</h3>
-                <button onClick={() => setIsEditing(false)}><X size={24} /></button>
-              </div>
-              <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Description *</label>
-                  <input type="text" value={editForm.description} onChange={(e) => setEditForm({...editForm, description: e.target.value})} className="w-full border rounded p-2" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Category</label>
-                    <select value={editForm.category} onChange={(e) => setEditForm({...editForm, category: e.target.value})} className="w-full border rounded p-2 bg-white">
-                      {categories.map(c => <option key={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Metal</label>
-                    <select value={editForm.metalType} onChange={(e) => setEditForm({...editForm, metalType: e.target.value})} className="w-full border rounded p-2 bg-white">
-                      <option>Gold</option><option>Silver</option><option>Platinum</option><option>Palladium</option><option>Other</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Purity</label>
-                    <input type="text" value={editForm.purity} onChange={(e) => setEditForm({...editForm, purity: e.target.value})} className="w-full border rounded p-2" placeholder="925, 999, 14K..." />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Weight (oz)</label>
-                    <input type="number" step="0.0001" value={editForm.weightOz} onChange={(e) => setEditForm({...editForm, weightOz: e.target.value})} className="w-full border rounded p-2" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Year</label>
-                    <input type="text" value={editForm.year} onChange={(e) => setEditForm({...editForm, year: e.target.value})} className="w-full border rounded p-2" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Mint</label>
-                    <select value={editForm.mint} onChange={(e) => setEditForm({...editForm, mint: e.target.value})} className="w-full border rounded p-2 bg-white">
-                      <option value="">-</option>
-                      <option value="P">P</option><option value="D">D</option><option value="S">S</option>
-                      <option value="O">O</option><option value="CC">CC</option><option value="W">W</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Grade</label>
-                    <input type="text" value={editForm.grade} onChange={(e) => setEditForm({...editForm, grade: e.target.value})} className="w-full border rounded p-2" placeholder="MS65, VF..." />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Client</label>
-                  <select value={editForm.clientId} onChange={(e) => setEditForm({...editForm, clientId: e.target.value})} className="w-full border rounded p-2 bg-white">
-                    <option value="">No client</option>
-                    {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Purchase Price</label>
-                    <input type="number" step="0.01" value={editForm.purchasePrice} onChange={(e) => setEditForm({...editForm, purchasePrice: e.target.value})} className="w-full border rounded p-2" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Melt at Purchase</label>
-                    <input type="number" step="0.01" value={editForm.meltValue} onChange={(e) => setEditForm({...editForm, meltValue: e.target.value})} className="w-full border rounded p-2" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Serial / Marks</label>
-                  <input type="text" value={editForm.serialNumber} onChange={(e) => setEditForm({...editForm, serialNumber: e.target.value})} className="w-full border rounded p-2" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Status</label>
-                  <select value={editForm.status} onChange={(e) => setEditForm({...editForm, status: e.target.value})} className="w-full border rounded p-2 bg-white">
-                    <option value="Available">Available</option>
-                    <option value="Stash">Stash</option>
-                    <option value="Sold">Sold</option>
-                    <option value="Listed">Listed</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Notes</label>
-                  <textarea value={editForm.notes} onChange={(e) => setEditForm({...editForm, notes: e.target.value})} className="w-full border rounded p-2" rows={3} />
-                </div>
-              </div>
-              <div className="p-4 border-t flex gap-3">
-                <button onClick={() => setIsEditing(false)} className="flex-1 border py-2 rounded">Cancel</button>
-                <button onClick={handleSaveEdit} className="flex-1 bg-amber-600 text-white py-2 rounded font-medium">Save Changes</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      
       <div className="p-4"><div className="bg-white rounded-lg shadow p-4">
         <h2 className="text-xl font-bold">{item.description}</h2>
         <div className="text-gray-500">{item.id} • {item.category}</div>
@@ -10088,7 +8689,7 @@ Ships fast and packed well. Questions? Just ask.`;
                   {item.photo ? (
                     <div className="relative">
                       <img 
-                        src={getPhotoSrc(item.photo)} 
+                        src={`data:image/jpeg;base64,${item.photo}`} 
                         className="w-full h-32 object-cover rounded-lg"
                         alt="Front"
                       />
@@ -10098,13 +8699,6 @@ Ships fast and packed well. Questions? Just ask.`;
                         className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
                       >
                         <X size={14} />
-                      </button>
-                      <button
-                        onClick={() => rotatePhoto('front')}
-                        className="absolute bottom-1 right-1 bg-black bg-opacity-60 text-white rounded-full w-7 h-7 flex items-center justify-center"
-                        title="Rotate 90°"
-                      >
-                        <RotateCw size={14} />
                       </button>
                     </div>
                   ) : (
@@ -10123,7 +8717,7 @@ Ships fast and packed well. Questions? Just ask.`;
                   {item.photoBack ? (
                     <div className="relative">
                       <img 
-                        src={getPhotoSrc(item.photoBack)} 
+                        src={`data:image/jpeg;base64,${item.photoBack}`} 
                         className="w-full h-32 object-cover rounded-lg"
                         alt="Back"
                       />
@@ -10133,13 +8727,6 @@ Ships fast and packed well. Questions? Just ask.`;
                         className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
                       >
                         <X size={14} />
-                      </button>
-                      <button
-                        onClick={() => rotatePhoto('back')}
-                        className="absolute bottom-1 right-1 bg-black bg-opacity-60 text-white rounded-full w-7 h-7 flex items-center justify-center"
-                        title="Rotate 90°"
-                      >
-                        <RotateCw size={14} />
                       </button>
                     </div>
                   ) : (
@@ -10189,7 +8776,7 @@ Ships fast and packed well. Questions? Just ask.`;
                   {item.photo ? (
                     <div className="relative">
                       <img 
-                        src={getPhotoSrc(item.photo)} 
+                        src={`data:image/jpeg;base64,${item.photo}`} 
                         className="w-full h-48 object-contain bg-gray-100 rounded-lg"
                       />
                       <button
@@ -10227,7 +8814,7 @@ Ships fast and packed well. Questions? Just ask.`;
                   {item.photoBack ? (
                     <div className="relative">
                       <img 
-                        src={getPhotoSrc(item.photoBack)} 
+                        src={`data:image/jpeg;base64,${item.photoBack}`} 
                         className="w-full h-48 object-contain bg-gray-100 rounded-lg"
                       />
                       <button
@@ -10314,44 +8901,11 @@ Ships fast and packed well. Questions? Just ask.`;
           </div>
         )}
         
-        <div className="grid grid-cols-2 gap-3 my-4">
+        <div className="grid grid-cols-3 gap-3 my-4">
           <div className="bg-gray-50 p-3 rounded"><div className="text-xs text-gray-500">Cost</div><div className="text-lg font-bold">${item.purchasePrice}</div></div>
-          <div className="bg-gray-50 p-3 rounded"><div className="text-xs text-gray-500">Melt @ Purchase</div><div className="text-lg font-bold text-amber-700">${item.meltValue}</div></div>
+          <div className="bg-gray-50 p-3 rounded"><div className="text-xs text-gray-500">Melt</div><div className="text-lg font-bold text-amber-700">${item.meltValue}</div></div>
+          <div className="bg-gray-50 p-3 rounded"><div className="text-xs text-gray-500">Profit</div><div className={`text-lg font-bold ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>${profit}</div></div>
         </div>
-        
-        {/* Current Melt Value - calculated live from spot */}
-        {item.weightOz && item.metalType && (
-          <div className="bg-green-50 p-3 rounded-lg mb-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <div className="text-xs text-green-600 font-medium">Current Melt Value (Live)</div>
-                <div className="text-2xl font-bold text-green-700">
-                  ${(() => {
-                    const spot = liveSpotPrices?.[item.metalType?.toLowerCase()] || 0;
-                    const purityDecimal = parsePurity(item.purity);
-                    return ((item.weightOz || 0) * spot * purityDecimal).toFixed(2);
-                  })()}
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-xs text-gray-500">{item.metalType} Spot</div>
-                <div className="font-medium">${liveSpotPrices?.[item.metalType?.toLowerCase()]?.toFixed(2) || 'N/A'}/oz</div>
-              </div>
-            </div>
-            {/* Show profit vs cost */}
-            {(() => {
-              const spot = liveSpotPrices?.[item.metalType?.toLowerCase()] || 0;
-              const purityDecimal = parsePurity(item.purity);
-              const currentMelt = (item.weightOz || 0) * spot * purityDecimal;
-              const currentProfit = currentMelt - (item.purchasePrice || 0);
-              return (
-                <div className={`text-sm mt-2 ${currentProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {currentProfit >= 0 ? '↑' : '↓'} ${Math.abs(currentProfit).toFixed(2)} vs cost ({((currentProfit / (item.purchasePrice || 1)) * 100).toFixed(0)}%)
-                </div>
-              );
-            })()}
-          </div>
-        )}
         
         {item.status === 'Sold' && (
           <div className="bg-green-50 p-3 rounded mb-4">
@@ -10558,6 +9112,39 @@ Ships fast and packed well. Questions? Just ask.`;
                 )}
               </div>
             )}
+          </div>
+        )}
+        
+        {/* Previous / Next Navigation */}
+        {(onPrev || onNext) && (
+          <div className="flex items-center gap-2 mt-4">
+            <button 
+              onClick={onPrev}
+              disabled={!onPrev}
+              className={`flex-1 py-3 rounded font-medium flex items-center justify-center gap-2 ${
+                onPrev 
+                  ? 'bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200' 
+                  : 'bg-gray-50 text-gray-300 border border-gray-200 cursor-not-allowed'
+              }`}
+            >
+              <ChevronLeft size={20} />
+              Previous
+            </button>
+            <div className="text-center text-sm text-gray-500 px-2">
+              {currentIndex + 1} / {totalItems}
+            </div>
+            <button 
+              onClick={onNext}
+              disabled={!onNext}
+              className={`flex-1 py-3 rounded font-medium flex items-center justify-center gap-2 ${
+                onNext 
+                  ? 'bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200' 
+                  : 'bg-gray-50 text-gray-300 border border-gray-200 cursor-not-allowed'
+              }`}
+            >
+              Next
+              <ChevronRight size={20} />
+            </button>
           </div>
         )}
         
@@ -11071,56 +9658,13 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
           </div>
         </div>
         
-        {/* Demo Mode Sharing */}
-        <div className="bg-white p-4 rounded-lg shadow border-2 border-purple-200">
-          <h3 className="font-medium mb-3 flex items-center gap-2 text-purple-700">
-            <Zap size={18} /> Demo Mode (Share with Others)
-          </h3>
-          <p className="text-sm text-gray-600 mb-4">
-            Share this link to let others try the app without accessing your real data. Demo users have their own separate database.
-          </p>
-          
-          <div className="bg-purple-50 p-3 rounded mb-3">
-            <p className="text-xs text-purple-600 font-medium mb-1">Demo Link:</p>
-            <div className="flex gap-2">
-              <input 
-                type="text" 
-                readOnly 
-                value={`${window.location.origin}${window.location.pathname}?demo=true`}
-                className="flex-1 text-sm bg-white border rounded px-2 py-1"
-              />
-              <button 
-                onClick={() => {
-                  navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}?demo=true`);
-                  alert('Demo link copied to clipboard!');
-                }}
-                className="bg-purple-600 text-white px-3 py-1 rounded text-sm"
-              >
-                Copy
-              </button>
-            </div>
-          </div>
-          
-          <button 
-            onClick={async () => {
-              if (confirm('Clear ALL demo data? This removes all inventory, clients, and lots from the demo environment.')) {
-                const success = await FirebaseService.clearDemoData();
-                alert(success ? 'Demo data cleared!' : 'Failed to clear demo data');
-              }
-            }}
-            className="w-full border border-purple-300 text-purple-600 py-2 rounded text-sm flex items-center justify-center gap-2 hover:bg-purple-50"
-          >
-            <Trash2 size={14} /> Clear Demo Data
-          </button>
-        </div>
-        
         {/* App Info */}
         <div className="bg-white p-4 rounded-lg shadow">
           <h3 className="font-medium mb-3 flex items-center gap-2">
             <HardDrive size={18} /> App Information
           </h3>
           <div className="text-sm text-gray-600 space-y-1">
-            <p><strong>Version:</strong> 117</p>
+            <p><strong>Version:</strong> 72</p>
             <p><strong>Firebase Project:</strong> ses-inventory</p>
             <p><strong>Last Updated:</strong> January 2026</p>
           </div>
@@ -11131,7 +9675,7 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
 }
 
 // ============ RECEIPT MANAGER VIEW ============
-function ReceiptManagerView({ onBack, receipts, onAddReceipt, onDeleteReceipt, onUpdateReceipt, inventory, lots, clients, onAddClient, onGoHome }) {
+function ReceiptManagerView({ onBack, receipts, onAddReceipt, onDeleteReceipt, onUpdateReceipt, inventory, lots, clients }) {
   const [isUploading, setIsUploading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [uploadError, setUploadError] = useState(null);
@@ -11139,70 +9683,7 @@ function ReceiptManagerView({ onBack, receipts, onAddReceipt, onDeleteReceipt, o
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState(null);
   const [filter, setFilter] = useState('all'); // all, purchase, sale
-  const [showClientLink, setShowClientLink] = useState(false);
-  const [clientSearchTerm, setClientSearchTerm] = useState('');
   const fileInputRef = useRef(null);
-  
-  // Find matching clients based on vendor name
-  const findMatchingClients = (vendorName) => {
-    if (!vendorName || !clients) return [];
-    const searchLower = vendorName.toLowerCase();
-    return clients.filter(c => 
-      c.name.toLowerCase().includes(searchLower) ||
-      searchLower.includes(c.name.toLowerCase())
-    );
-  };
-  
-  // Link receipt to existing client
-  const linkToClient = (clientId) => {
-    const updatedReceipt = { ...selectedReceipt, linkedClientId: clientId };
-    onUpdateReceipt(updatedReceipt);
-    setSelectedReceipt(updatedReceipt);
-    setShowClientLink(false);
-  };
-  
-  // Create new client from receipt vendor and link
-  const createAndLinkClient = () => {
-    const receipt = selectedReceipt;
-    const newClient = {
-      id: `CLI-${Date.now()}`,
-      name: receipt.vendor || 'Unknown',
-      type: receipt.vendorType === 'individual' ? 'Private' : 'Business',
-      email: '',
-      phone: '',
-      address: '',
-      idType: receipt.vendorType === 'individual' ? 'Drivers License' : 'Business',
-      idNumber: '',
-      idExpiry: '',
-      idFrontPhoto: null,
-      idBackPhoto: null,
-      signature: null,
-      signatureTimestamp: null,
-      signatureLocation: null,
-      notes: `Created from receipt ${receipt.id}. ${receipt.vendorType ? `Type: ${receipt.vendorType}` : ''}`,
-      dateAdded: new Date().toISOString().split('T')[0],
-      totalTransactions: 1,
-      totalPurchased: receipt.type === 'purchase' ? (receipt.total || 0) : 0,
-      // New field to track if this is a vendor (we buy FROM) vs client (sells TO us)
-      relationship: receipt.type === 'purchase' ? 'vendor' : 'client'
-    };
-    
-    if (onAddClient) {
-      onAddClient(newClient);
-    }
-    
-    // Link receipt to new client
-    const updatedReceipt = { ...selectedReceipt, linkedClientId: newClient.id };
-    onUpdateReceipt(updatedReceipt);
-    setSelectedReceipt(updatedReceipt);
-    setShowClientLink(false);
-  };
-  
-  // Get linked client info
-  const getLinkedClient = (receipt) => {
-    if (!receipt?.linkedClientId || !clients) return null;
-    return clients.find(c => c.id === receipt.linkedClientId);
-  };
   
   // Start editing
   const startEditing = () => {
@@ -11804,166 +10285,16 @@ Be thorough - extract every line item you can identify.`
             )}
           </div>
           
-          {/* Client/Vendor Linking Section */}
-          {!isEditing && (
-            <div className="bg-white rounded-lg shadow p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-medium flex items-center gap-2">
-                  <Link2 size={16} />
-                  {selectedReceipt.type === 'purchase' ? 'Vendor' : 'Client'} Link
-                </h3>
-              </div>
-              
-              {(() => {
-                const linkedClient = getLinkedClient(selectedReceipt);
-                if (linkedClient) {
-                  return (
-                    <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg p-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                          <UserCheck size={20} className="text-green-600" />
-                        </div>
-                        <div>
-                          <div className="font-medium text-green-800">{linkedClient.name}</div>
-                          <div className="text-xs text-green-600">
-                            {linkedClient.type} • {linkedClient.relationship === 'vendor' ? 'Vendor (buy from)' : 'Client (sell to)'}
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          const updatedReceipt = { ...selectedReceipt };
-                          delete updatedReceipt.linkedClientId;
-                          onUpdateReceipt(updatedReceipt);
-                          setSelectedReceipt(updatedReceipt);
-                        }}
-                        className="text-red-500 text-sm"
-                      >
-                        Unlink
-                      </button>
-                    </div>
-                  );
-                }
-                
-                // Not linked yet - show linking options
-                const matchingClients = findMatchingClients(selectedReceipt.vendor);
-                
-                return (
-                  <div className="space-y-3">
-                    {/* Suggested matches */}
-                    {matchingClients.length > 0 && (
-                      <div>
-                        <p className="text-xs text-gray-500 mb-2">Possible matches:</p>
-                        <div className="space-y-2">
-                          {matchingClients.slice(0, 3).map(client => (
-                            <button
-                              key={client.id}
-                              onClick={() => linkToClient(client.id)}
-                              className="w-full flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg p-2 hover:bg-blue-100"
-                            >
-                              <div className="flex items-center gap-2">
-                                <User size={16} className="text-blue-600" />
-                                <span className="font-medium text-blue-800">{client.name}</span>
-                                <span className="text-xs text-blue-500">{client.type}</span>
-                              </div>
-                              <span className="text-xs text-blue-600">Link →</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Search existing clients */}
-                    {showClientLink ? (
-                      <div className="space-y-2">
-                        <input
-                          type="text"
-                          value={clientSearchTerm}
-                          onChange={(e) => setClientSearchTerm(e.target.value)}
-                          placeholder="Search clients..."
-                          className="w-full border rounded p-2 text-sm"
-                          autoFocus
-                        />
-                        <div className="max-h-40 overflow-y-auto space-y-1">
-                          {(clients || [])
-                            .filter(c => 
-                              clientSearchTerm === '' || 
-                              c.name.toLowerCase().includes(clientSearchTerm.toLowerCase())
-                            )
-                            .slice(0, 10)
-                            .map(client => (
-                              <button
-                                key={client.id}
-                                onClick={() => linkToClient(client.id)}
-                                className="w-full text-left p-2 rounded hover:bg-gray-100 flex items-center gap-2"
-                              >
-                                <User size={14} className="text-gray-400" />
-                                <span className="text-sm">{client.name}</span>
-                                <span className="text-xs text-gray-400">{client.type}</span>
-                              </button>
-                            ))
-                          }
-                        </div>
-                        <button
-                          onClick={() => { setShowClientLink(false); setClientSearchTerm(''); }}
-                          className="w-full text-sm text-gray-500 py-1"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setShowClientLink(true)}
-                          className="flex-1 border border-blue-300 text-blue-600 py-2 rounded text-sm flex items-center justify-center gap-2"
-                        >
-                          <Search size={14} /> Find Existing
-                        </button>
-                        {selectedReceipt.vendor && (
-                          <button
-                            onClick={createAndLinkClient}
-                            className="flex-1 bg-green-600 text-white py-2 rounded text-sm flex items-center justify-center gap-2"
-                          >
-                            <UserPlus size={14} /> Create "{selectedReceipt.vendor}"
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    
-                    <p className="text-xs text-gray-400 text-center">
-                      {selectedReceipt.type === 'purchase' 
-                        ? 'Link to vendor you purchased from' 
-                        : 'Link to client you sold to'}
-                    </p>
-                  </div>
-                );
-              })()}
-            </div>
-          )}
-          
           {/* Original File Preview - only show when not editing */}
           {!isEditing && (
             <div className="bg-white rounded-lg shadow p-4">
               <h3 className="font-medium mb-3">Original Document</h3>
               {selectedReceipt.fileType?.startsWith('image/') ? (
                 <img 
-                  src={selectedReceipt.fileUrl || `data:${selectedReceipt.fileType};base64,${selectedReceipt.fileData}`}
+                  src={`data:${selectedReceipt.fileType};base64,${selectedReceipt.fileData}`}
                   alt="Receipt"
                   className="w-full rounded border"
                 />
-              ) : selectedReceipt.fileUrl ? (
-                <div className="bg-gray-100 p-4 rounded text-center">
-                  <FileText size={48} className="mx-auto text-gray-400 mb-2" />
-                  <p className="text-sm text-gray-600">{selectedReceipt.fileName}</p>
-                  <a 
-                    href={selectedReceipt.fileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-2 text-blue-600 text-sm underline block"
-                  >
-                    Open PDF
-                  </a>
-                </div>
               ) : (
                 <div className="bg-gray-100 p-4 rounded text-center">
                   <FileText size={48} className="mx-auto text-gray-400 mb-2" />
@@ -12001,17 +10332,10 @@ Be thorough - extract every line item you can identify.`
   // Receipt list view
   return (
     <div className="min-h-screen bg-amber-50">
-      <div className="bg-amber-700 text-white p-4 flex items-center justify-between">
-        <div className="flex items-center">
-          <button onClick={onBack} className="mr-4">← Back</button>
-          <FileText size={24} className="mr-2" />
-          <h1 className="text-xl font-bold">Receipts</h1>
-        </div>
-        {onGoHome && (
-          <button onClick={onGoHome} className="p-2 hover:bg-amber-600 rounded">
-            <Home size={20} />
-          </button>
-        )}
+      <div className="bg-amber-700 text-white p-4 flex items-center">
+        <button onClick={onBack} className="mr-4">← Back</button>
+        <FileText size={24} className="mr-2" />
+        <h1 className="text-xl font-bold">Receipts</h1>
       </div>
       
       <div className="p-4 space-y-4">
@@ -12657,24 +10981,13 @@ function EbaySyncView({ onBack, onImportListings, inventory }) {
 
 // ============ MAIN APP ============
 export default function SESInventoryApp() {
-  // Check for demo mode from URL
-  const [demoMode] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('demo') === 'true';
-  });
-  
   // Start with null to indicate "not yet loaded" vs "empty"
   const [inventory, setInventory] = useState(null);
   const [clients, setClients] = useState(null);
   const [lots, setLots] = useState(null);
   const [receipts, setReceipts] = useState([]);
-  const [mileageLog, setMileageLog] = useState([]);
-  const [vehicles, setVehicles] = useState([]);
   const [dataLoaded, setDataLoaded] = useState(false); // Track if initial load is complete
-  const [loadError, setLoadError] = useState(null); // Critical error state - blocks app if set
   const [kpiExpanded, setKpiExpanded] = useState(true); // KPI dashboard expanded by default
-  const [inventoryListExpanded, setInventoryListExpanded] = useState(false); // Inventory list collapsed by default
-  const [inventoryViewMode, setInventoryViewMode] = useState('list'); // 'list' or 'grid'
   const [kpiFilter, setKpiFilter] = useState(null); // Filter for KPI drill-down: 'stash', 'hold', 'sell', 'available', 'silver', 'gold', 'platinum', 'sold'
   const [view, setView] = useState('list');
   const [selectedItem, setSelectedItem] = useState(null);
@@ -12687,45 +11000,8 @@ export default function SESInventoryApp() {
   const [isLoadingPrices, setIsLoadingPrices] = useState(false);
   const [firebaseReady, setFirebaseReady] = useState(false);
   const [ebayConnected, setEbayConnected] = useState(false);
-  
-  // Sell Trigger Settings - stored in localStorage
-  const [sellTriggers, setSellTriggers] = useState(() => {
-    const saved = localStorage.getItem('ses-sell-triggers');
-    if (saved) return JSON.parse(saved);
-    return {
-      enabled: true,
-      globalOverride: false, // If true, disables all triggers
-      triggers: [
-        { id: 'retail-premium', name: 'Retail Premium Opportunity', enabled: true, 
-          condition: 'eBay price > melt + X%', threshold: 20, unit: '%',
-          description: 'Flag when item can sell on eBay for premium over melt' },
-        { id: 'spot-spike', name: 'Spot Price Spike', enabled: true,
-          condition: 'Spot up X% in 7 days', threshold: 5, unit: '%',
-          description: 'Alert when spot rises sharply - sell into strength' },
-        { id: 'downward-trend', name: 'Downward Trend Warning', enabled: true,
-          condition: 'Spot down X% in 3 days', threshold: 3, unit: '%',
-          description: 'Warning when spot is falling - consider selling to refiner' },
-        { id: 'min-roi', name: 'Minimum ROI Alert', enabled: true,
-          condition: 'Current melt < cost + X%', threshold: 10, unit: '%',
-          description: 'Warning when approaching break-even' },
-        { id: 'stale-inventory', name: 'Stale Inventory', enabled: false,
-          condition: 'Held > X days with no premium', threshold: 90, unit: 'days',
-          description: 'Suggest moving to refiner if held too long' }
-      ],
-      metalOverrides: {
-        gold: { enabled: true, overrides: {} },
-        silver: { enabled: true, overrides: {} },
-        platinum: { enabled: true, overrides: {} }
-      },
-      itemOverrides: {} // itemId -> { disabled: true } to ignore triggers for specific items
-    };
-  });
-  
-  // Save triggers to localStorage when changed
-  useEffect(() => {
-    localStorage.setItem('ses-sell-triggers', JSON.stringify(sellTriggers));
-  }, [sellTriggers]);
-  
+  const [bulkSelectedIds, setBulkSelectedIds] = useState([]); // Bulk selection for multi-item actions
+  const [bulkMode, setBulkMode] = useState(false); // Whether bulk selection mode is active
   const [coinBuyPercents, setCoinBuyPercents] = useState(() => {
     // Load from localStorage or use defaults from coinReference
     const saved = localStorage.getItem('ses-coin-buy-percents');
@@ -12739,15 +11015,7 @@ export default function SESInventoryApp() {
     });
     return defaults;
   });
-  const [toast, setToast] = useState(null); // { message, type: 'success' | 'error' }
   const fileInputRef = useRef(null);
-  
-  // Show toast notification - errors stay longer
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-    const duration = type === 'error' ? 6000 : 3000;
-    setTimeout(() => setToast(null), duration);
-  };
   
   // Check for eBay connection on mount and handle OAuth callback
   useEffect(() => {
@@ -12832,160 +11100,65 @@ export default function SESInventoryApp() {
   // Initialize services on mount
   useEffect(() => {
     const initServices = async () => {
-      // Set demo mode in FirebaseService
-      FirebaseService.setDemoMode(demoMode);
-      
       // Initialize Firebase
       const fbReady = await FirebaseService.init();
       setFirebaseReady(fbReady);
       
-      if (!fbReady) {
-        // Firebase failed to initialize - this is a critical error
-        console.error('CRITICAL: Firebase failed to initialize');
-        setLoadError('Failed to connect to database. Please check your internet connection and refresh.');
-        setDataLoaded(true);
-        return;
-      }
-      
-      console.log('Firebase ready, loading data...');
-      
-      try {
-        const [fbInventory, fbClients, fbLots, fbReceipts, fbMileage, fbVehicles] = await Promise.all([
+      // Load data from Firebase if available
+      if (fbReady) {
+        const [fbInventory, fbClients, fbLots] = await Promise.all([
           FirebaseService.loadInventory(),
           FirebaseService.loadClients(),
-          FirebaseService.loadLots(),
-          FirebaseService.loadReceipts(),
-          FirebaseService.loadMileage(),
-          FirebaseService.loadVehicles()
+          FirebaseService.loadLots()
         ]);
         
-        console.log('Firebase load results:', {
-          inventory: fbInventory?.length ?? 'null',
-          clients: fbClients?.length ?? 'null',
-          lots: fbLots?.length ?? 'null',
-          receipts: fbReceipts?.length ?? 'null',
-          mileage: fbMileage?.length ?? 'null',
-          vehicles: fbVehicles?.length ?? 'null'
+        // Use Firebase data if it exists, otherwise use starter data
+        setInventory(fbInventory?.length ? fbInventory : starterInventory);
+        setClients(fbClients?.length ? fbClients : starterClients);
+        setLots(fbLots?.length ? fbLots : starterLots);
+        
+        console.log('Loaded from Firebase:', {
+          inventory: fbInventory?.length || 0,
+          clients: fbClients?.length || 0,
+          lots: fbLots?.length || 0
         });
-        
-        // If any load returned null, there was an error - don't proceed
-        if (fbInventory === null || fbClients === null || fbLots === null) {
-          console.error('CRITICAL: Firebase load returned null - data may be corrupted or connection failed');
-          setLoadError('Failed to load your data. Please refresh the page. If this persists, check browser console for errors.');
-          setDataLoaded(true);
-          return;
-        }
-        
-        // Success - use whatever Firebase returned (empty arrays are valid)
-        setInventory(fbInventory);
-        setClients(fbClients);
-        setLots(fbLots);
-        setReceipts(fbReceipts || []);
-        setMileageLog(fbMileage || []);
-        setVehicles(fbVehicles || []);
-        
-        console.log('Successfully loaded from Firebase:', {
-          inventory: fbInventory.length,
-          clients: fbClients.length,
-          lots: fbLots.length,
-          receipts: fbReceipts?.length || 0,
-          mileage: fbMileage?.length || 0,
-          vehicles: fbVehicles?.length || 0
-        });
-        
-      } catch (error) {
-        console.error('CRITICAL: Firebase load threw exception:', error);
-        setLoadError(`Database error: ${error.message}. Please refresh the page.`);
-        setDataLoaded(true);
-        return;
+      } else {
+        // Firebase not available, use starter data
+        setInventory(starterInventory);
+        setClients(starterClients);
+        setLots(starterLots);
+        console.log('Firebase not available, using starter data');
       }
       
       // Mark initial load as complete - this enables auto-save
       setDataLoaded(true);
       
       // Fetch live spot prices
-      try {
-        const prices = await SpotPriceService.fetchPrices();
-        if (prices) {
-          setLiveSpotPrices(prices);
-          setSpotLastUpdate(new Date());
-        }
-      } catch (e) {
-        console.log('Initial spot price fetch failed:', e);
-      }
+      await refreshSpotPrices();
     };
     
     initServices();
     
     // Refresh spot prices every 5 minutes
-    const priceInterval = setInterval(async () => {
-      try {
-        const prices = await SpotPriceService.fetchPrices();
-        if (prices) {
-          setLiveSpotPrices(prices);
-          setSpotLastUpdate(new Date());
-        }
-      } catch (e) {
-        console.log('Spot price refresh failed:', e);
-      }
-    }, 5 * 60 * 1000);
-    
+    const priceInterval = setInterval(refreshSpotPrices, 5 * 60 * 1000);
     return () => clearInterval(priceInterval);
   }, []);
   
   // Auto-save to Firebase when data changes - ONLY after initial load completes
-  // Using a ref to track if we're in the middle of initial load
-  const initialLoadComplete = useRef(false);
-  const lastSavedInventoryLength = useRef(0);
-  
-  // Save immediately when inventory changes (no debounce - mobile browsers kill timeouts)
   useEffect(() => {
-    // AUTO-SAVE REMOVED - all saves are now explicit
-    // This prevents deleted items from being resurrected by stale data in memory
-    // Saves happen on: Add item, Edit item, Delete item (explicit calls)
-    
-    // Just track initial load for other purposes
-    if (!firebaseReady || !dataLoaded || inventory === null) return;
-    if (!initialLoadComplete.current) {
-      initialLoadComplete.current = true;
-      lastSavedInventoryLength.current = inventory.length;
-      console.log('Initial load complete:', inventory.length, 'items');
+    if (firebaseReady && dataLoaded && inventory !== null && inventory.length >= 0) {
+      FirebaseService.saveInventory(inventory);
     }
   }, [inventory, firebaseReady, dataLoaded]);
   
-  // Also save on page unload (backup for mobile)
   useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (firebaseReady && inventory && inventory.length > 0) {
-        console.log('UNLOAD SAVE: Saving before page close');
-        // Use sendBeacon for reliable save on close (doesn't work with Firestore, but try anyway)
-        FirebaseService.saveInventory(inventory);
-      }
-    };
-    
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    window.addEventListener('pagehide', handleBeforeUnload); // iOS Safari
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden' && firebaseReady && inventory && inventory.length > 0) {
-        console.log('VISIBILITY SAVE: Page hidden, saving...');
-        FirebaseService.saveInventory(inventory);
-      }
-    });
-    
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      window.removeEventListener('pagehide', handleBeforeUnload);
-    };
-  }, [firebaseReady, inventory]);
-  
-  useEffect(() => {
-    if (firebaseReady && dataLoaded && clients !== null && initialLoadComplete.current) {
+    if (firebaseReady && dataLoaded && clients !== null && clients.length >= 0) {
       FirebaseService.saveClients(clients);
     }
   }, [clients, firebaseReady, dataLoaded]);
   
   useEffect(() => {
-    if (firebaseReady && dataLoaded && lots !== null && initialLoadComplete.current) {
+    if (firebaseReady && dataLoaded && lots !== null && lots.length >= 0) {
       FirebaseService.saveLots(lots);
     }
   }, [lots, firebaseReady, dataLoaded]);
@@ -13061,7 +11234,11 @@ export default function SESInventoryApp() {
 
   const calculateMelt = (metalType, purity, weightOz) => {
     const weight = parseFloat(weightOz) || 0;
-    const purityDecimal = parsePurity(purity);
+    let purityDecimal = 1;
+    if (purity?.includes('K')) purityDecimal = parseInt(purity) / 24;
+    else if (purity?.includes('%')) purityDecimal = parseInt(purity) / 100;
+    else if (purity === '925') purityDecimal = 0.925;
+    else if (purity === '999') purityDecimal = 0.999;
     return (weight * purityDecimal * (liveSpotPrices[metalType?.toLowerCase()] || 0)).toFixed(2);
   };
   
@@ -13263,33 +11440,6 @@ export default function SESInventoryApp() {
     ));
   };
 
-  // Show error screen if there was a critical database error
-  if (loadError) {
-    return (
-      <div className="min-h-screen bg-red-50 flex items-center justify-center p-4">
-        <div className="text-center max-w-md">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <AlertOctagon size={32} className="text-red-600" />
-          </div>
-          <h2 className="text-xl font-bold text-red-800">Database Error</h2>
-          <p className="text-red-600 mt-2 mb-4">{loadError}</p>
-          <div className="space-y-2">
-            <button 
-              onClick={() => window.location.reload()} 
-              className="w-full bg-red-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-red-700"
-            >
-              Refresh Page
-            </button>
-            <p className="text-xs text-red-500 mt-4">
-              If this error persists, check the browser console (F12) for details, 
-              or verify your Firebase connection at console.firebase.google.com
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // Show loading screen while data is loading
   if (!dataLoaded || inventory === null || clients === null) {
     return (
@@ -13297,14 +11447,7 @@ export default function SESInventoryApp() {
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-amber-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <h2 className="text-xl font-bold text-amber-800">Stevens Estate Services</h2>
-          <p className="text-amber-600 mt-2">
-            {demoMode ? 'Loading demo environment...' : 'Loading your inventory...'}
-          </p>
-          {demoMode && (
-            <div className="mt-3 bg-purple-100 text-purple-700 px-4 py-2 rounded-full inline-block text-sm">
-              <Zap size={14} className="inline mr-1" /> Demo Mode Active
-            </div>
-          )}
+          <p className="text-amber-600 mt-2">Loading your inventory...</p>
           {firebaseReady && <p className="text-green-600 text-sm mt-2">✓ Connected to cloud</p>}
         </div>
       </div>
@@ -13312,7 +11455,7 @@ export default function SESInventoryApp() {
   }
 
   // Client views
-  if (view === 'clients') return <ClientListView clients={clients} onSelect={(c) => { setSelectedClient(c); setView('clientDetail'); }} onAdd={() => setView('clientAdd')} onBack={() => setView('list')} onGoHome={() => setView('list')} />;
+  if (view === 'clients') return <ClientListView clients={clients} onSelect={(c) => { setSelectedClient(c); setView('clientDetail'); }} onAdd={() => setView('clientAdd')} onBack={() => setView('list')} />;
   if (view === 'clientAdd') return <ClientFormView onSave={(c) => { setClients([...clients, { ...c, id: getNextId('CLI') }]); setView('clients'); }} onCancel={() => setView('clients')} />;
   if (view === 'clientEdit' && selectedClient) return <ClientFormView client={selectedClient} onSave={(c) => { setClients(clients.map(x => x.id === c.id ? c : x)); setSelectedClient(c); setView('clientDetail'); }} onCancel={() => setView('clientDetail')} onDelete={(id) => { setClients(clients.filter(x => x.id !== id)); setView('clients'); }} />;
   if (view === 'clientDetail' && selectedClient) return <ClientDetailView client={selectedClient} transactions={inventory.filter(i => i.clientId === selectedClient.id)} onEdit={() => setView('clientEdit')} onBack={() => { setView('clients'); setSelectedClient(null); }} />;
@@ -13323,7 +11466,6 @@ export default function SESInventoryApp() {
       inventory={inventory} 
       spotPrices={liveSpotPrices}
       onBack={() => setView('list')}
-      onGoHome={() => setView('list')}
       onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }}
       onMoveToStash={handleMoveToStash}
       onMoveToInventory={handleMoveToInventory}
@@ -13337,8 +11479,7 @@ export default function SESInventoryApp() {
     lots={lots} 
     inventory={inventory} 
     liveSpotPrices={liveSpotPrices} 
-    onBack={() => setView('list')}
-    onGoHome={() => setView('list')} 
+    onBack={() => setView('list')} 
     onUpdateLot={(updatedLot) => setLots(lots.map(l => l.id === updatedLot.id ? updatedLot : l))}
     onBreakLot={(lot) => {
       // Break lot into individual items
@@ -13369,7 +11510,7 @@ export default function SESInventoryApp() {
     }}
     onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }}
   />;
-  if (view === 'calculator') return <ScrapCalculatorView spotPrices={liveSpotPrices} onRefresh={refreshSpotPrices} isLoading={isLoadingPrices} onBack={() => setView('list')} onGoHome={() => setView('list')} />;
+  if (view === 'calculator') return <ScrapCalculatorView spotPrices={liveSpotPrices} onRefresh={refreshSpotPrices} isLoading={isLoadingPrices} onBack={() => setView('list')} />;
   if (view === 'holdStatus') return <HoldStatusView 
     inventory={inventory} 
     onBack={() => setView('list')} 
@@ -13383,103 +11524,45 @@ export default function SESInventoryApp() {
     }}
   />;
   if (view === 'spotValue') return <SpotValueView inventory={inventory} onBack={() => setView('list')} liveSpotPrices={liveSpotPrices} />;
-  if (view === 'dashboard') return <DashboardView inventory={inventory} spotPrices={liveSpotPrices} onBack={() => setView('list')} onOpenTax={() => setView('tax')} />;
-  if (view === 'tax') return <TaxReportView 
-    inventory={inventory} 
-    mileageLog={mileageLog}
-    vehicles={vehicles}
-    spotPrices={liveSpotPrices}
-    onBack={() => setView('list')} 
-    onAddMileage={async (trip) => {
-      setMileageLog([...mileageLog, trip]);
-      const success = await FirebaseService.saveMileage(trip);
-      if (success) {
-        showToast(`✓ Trip logged: ${trip.miles} miles`, 'success');
-      } else {
-        showToast(`⚠ Trip may not have saved`, 'error');
-      }
-    }}
-    onDeleteMileage={async (id) => {
-      setMileageLog(mileageLog.filter(m => m.id !== id));
-      await FirebaseService.deleteItem('mileage', id);
-      showToast(`✓ Trip deleted`, 'success');
-    }}
-    onAddVehicle={async (vehicle) => {
-      setVehicles([...vehicles, vehicle]);
-      const success = await FirebaseService.saveVehicle(vehicle);
-      if (success) {
-        showToast(`✓ Vehicle added: ${vehicle.name}`, 'success');
-      } else {
-        showToast(`⚠ Vehicle may not have saved`, 'error');
-      }
-    }}
-  />;
+  if (view === 'dashboard') return <DashboardView inventory={inventory} onBack={() => setView('list')} />;
+  if (view === 'tax') return <TaxReportView inventory={inventory} onBack={() => setView('list')} />;
   if (view === 'ebayListings') return <EbayListingsView inventory={inventory} onBack={() => setView('list')} onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }} onListItem={(item) => { setSelectedItem(item); setView('ebayListing'); }} />;
-  if (view === 'add') return <AddItemView clients={clients} liveSpotPrices={liveSpotPrices} onSave={async (item, resetForm) => { 
-    const newItem = { ...item, id: getNextId('SES') };
-    const currentInv = inventory || [];
+  if (view === 'add') return <AddItemView clients={clients} liveSpotPrices={liveSpotPrices} onSave={(item) => { setInventory([...inventory, { ...item, id: getNextId('SES') }]); setView('list'); }} onCancel={() => setView('list')} calculateMelt={calculateMelt} />;
+  if (view === 'detail' && selectedItem) {
+    // Find current item index in filtered list for prev/next navigation
+    const currentIndex = filteredInventory.findIndex(i => i.id === selectedItem.id);
+    const hasPrev = currentIndex > 0;
+    const hasNext = currentIndex < filteredInventory.length - 1 && currentIndex !== -1;
     
-    // Save to Firebase
-    try {
-      const success = await FirebaseService.saveItem(newItem);
-      if (success) {
-        // Add to inventory and reset form for next item
-        setInventory([...currentInv, newItem]); 
-        showToast(`✓ ${newItem.id} saved - ready for next item`, 'success');
-        // Reset form to add another item (don't navigate away)
-        if (resetForm) resetForm();
-      } else {
-        // Save returned false - DON'T add to inventory, DON'T reset form
-        showToast(`❌ ${newItem.id} FAILED TO SAVE - Try again!`, 'error');
-      }
-    } catch (err) {
-      console.error('Save error:', err);
-      showToast(`❌ SAVE FAILED: ${err.message}`, 'error');
-    }
-  }} onCancel={() => setView('list')} calculateMelt={calculateMelt} />;
-  if (view === 'detail' && selectedItem) return <DetailView 
-    item={selectedItem} 
-    clients={clients} 
-    liveSpotPrices={liveSpotPrices} 
-    onUpdate={async (u) => { 
-      const newInventory = inventory.map(i => i.id === u.id ? u : i);
-      setInventory(newInventory); 
-      setSelectedItem(u);
-      // Save only the updated item
-      const success = await FirebaseService.saveItem(u);
-      if (success) {
-        showToast(`✓ ${u.id} updated`, 'success');
-      }
-    }} 
-    onDelete={async () => { 
-      const newInventory = inventory.filter(i => i.id !== selectedItem.id);
-      setInventory(newInventory); 
-      // Delete from Firebase
-      const success = await FirebaseService.deleteItem('inventory', selectedItem.id);
-      if (success) {
-        showToast(`✓ ${selectedItem.id} deleted`, 'success');
-      }
-      setView('list'); 
-    }} 
-    onBack={() => { setView('list'); setSelectedItem(null); }}
-    onGoHome={() => { setView('list'); setSelectedItem(null); }} 
-    onListOnEbay={(listing) => { setPendingListing(listing); setView('ebayListing'); }}
-    onCreateLot={(lotData) => {
-      const lotId = getNextId('LOT');
-      const newLot = {
-        id: lotId,
-        ...lotData,
-        createdAt: new Date().toISOString()
-      };
-      setLots([...lots, newLot]);
-      // Update item with lot reference
-      const updatedItem = { ...selectedItem, lotId: lotId };
-      setInventory(inventory.map(i => i.id === selectedItem.id ? updatedItem : i));
-      setSelectedItem(updatedItem);
-    }}
-  />;
+    return <DetailView 
+      item={selectedItem} 
+      clients={clients} 
+      liveSpotPrices={liveSpotPrices} 
+      onUpdate={(u) => { setInventory(inventory.map(i => i.id === u.id ? u : i)); setSelectedItem(u); }} 
+      onDelete={() => { setInventory(inventory.filter(i => i.id !== selectedItem.id)); setView('list'); }} 
+      onBack={() => { setView('list'); setSelectedItem(null); }} 
+      onListOnEbay={(listing) => { setPendingListing(listing); setView('ebayListing'); }}
+      onPrev={hasPrev ? () => setSelectedItem(filteredInventory[currentIndex - 1]) : null}
+      onNext={hasNext ? () => setSelectedItem(filteredInventory[currentIndex + 1]) : null}
+      currentIndex={currentIndex}
+      totalItems={filteredInventory.length}
+      onCreateLot={(lotData) => {
+        const lotId = getNextId('LOT');
+        const newLot = {
+          id: lotId,
+          ...lotData,
+          createdAt: new Date().toISOString()
+        };
+        setLots([...lots, newLot]);
+        // Update item with lot reference
+        const updatedItem = { ...selectedItem, lotId: lotId };
+        setInventory(inventory.map(i => i.id === selectedItem.id ? updatedItem : i));
+        setSelectedItem(updatedItem);
+      }}
+    />;
+  }
   if (view === 'ebayListing' && selectedItem) return <EbayListingView item={selectedItem} generatedListing={pendingListing} onBack={() => { setPendingListing(null); setView('detail'); }} onListingCreated={(listing) => { setInventory(inventory.map(i => i.id === selectedItem.id ? { ...i, ebayListingId: listing.listingId, ebayUrl: listing.ebayUrl, status: 'Listed' } : i)); setSelectedItem({ ...selectedItem, ebayListingId: listing.listingId, ebayUrl: listing.ebayUrl, status: 'Listed' }); setPendingListing(null); setView('detail'); }} />;
-  if (view === 'settings') return <SettingsView onBack={() => setView('list')} onExport={handleExport} onImport={handleImport} onReset={() => { if(confirm('This will DELETE ALL your data. Are you absolutely sure?')) { setInventory([]); setClients([]); setLots([]); }}} fileInputRef={fileInputRef} coinBuyPercents={coinBuyPercents} onUpdateCoinBuyPercent={handleUpdateCoinBuyPercent} ebayConnected={ebayConnected} onEbayDisconnect={handleEbayDisconnect} onViewEbaySync={() => setView('ebaySync')} onViewAdmin={() => setView('admin')} />;
+  if (view === 'settings') return <SettingsView onBack={() => setView('list')} onExport={handleExport} onImport={handleImport} onReset={() => { setInventory(starterInventory); setClients(starterClients); setLots(starterLots); }} fileInputRef={fileInputRef} coinBuyPercents={coinBuyPercents} onUpdateCoinBuyPercent={handleUpdateCoinBuyPercent} ebayConnected={ebayConnected} onEbayDisconnect={handleEbayDisconnect} onViewEbaySync={() => setView('ebaySync')} onViewAdmin={() => setView('admin')} />;
   if (view === 'admin') return <AdminPanelView 
     onBack={() => setView('settings')} 
     inventory={inventory} 
@@ -13515,41 +11598,13 @@ export default function SESInventoryApp() {
   if (view === 'ebaySync') return <EbaySyncView onBack={() => setView('settings')} onImportListings={handleImportEbayListings} inventory={inventory} />;
   if (view === 'receipts') return <ReceiptManagerView 
     onBack={() => setView('list')} 
-    onGoHome={() => setView('list')}
     receipts={receipts}
     inventory={inventory}
     lots={lots}
     clients={clients}
-    onAddReceipt={async (receipt) => {
-      setReceipts([...receipts, receipt]);
-      const success = await FirebaseService.saveReceipt(receipt);
-      if (success) {
-        showToast(`✓ Receipt ${receipt.id} saved`, 'success');
-      } else {
-        showToast(`⚠ Receipt may not have saved`, 'error');
-      }
-    }}
-    onDeleteReceipt={async (id) => {
-      setReceipts(receipts.filter(r => r.id !== id));
-      await FirebaseService.deleteItem('receipts', id);
-      showToast(`✓ Receipt deleted`, 'success');
-    }}
-    onUpdateReceipt={async (updated) => {
-      setReceipts(receipts.map(r => r.id === updated.id ? updated : r));
-      const success = await FirebaseService.saveReceipt(updated);
-      if (success) {
-        showToast(`✓ Receipt updated`, 'success');
-      }
-    }}
-    onAddClient={async (client) => {
-      setClients([...clients, client]);
-      const success = await FirebaseService.saveClient(client);
-      if (success) {
-        showToast(`✓ Client ${client.name} created`, 'success');
-      } else {
-        showToast(`⚠ Client may not have saved`, 'error');
-      }
-    }}
+    onAddReceipt={(receipt) => setReceipts([...receipts, receipt])}
+    onDeleteReceipt={(id) => setReceipts(receipts.filter(r => r.id !== id))}
+    onUpdateReceipt={(updated) => setReceipts(receipts.map(r => r.id === updated.id ? updated : r))}
   />;
 
   // LIST VIEW
@@ -13566,7 +11621,11 @@ export default function SESInventoryApp() {
     // Helper to calculate spot value
     const calcSpotValue = (items) => items.reduce((sum, item) => {
       const weight = parseFloat(item.weightOz) || 0;
-      const purityDecimal = parsePurity(item.purity);
+      let purityDecimal = 1;
+      if (item.purity?.includes('K')) purityDecimal = parseInt(item.purity) / 24;
+      else if (item.purity?.includes('%')) purityDecimal = parseInt(item.purity) / 100;
+      else if (item.purity === '925') purityDecimal = 0.925;
+      else if (item.purity === '999' || item.purity === '9999') purityDecimal = 0.999;
       return sum + (weight * purityDecimal * (liveSpotPrices[item.metalType?.toLowerCase()] || 0));
     }, 0);
     
@@ -13643,41 +11702,13 @@ export default function SESInventoryApp() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Toast Notification - Bigger and more visible */}
-      {toast && (
-        <div className={`fixed top-4 left-4 right-4 z-50 px-4 py-3 rounded-lg shadow-xl text-white font-bold text-center text-lg ${
-          toast.type === 'success' ? 'bg-green-600' : 'bg-red-600 animate-pulse'
-        }`}>
-          {toast.message}
-        </div>
-      )}
-      
-      {/* Demo Mode Banner */}
-      {demoMode && (
-        <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 py-2 text-center">
-          <div className="flex items-center justify-center gap-2">
-            <Zap size={16} />
-            <span className="font-medium">Demo Mode</span>
-            <span className="text-purple-200">- Your data is separate and will be cleared periodically</span>
-          </div>
-        </div>
-      )}
-      
       {/* Clean Header with Spot Prices */}
       <div className="bg-gradient-to-r from-amber-700 to-amber-800 text-white p-4">
         <div className="flex justify-between items-center">
           <h1 className="text-lg font-bold">Stevens Estate Services</h1>
-          <div className="flex items-center gap-1">
-            <button onClick={() => setView('tax')} className="p-2 hover:bg-amber-600 rounded" title="Tax & Mileage">
-              <Car size={20} />
-            </button>
-            <button onClick={() => setView('dashboard')} className="p-2 hover:bg-amber-600 rounded" title="Dashboard">
-              <BarChart3 size={20} />
-            </button>
-            <button onClick={() => setView('settings')} className="p-2 hover:bg-amber-600 rounded" title="Settings">
-              <Settings size={20} />
-            </button>
-          </div>
+          <button onClick={() => setView('settings')} className="p-2 hover:bg-amber-600 rounded">
+            <Settings size={20} />
+          </button>
         </div>
         <div className="flex items-center justify-between mt-2 text-sm">
           <div className="flex gap-4">
@@ -13911,252 +11942,268 @@ export default function SESInventoryApp() {
       
       {/* Search and Inventory List */}
       <div className="p-4 pt-2">
-        {/* Collapsible Inventory List */}
-        <details 
-          open={inventoryListExpanded} 
-          onToggle={(e) => setInventoryListExpanded(e.target.open)} 
-          className="bg-white rounded-xl shadow-lg overflow-hidden"
-        >
-          <summary className="p-3 cursor-pointer bg-gradient-to-r from-amber-600 to-amber-700 text-white flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <Package size={20} />
-              <span className="font-bold">Inventory</span>
-              <span className="bg-white bg-opacity-20 px-2 py-0.5 rounded-full text-sm">
-                {filteredInventory.length} items
+        <div className="flex gap-2 mb-3">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+            <input 
+              type="text" 
+              placeholder="Search inventory..." 
+              value={searchTerm} 
+              onChange={(e) => setSearchTerm(e.target.value)} 
+              className="w-full pl-10 pr-4 py-2 border rounded-lg bg-white" 
+            />
+          </div>
+          <select value={filter} onChange={(e) => setFilter(e.target.value)} className="border rounded-lg px-3 bg-white">
+            <option value="all">All</option>
+            <option value="available">Available</option>
+            <option value="sold">Sold</option>
+          </select>
+        </div>
+        
+        {/* Inventory Count */}
+        <div className="flex justify-between items-center mb-2 text-sm text-gray-500">
+          <div className="flex items-center gap-2">
+            <span>{filteredInventory.length} items</span>
+            {bulkMode && (
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                {bulkSelectedIds.length} selected
               </span>
-            </div>
-            <div className="flex items-center gap-2">
-              {kpiFilter && (
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                  kpiFilter === 'stash' ? 'bg-amber-200 text-amber-800' :
-                  kpiFilter === 'hold' ? 'bg-blue-200 text-blue-800' :
-                  kpiFilter === 'sell' ? 'bg-green-200 text-green-800' :
-                  kpiFilter === 'sold' ? 'bg-green-200 text-green-800' :
-                  kpiFilter === 'silver' ? 'bg-gray-200 text-gray-800' :
-                  kpiFilter === 'gold' ? 'bg-yellow-200 text-yellow-800' :
-                  kpiFilter === 'platinum' ? 'bg-gray-300 text-gray-800' :
-                  'bg-gray-200 text-gray-800'
-                }`}>
-                  {kpiFilter.charAt(0).toUpperCase() + kpiFilter.slice(1)}
-                </span>
-              )}
-              <ChevronDown size={20} className={`transform transition-transform ${inventoryListExpanded ? 'rotate-180' : ''}`} />
-            </div>
-          </summary>
-          
-          <div className="p-3">
-            {/* Search, Filter, and View Toggle */}
-            <div className="flex gap-2 mb-3">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
-                <input 
-                  type="text" 
-                  placeholder="Search inventory..." 
-                  value={searchTerm} 
-                  onChange={(e) => setSearchTerm(e.target.value)} 
-                  className="w-full pl-10 pr-4 py-2 border rounded-lg bg-white" 
-                />
-              </div>
-              <select value={filter} onChange={(e) => setFilter(e.target.value)} className="border rounded-lg px-3 bg-white">
-                <option value="all">All</option>
-                <option value="available">Available</option>
-                <option value="sold">Sold</option>
-              </select>
-              {/* View Toggle */}
-              <div className="flex border rounded-lg overflow-hidden">
-                <button 
-                  onClick={() => setInventoryViewMode('list')}
-                  className={`px-3 py-2 ${inventoryViewMode === 'list' ? 'bg-amber-600 text-white' : 'bg-white text-gray-600'}`}
-                  title="List View"
-                >
-                  <Package size={18} />
-                </button>
-                <button 
-                  onClick={() => setInventoryViewMode('grid')}
-                  className={`px-3 py-2 ${inventoryViewMode === 'grid' ? 'bg-amber-600 text-white' : 'bg-white text-gray-600'}`}
-                  title="Grid View"
-                >
-                  <Layers size={18} />
-                </button>
-              </div>
-            </div>
-            
-            {/* Filter badge and lots link */}
-            <div className="flex justify-between items-center mb-2 text-sm text-gray-500">
-              <div className="flex items-center gap-2">
-                {kpiFilter && (
-                  <button 
-                    onClick={() => setKpiFilter(null)}
-                    className={`px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1 ${
-                      kpiFilter === 'stash' ? 'bg-amber-100 text-amber-700' :
-                      kpiFilter === 'hold' ? 'bg-blue-100 text-blue-700' :
-                      kpiFilter === 'sell' ? 'bg-green-100 text-green-700' :
-                      kpiFilter === 'sold' ? 'bg-green-100 text-green-700' :
-                      kpiFilter === 'silver' ? 'bg-gray-200 text-gray-700' :
-                      kpiFilter === 'gold' ? 'bg-yellow-100 text-yellow-700' :
-                      kpiFilter === 'platinum' ? 'bg-gray-300 text-gray-700' :
-                      'bg-gray-100 text-gray-700'
-                    }`}
-                  >
-                    Clear filter
-                    <X size={12} />
-                  </button>
-                )}
-              </div>
-              {lots.filter(l => l.status !== 'sold' && l.status !== 'broken').length > 0 && (
-                <button onClick={() => setView('lots')} className="text-purple-600 flex items-center gap-1">
-                  <Layers size={14} /> {lots.filter(l => l.status !== 'sold' && l.status !== 'broken').length} Lots
-                </button>
-              )}
-            </div>
-            
-            {/* Inventory Items - List or Grid View */}
-            {inventoryViewMode === 'grid' ? (
-              /* GRID VIEW */
-              <div className="grid grid-cols-2 gap-3 max-h-[500px] overflow-y-auto">
-                {filteredInventory.map(item => {
-                  const spot = liveSpotPrices?.[item.metalType?.toLowerCase()] || 0;
-                  const purityDecimal = parsePurity(item.purity);
-                  const currentMelt = (parseFloat(item.weightOz) || 0) * spot * purityDecimal;
-                  const equity = currentMelt - (parseFloat(item.purchasePrice) || 0);
-                  const equityPercent = item.purchasePrice > 0 ? (equity / item.purchasePrice * 100) : 0;
-                  
-                  return (
-                    <div 
-                      key={item.id} 
-                      onClick={() => { setSelectedItem(item); setView('detail'); }} 
-                      className={`bg-white rounded-xl shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-all ${item.status === 'Sold' ? 'opacity-60' : ''}`}
-                    >
-                      {/* Photo */}
-                      <div className="relative h-28 bg-gray-100">
-                        {item.photo ? (
-                          <img src={getPhotoSrc(item.photo)} className="w-full h-full object-cover" alt={item.description} />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-gray-300">
-                            <Camera size={32} />
-                          </div>
-                        )}
-                        {/* Status Badge */}
-                        <div className={`absolute top-1 left-1 px-1.5 py-0.5 rounded text-xs font-medium ${
-                          item.status === 'Stash' ? 'bg-purple-500 text-white' :
-                          item.status === 'Sold' ? 'bg-gray-500 text-white' :
-                          item.status === 'Hold' ? 'bg-amber-500 text-white' :
-                          'bg-green-500 text-white'
-                        }`}>
-                          {item.status === 'Available' ? 'Sell' : item.status}
-                        </div>
-                        {/* Metal Badge */}
-                        <div className={`absolute top-1 right-1 px-1.5 py-0.5 rounded text-xs font-medium ${
-                          item.metalType === 'Gold' ? 'bg-yellow-400 text-yellow-900' :
-                          item.metalType === 'Platinum' ? 'bg-gray-300 text-gray-800' :
-                          'bg-gray-200 text-gray-700'
-                        }`}>
-                          {item.metalType}
-                        </div>
-                      </div>
-                      
-                      {/* Info */}
-                      <div className="p-2">
-                        <div className="font-medium text-sm truncate">{item.description}</div>
-                        <div className="text-xs text-gray-400">{item.id}</div>
-                        
-                        {/* Equity Display */}
-                        <div className={`mt-2 p-2 rounded-lg ${equity >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
-                          <div className="flex justify-between items-center">
-                            <span className="text-xs text-gray-500">Equity</span>
-                            <span className={`font-bold text-sm ${equity >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {equity >= 0 ? '+' : ''}${equity.toFixed(0)}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center text-xs">
-                            <span className="text-gray-400">ROI</span>
-                            <span className={equity >= 0 ? 'text-green-600' : 'text-red-600'}>
-                              {equityPercent >= 0 ? '+' : ''}{equityPercent.toFixed(0)}%
-                            </span>
-                          </div>
-                        </div>
-                        
-                        {/* Cost & Value */}
-                        <div className="mt-1 flex justify-between text-xs text-gray-500">
-                          <span>Cost: ${item.purchasePrice}</span>
-                          <span>Melt: ${currentMelt.toFixed(0)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              /* LIST VIEW */
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {filteredInventory.map(item => {
-                  const holdStatus = getHoldStatus(item);
-                  const spot = liveSpotPrices?.[item.metalType?.toLowerCase()] || 0;
-                  const purityDecimal = parsePurity(item.purity);
-                  const currentMelt = (parseFloat(item.weightOz) || 0) * spot * purityDecimal;
-                  const equity = currentMelt - (parseFloat(item.purchasePrice) || 0);
-                  
-                  return (
-                    <div 
-                      key={item.id} 
-                      onClick={() => { setSelectedItem(item); setView('detail'); }} 
-                      className={`bg-gray-50 p-3 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors ${item.status === 'Sold' ? 'opacity-60' : ''}`}
-                    >
-                      <div className="flex justify-between items-start">
-                        <div className="flex gap-3">
-                          {item.photo && (
-                            <img src={getPhotoSrc(item.photo)} className="w-12 h-12 rounded object-cover" />
-                          )}
-                          <div>
-                            <div className="font-medium">{item.description}</div>
-                            <div className="text-xs text-gray-500">{item.id} • {item.category}</div>
-                            <div className="flex gap-1 mt-1">
-                              {item.status === 'Stash' && (
-                                <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded flex items-center gap-1">
-                                  <Star size={10} /> Stash
-                                </span>
-                              )}
-                              {item.status === 'Hold' && (
-                                <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Hold</span>
-                              )}
-                              {item.ebayListingId && (
-                                <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded flex items-center gap-1">
-                                  <ExternalLink size={10} /> eBay
-                                </span>
-                              )}
-                              {item.status === 'Available' && (
-                                <span className={`text-xs px-1.5 py-0.5 rounded flex items-center gap-1 ${
-                                  holdStatus.status === 'hold' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-                                }`}>
-                                  {holdStatus.status === 'hold' ? <><Lock size={10} /> {holdStatus.daysLeft}d</> : <><Unlock size={10} /> Ready</>}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-bold text-amber-700">${currentMelt.toFixed(0)}</div>
-                          <div className="text-xs text-gray-400">Cost: ${item.purchasePrice}</div>
-                          <div className={`text-xs font-bold ${equity >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {equity >= 0 ? '+' : ''}${equity.toFixed(0)} equity
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
             )}
-            
-            {filteredInventory.length === 0 && (
-              <div className="text-center py-8 text-gray-500">
-                <Package size={48} className="mx-auto mb-2 opacity-50" />
-                <p>No items found</p>
-                {kpiFilter && <p className="text-sm">Try clearing your filter</p>}
-              </div>
+            {kpiFilter && (
+              <button 
+                onClick={() => setKpiFilter(null)}
+                className={`px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1 ${
+                  kpiFilter === 'stash' ? 'bg-amber-100 text-amber-700' :
+                  kpiFilter === 'hold' ? 'bg-blue-100 text-blue-700' :
+                  kpiFilter === 'sell' ? 'bg-green-100 text-green-700' :
+                  kpiFilter === 'sold' ? 'bg-green-100 text-green-700' :
+                  kpiFilter === 'silver' ? 'bg-gray-200 text-gray-700' :
+                  kpiFilter === 'gold' ? 'bg-yellow-100 text-yellow-700' :
+                  kpiFilter === 'platinum' ? 'bg-gray-300 text-gray-700' :
+                  'bg-gray-100 text-gray-700'
+                }`}
+              >
+                {kpiFilter.charAt(0).toUpperCase() + kpiFilter.slice(1)}
+                <X size={12} />
+              </button>
             )}
           </div>
-        </details>
+          <div className="flex items-center gap-2">
+            {bulkMode ? (
+              <button 
+                onClick={() => { setBulkMode(false); setBulkSelectedIds([]); }}
+                className="text-red-600 text-sm font-medium"
+              >
+                Cancel
+              </button>
+            ) : (
+              <button 
+                onClick={() => setBulkMode(true)}
+                className="text-purple-600 text-sm flex items-center gap-1"
+              >
+                <CheckSquare size={14} /> Select
+              </button>
+            )}
+            {lots.filter(l => l.status !== 'sold' && l.status !== 'broken').length > 0 && !bulkMode && (
+              <button onClick={() => setView('lots')} className="text-purple-600 flex items-center gap-1">
+                <Layers size={14} /> {lots.filter(l => l.status !== 'sold' && l.status !== 'broken').length} Lots
+              </button>
+            )}
+          </div>
+        </div>
+        
+        {/* Inventory Items */}
+        <div className="space-y-2 pb-24">
+          {filteredInventory.map(item => {
+            const holdStatus = getHoldStatus(item);
+            const profit = item.status === 'Sold' ? (item.salePrice - item.purchasePrice) : (item.meltValue - item.purchasePrice);
+            const isSelected = bulkSelectedIds.includes(item.id);
+            
+            // Long press handler
+            let pressTimer = null;
+            const handleTouchStart = () => {
+              pressTimer = setTimeout(() => {
+                // Long press detected - enter bulk mode and select this item
+                if (!bulkMode) {
+                  setBulkMode(true);
+                }
+                if (!isSelected) {
+                  setBulkSelectedIds(prev => [...prev, item.id]);
+                }
+              }, 500); // 500ms for long press
+            };
+            const handleTouchEnd = () => {
+              if (pressTimer) {
+                clearTimeout(pressTimer);
+              }
+            };
+            const handleClick = () => {
+              if (bulkMode) {
+                // In bulk mode, toggle selection
+                if (isSelected) {
+                  setBulkSelectedIds(prev => prev.filter(id => id !== item.id));
+                } else {
+                  setBulkSelectedIds(prev => [...prev, item.id]);
+                }
+              } else {
+                // Normal mode - open detail view
+                setSelectedItem(item);
+                setView('detail');
+              }
+            };
+            
+            return (
+              <div 
+                key={item.id} 
+                onClick={handleClick}
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+                onMouseDown={handleTouchStart}
+                onMouseUp={handleTouchEnd}
+                onMouseLeave={handleTouchEnd}
+                className={`bg-white p-3 rounded-lg shadow cursor-pointer hover:shadow-md transition-all ${
+                  item.status === 'Sold' ? 'opacity-60' : ''
+                } ${isSelected ? 'ring-2 ring-purple-500 bg-purple-50' : ''}`}
+              >
+                <div className="flex justify-between items-start">
+                  <div className="flex gap-3">
+                    {/* Checkbox for bulk mode */}
+                    {bulkMode && (
+                      <div className="flex items-center justify-center w-6 h-12">
+                        {isSelected ? (
+                          <CheckSquare size={22} className="text-purple-600" />
+                        ) : (
+                          <Square size={22} className="text-gray-400" />
+                        )}
+                      </div>
+                    )}
+                    {item.photo && (
+                      <img src={`data:image/jpeg;base64,${item.photo}`} className="w-12 h-12 rounded object-cover" />
+                    )}
+                    <div>
+                      <div className="font-medium">{item.description}</div>
+                      <div className="text-xs text-gray-500">{item.id} • {item.category}</div>
+                      <div className="flex gap-1 mt-1">
+                        {item.status === 'Stash' && (
+                          <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded flex items-center gap-1">
+                            <Star size={10} /> Stash
+                          </span>
+                        )}
+                        {item.plannedDisposition === 'hold' && (
+                          <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Hold</span>
+                        )}
+                        {item.plannedDisposition === 'sell' && (
+                          <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">Sell</span>
+                        )}
+                        {item.ebayListingId && (
+                          <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded flex items-center gap-1">
+                            <ExternalLink size={10} /> eBay
+                          </span>
+                        )}
+                        {item.status === 'Available' && !item.plannedDisposition && (
+                          <span className={`text-xs px-1.5 py-0.5 rounded flex items-center gap-1 ${
+                            holdStatus.status === 'hold' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                          }`}>
+                            {holdStatus.status === 'hold' ? <><Lock size={10} /> {holdStatus.daysLeft}d</> : <><Unlock size={10} /> Ready</>}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-bold text-amber-700">${item.meltValue}</div>
+                    <div className="text-xs text-gray-400">Cost: ${item.purchasePrice}</div>
+                    <div className={`text-xs font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {profit >= 0 ? '+' : ''}${profit.toFixed(0)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        
+        {/* Bulk Action Bar */}
+        {bulkMode && bulkSelectedIds.length > 0 && (
+          <div className="fixed bottom-20 left-4 right-4 bg-purple-700 text-white rounded-xl shadow-xl p-4 z-50">
+            <div className="flex items-center justify-between mb-3">
+              <span className="font-bold">{bulkSelectedIds.length} items selected</span>
+              <button 
+                onClick={() => {
+                  // Select all in filtered list
+                  setBulkSelectedIds(filteredInventory.map(i => i.id));
+                }}
+                className="text-purple-200 text-sm"
+              >
+                Select All ({filteredInventory.length})
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <button 
+                onClick={() => {
+                  setInventory(inventory.map(i => 
+                    bulkSelectedIds.includes(i.id) ? { ...i, status: 'Stash' } : i
+                  ));
+                  setBulkSelectedIds([]);
+                  setBulkMode(false);
+                }}
+                className="bg-amber-500 hover:bg-amber-600 text-white py-2 px-3 rounded-lg text-sm font-medium flex items-center justify-center gap-1"
+              >
+                <Star size={16} /> Stash
+              </button>
+              <button 
+                onClick={() => {
+                  setInventory(inventory.map(i => 
+                    bulkSelectedIds.includes(i.id) ? { ...i, plannedDisposition: 'hold' } : i
+                  ));
+                  setBulkSelectedIds([]);
+                  setBulkMode(false);
+                }}
+                className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-3 rounded-lg text-sm font-medium flex items-center justify-center gap-1"
+              >
+                <Lock size={16} /> Hold
+              </button>
+              <button 
+                onClick={() => {
+                  setInventory(inventory.map(i => 
+                    bulkSelectedIds.includes(i.id) ? { ...i, plannedDisposition: 'sell' } : i
+                  ));
+                  setBulkSelectedIds([]);
+                  setBulkMode(false);
+                }}
+                className="bg-green-500 hover:bg-green-600 text-white py-2 px-3 rounded-lg text-sm font-medium flex items-center justify-center gap-1"
+              >
+                <TrendingUp size={16} /> Sell
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <button 
+                onClick={() => {
+                  setInventory(inventory.map(i => 
+                    bulkSelectedIds.includes(i.id) ? { ...i, status: 'Available', plannedDisposition: null } : i
+                  ));
+                  setBulkSelectedIds([]);
+                  setBulkMode(false);
+                }}
+                className="bg-gray-500 hover:bg-gray-600 text-white py-2 px-3 rounded-lg text-sm font-medium"
+              >
+                Clear Status
+              </button>
+              <button 
+                onClick={() => {
+                  if (window.confirm(`Delete ${bulkSelectedIds.length} items? This cannot be undone.`)) {
+                    setInventory(inventory.filter(i => !bulkSelectedIds.includes(i.id)));
+                    setBulkSelectedIds([]);
+                    setBulkMode(false);
+                  }
+                }}
+                className="bg-red-500 hover:bg-red-600 text-white py-2 px-3 rounded-lg text-sm font-medium flex items-center justify-center gap-1"
+              >
+                <Trash2 size={16} /> Delete
+              </button>
+            </div>
+          </div>
+        )}
         
         {/* Floating Action Button */}
         <div className="fixed bottom-6 right-6">
