@@ -8665,18 +8665,38 @@ function EbayListingsView({ inventory, onBack, onSelectItem, onListItem }) {
 }
 
 function AddItemView({ onSave, onCancel, calculateMelt, clients, liveSpotPrices }) {
-  const [form, setForm] = useState({ 
+  const initialFormState = { 
     description: '', category: 'Silver - Sterling', metalType: 'Silver', purity: '925', 
-    weight: '', source: '', clientId: '', purchasePrice: '', meltValue: '', notes: '', 
+    weight: '', clientId: '', purchasePrice: '', meltValue: '', notes: '', 
     status: 'Available', dateAcquired: new Date().toISOString().split('T')[0],
     photo: null, photoBack: null, year: '', mint: '', grade: '', serialNumber: '',
     taxable: false, taxRate: 6.75, salesTax: 0
-  });
+  };
+  
+  const [form, setForm] = useState(initialFormState);
   const [weightUnit, setWeightUnit] = useState('g'); // 'g' for grams, 'oz' for troy ounces
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [aiError, setAiError] = useState(null);
   const [captureStep, setCaptureStep] = useState('idle'); // idle, front, back, done
+  const [saveCount, setSaveCount] = useState(0); // Track saves in this session
+  
+  // Scroll to top when component mounts or after save
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [saveCount]);
+  
+  // Reset form for next item
+  const resetForm = () => {
+    setForm({
+      ...initialFormState,
+      dateAcquired: new Date().toISOString().split('T')[0] // Fresh date
+    });
+    setWeightUnit('g');
+    setCaptureStep('idle');
+    setAiError(null);
+    setSaveCount(prev => prev + 1); // Trigger scroll to top
+  };
   
   // Calculate sales tax when price or rate changes
   const calculateSalesTax = (price, rate, isTaxable) => {
@@ -9260,7 +9280,50 @@ Return ONLY the JSON object.`
             <p className="text-xs text-gray-500 mt-1">For AML compliance: document all identifying marks</p>
           </div>
           
-          <div><label className="block text-sm font-medium mb-1">Source</label><input type="text" value={form.source} onChange={(e) => setForm({...form, source: e.target.value})} className="w-full border rounded p-2" /></div>
+          {/* Status/Basket Selector */}
+          <div>
+            <label className="block text-sm font-medium mb-2">Disposition</label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setForm({...form, status: 'Available'})}
+                className={`py-3 px-2 rounded-lg font-medium text-sm transition-all ${
+                  form.status === 'Available' 
+                    ? 'bg-green-500 text-white ring-2 ring-green-300' 
+                    : 'bg-green-100 text-green-700 hover:bg-green-200'
+                }`}
+              >
+                🏷️ Sell
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm({...form, status: 'Stash'})}
+                className={`py-3 px-2 rounded-lg font-medium text-sm transition-all ${
+                  form.status === 'Stash' 
+                    ? 'bg-purple-500 text-white ring-2 ring-purple-300' 
+                    : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                }`}
+              >
+                🏦 Stash
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm({...form, status: 'Hold'})}
+                className={`py-3 px-2 rounded-lg font-medium text-sm transition-all ${
+                  form.status === 'Hold' 
+                    ? 'bg-amber-500 text-white ring-2 ring-amber-300' 
+                    : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                }`}
+              >
+                ⏳ Hold
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              {form.status === 'Available' && 'Ready to sell - appears in active inventory'}
+              {form.status === 'Stash' && 'Long-term hold - personal collection'}
+              {form.status === 'Hold' && 'Regulatory hold - waiting for release'}
+            </p>
+          </div>
           
           {/* Purchase Price - Full Width */}
           <div>
@@ -9394,7 +9457,7 @@ Return ONLY the JSON object.`
                       palladium: liveSpotPrices?.palladium || 0,
                       date: new Date().toISOString()
                     }
-                  });
+                  }, resetForm); // Pass resetForm callback
                 } catch (error) {
                   console.error('Save error:', error);
                   alert('Save failed: ' + error.message);
@@ -9404,7 +9467,7 @@ Return ONLY the JSON object.`
               }} 
               className={`flex-1 py-2 rounded text-white font-medium ${isSaving ? 'bg-gray-400' : 'bg-amber-600'}`}
             >
-              {isSaving ? '⏳ Saving...' : 'Save'}
+              {isSaving ? '⏳ Saving...' : 'Save & Next'}
             </button>
           </div>
         </div>
@@ -9434,7 +9497,6 @@ function DetailView({ item, clients, onUpdate, onDelete, onBack, onListOnEbay, l
     metalType: item.metalType || 'Silver',
     purity: item.purity || '',
     weightOz: item.weightOz || '',
-    source: item.source || '',
     purchasePrice: item.purchasePrice || '',
     meltValue: item.meltValue || '',
     notes: item.notes || '',
@@ -9967,10 +10029,6 @@ Ships fast and packed well. Questions? Just ask.`;
                     <label className="block text-sm font-medium mb-1">Grade</label>
                     <input type="text" value={editForm.grade} onChange={(e) => setEditForm({...editForm, grade: e.target.value})} className="w-full border rounded p-2" placeholder="MS65, VF..." />
                   </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Source</label>
-                  <input type="text" value={editForm.source} onChange={(e) => setEditForm({...editForm, source: e.target.value})} className="w-full border rounded p-2" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Client</label>
@@ -11062,7 +11120,7 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
             <HardDrive size={18} /> App Information
           </h3>
           <div className="text-sm text-gray-600 space-y-1">
-            <p><strong>Version:</strong> 115</p>
+            <p><strong>Version:</strong> 117</p>
             <p><strong>Firebase Project:</strong> ses-inventory</p>
             <p><strong>Last Updated:</strong> January 2026</p>
           </div>
@@ -12616,6 +12674,7 @@ export default function SESInventoryApp() {
   const [loadError, setLoadError] = useState(null); // Critical error state - blocks app if set
   const [kpiExpanded, setKpiExpanded] = useState(true); // KPI dashboard expanded by default
   const [inventoryListExpanded, setInventoryListExpanded] = useState(false); // Inventory list collapsed by default
+  const [inventoryViewMode, setInventoryViewMode] = useState('list'); // 'list' or 'grid'
   const [kpiFilter, setKpiFilter] = useState(null); // Filter for KPI drill-down: 'stash', 'hold', 'sell', 'available', 'silver', 'gold', 'platinum', 'sold'
   const [view, setView] = useState('list');
   const [selectedItem, setSelectedItem] = useState(null);
@@ -12628,6 +12687,45 @@ export default function SESInventoryApp() {
   const [isLoadingPrices, setIsLoadingPrices] = useState(false);
   const [firebaseReady, setFirebaseReady] = useState(false);
   const [ebayConnected, setEbayConnected] = useState(false);
+  
+  // Sell Trigger Settings - stored in localStorage
+  const [sellTriggers, setSellTriggers] = useState(() => {
+    const saved = localStorage.getItem('ses-sell-triggers');
+    if (saved) return JSON.parse(saved);
+    return {
+      enabled: true,
+      globalOverride: false, // If true, disables all triggers
+      triggers: [
+        { id: 'retail-premium', name: 'Retail Premium Opportunity', enabled: true, 
+          condition: 'eBay price > melt + X%', threshold: 20, unit: '%',
+          description: 'Flag when item can sell on eBay for premium over melt' },
+        { id: 'spot-spike', name: 'Spot Price Spike', enabled: true,
+          condition: 'Spot up X% in 7 days', threshold: 5, unit: '%',
+          description: 'Alert when spot rises sharply - sell into strength' },
+        { id: 'downward-trend', name: 'Downward Trend Warning', enabled: true,
+          condition: 'Spot down X% in 3 days', threshold: 3, unit: '%',
+          description: 'Warning when spot is falling - consider selling to refiner' },
+        { id: 'min-roi', name: 'Minimum ROI Alert', enabled: true,
+          condition: 'Current melt < cost + X%', threshold: 10, unit: '%',
+          description: 'Warning when approaching break-even' },
+        { id: 'stale-inventory', name: 'Stale Inventory', enabled: false,
+          condition: 'Held > X days with no premium', threshold: 90, unit: 'days',
+          description: 'Suggest moving to refiner if held too long' }
+      ],
+      metalOverrides: {
+        gold: { enabled: true, overrides: {} },
+        silver: { enabled: true, overrides: {} },
+        platinum: { enabled: true, overrides: {} }
+      },
+      itemOverrides: {} // itemId -> { disabled: true } to ignore triggers for specific items
+    };
+  });
+  
+  // Save triggers to localStorage when changed
+  useEffect(() => {
+    localStorage.setItem('ses-sell-triggers', JSON.stringify(sellTriggers));
+  }, [sellTriggers]);
+  
   const [coinBuyPercents, setCoinBuyPercents] = useState(() => {
     // Load from localStorage or use defaults from coinReference
     const saved = localStorage.getItem('ses-coin-buy-percents');
@@ -13317,7 +13415,7 @@ export default function SESInventoryApp() {
     }}
   />;
   if (view === 'ebayListings') return <EbayListingsView inventory={inventory} onBack={() => setView('list')} onSelectItem={(item) => { setSelectedItem(item); setView('detail'); }} onListItem={(item) => { setSelectedItem(item); setView('ebayListing'); }} />;
-  if (view === 'add') return <AddItemView clients={clients} liveSpotPrices={liveSpotPrices} onSave={async (item) => { 
+  if (view === 'add') return <AddItemView clients={clients} liveSpotPrices={liveSpotPrices} onSave={async (item, resetForm) => { 
     const newItem = { ...item, id: getNextId('SES') };
     const currentInv = inventory || [];
     
@@ -13325,12 +13423,13 @@ export default function SESInventoryApp() {
     try {
       const success = await FirebaseService.saveItem(newItem);
       if (success) {
-        // Trust Firebase - add locally and navigate away
+        // Add to inventory and reset form for next item
         setInventory([...currentInv, newItem]); 
-        setView('list'); 
-        showToast(`✓ ${newItem.id} saved`, 'success');
+        showToast(`✓ ${newItem.id} saved - ready for next item`, 'success');
+        // Reset form to add another item (don't navigate away)
+        if (resetForm) resetForm();
       } else {
-        // Save returned false - DON'T add to inventory, DON'T leave add screen
+        // Save returned false - DON'T add to inventory, DON'T reset form
         showToast(`❌ ${newItem.id} FAILED TO SAVE - Try again!`, 'error');
       }
     } catch (err) {
@@ -13846,7 +13945,7 @@ export default function SESInventoryApp() {
           </summary>
           
           <div className="p-3">
-            {/* Search and Filter */}
+            {/* Search, Filter, and View Toggle */}
             <div className="flex gap-2 mb-3">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
@@ -13863,6 +13962,23 @@ export default function SESInventoryApp() {
                 <option value="available">Available</option>
                 <option value="sold">Sold</option>
               </select>
+              {/* View Toggle */}
+              <div className="flex border rounded-lg overflow-hidden">
+                <button 
+                  onClick={() => setInventoryViewMode('list')}
+                  className={`px-3 py-2 ${inventoryViewMode === 'list' ? 'bg-amber-600 text-white' : 'bg-white text-gray-600'}`}
+                  title="List View"
+                >
+                  <Package size={18} />
+                </button>
+                <button 
+                  onClick={() => setInventoryViewMode('grid')}
+                  className={`px-3 py-2 ${inventoryViewMode === 'grid' ? 'bg-amber-600 text-white' : 'bg-white text-gray-600'}`}
+                  title="Grid View"
+                >
+                  <Layers size={18} />
+                </button>
+              </div>
             </div>
             
             {/* Filter badge and lots link */}
@@ -13894,64 +14010,143 @@ export default function SESInventoryApp() {
               )}
             </div>
             
-            {/* Inventory Items */}
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {filteredInventory.map(item => {
-                const holdStatus = getHoldStatus(item);
-                const profit = item.status === 'Sold' ? (item.salePrice - item.purchasePrice) : (item.meltValue - item.purchasePrice);
-                return (
-                  <div 
-                    key={item.id} 
-                    onClick={() => { setSelectedItem(item); setView('detail'); }} 
-                    className={`bg-gray-50 p-3 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors ${item.status === 'Sold' ? 'opacity-60' : ''}`}
-                  >
-                    <div className="flex justify-between items-start">
-                      <div className="flex gap-3">
-                        {item.photo && (
-                          <img src={getPhotoSrc(item.photo)} className="w-12 h-12 rounded object-cover" />
-                        )}
-                        <div>
-                          <div className="font-medium">{item.description}</div>
-                          <div className="text-xs text-gray-500">{item.id} • {item.category}</div>
-                          <div className="flex gap-1 mt-1">
-                            {item.status === 'Stash' && (
-                              <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded flex items-center gap-1">
-                                <Star size={10} /> Stash
-                              </span>
-                            )}
-                            {item.plannedDisposition === 'hold' && (
-                              <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Hold</span>
-                            )}
-                            {item.plannedDisposition === 'sell' && (
-                              <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">Sell</span>
-                            )}
-                            {item.ebayListingId && (
-                              <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded flex items-center gap-1">
-                                <ExternalLink size={10} /> eBay
-                              </span>
-                            )}
-                            {item.status === 'Available' && !item.plannedDisposition && (
-                              <span className={`text-xs px-1.5 py-0.5 rounded flex items-center gap-1 ${
-                                holdStatus.status === 'hold' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-                              }`}>
-                                {holdStatus.status === 'hold' ? <><Lock size={10} /> {holdStatus.daysLeft}d</> : <><Unlock size={10} /> Ready</>}
-                              </span>
-                            )}
+            {/* Inventory Items - List or Grid View */}
+            {inventoryViewMode === 'grid' ? (
+              /* GRID VIEW */
+              <div className="grid grid-cols-2 gap-3 max-h-[500px] overflow-y-auto">
+                {filteredInventory.map(item => {
+                  const spot = liveSpotPrices?.[item.metalType?.toLowerCase()] || 0;
+                  const purityDecimal = parsePurity(item.purity);
+                  const currentMelt = (parseFloat(item.weightOz) || 0) * spot * purityDecimal;
+                  const equity = currentMelt - (parseFloat(item.purchasePrice) || 0);
+                  const equityPercent = item.purchasePrice > 0 ? (equity / item.purchasePrice * 100) : 0;
+                  
+                  return (
+                    <div 
+                      key={item.id} 
+                      onClick={() => { setSelectedItem(item); setView('detail'); }} 
+                      className={`bg-white rounded-xl shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-all ${item.status === 'Sold' ? 'opacity-60' : ''}`}
+                    >
+                      {/* Photo */}
+                      <div className="relative h-28 bg-gray-100">
+                        {item.photo ? (
+                          <img src={getPhotoSrc(item.photo)} className="w-full h-full object-cover" alt={item.description} />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-300">
+                            <Camera size={32} />
                           </div>
+                        )}
+                        {/* Status Badge */}
+                        <div className={`absolute top-1 left-1 px-1.5 py-0.5 rounded text-xs font-medium ${
+                          item.status === 'Stash' ? 'bg-purple-500 text-white' :
+                          item.status === 'Sold' ? 'bg-gray-500 text-white' :
+                          item.status === 'Hold' ? 'bg-amber-500 text-white' :
+                          'bg-green-500 text-white'
+                        }`}>
+                          {item.status === 'Available' ? 'Sell' : item.status}
+                        </div>
+                        {/* Metal Badge */}
+                        <div className={`absolute top-1 right-1 px-1.5 py-0.5 rounded text-xs font-medium ${
+                          item.metalType === 'Gold' ? 'bg-yellow-400 text-yellow-900' :
+                          item.metalType === 'Platinum' ? 'bg-gray-300 text-gray-800' :
+                          'bg-gray-200 text-gray-700'
+                        }`}>
+                          {item.metalType}
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="font-bold text-amber-700">${item.meltValue}</div>
-                        <div className="text-xs text-gray-400">Cost: ${item.purchasePrice}</div>
-                        <div className={`text-xs font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {profit >= 0 ? '+' : ''}${profit.toFixed(0)}
+                      
+                      {/* Info */}
+                      <div className="p-2">
+                        <div className="font-medium text-sm truncate">{item.description}</div>
+                        <div className="text-xs text-gray-400">{item.id}</div>
+                        
+                        {/* Equity Display */}
+                        <div className={`mt-2 p-2 rounded-lg ${equity >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs text-gray-500">Equity</span>
+                            <span className={`font-bold text-sm ${equity >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {equity >= 0 ? '+' : ''}${equity.toFixed(0)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-gray-400">ROI</span>
+                            <span className={equity >= 0 ? 'text-green-600' : 'text-red-600'}>
+                              {equityPercent >= 0 ? '+' : ''}{equityPercent.toFixed(0)}%
+                            </span>
+                          </div>
+                        </div>
+                        
+                        {/* Cost & Value */}
+                        <div className="mt-1 flex justify-between text-xs text-gray-500">
+                          <span>Cost: ${item.purchasePrice}</span>
+                          <span>Melt: ${currentMelt.toFixed(0)}</span>
                         </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* LIST VIEW */
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {filteredInventory.map(item => {
+                  const holdStatus = getHoldStatus(item);
+                  const spot = liveSpotPrices?.[item.metalType?.toLowerCase()] || 0;
+                  const purityDecimal = parsePurity(item.purity);
+                  const currentMelt = (parseFloat(item.weightOz) || 0) * spot * purityDecimal;
+                  const equity = currentMelt - (parseFloat(item.purchasePrice) || 0);
+                  
+                  return (
+                    <div 
+                      key={item.id} 
+                      onClick={() => { setSelectedItem(item); setView('detail'); }} 
+                      className={`bg-gray-50 p-3 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors ${item.status === 'Sold' ? 'opacity-60' : ''}`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex gap-3">
+                          {item.photo && (
+                            <img src={getPhotoSrc(item.photo)} className="w-12 h-12 rounded object-cover" />
+                          )}
+                          <div>
+                            <div className="font-medium">{item.description}</div>
+                            <div className="text-xs text-gray-500">{item.id} • {item.category}</div>
+                            <div className="flex gap-1 mt-1">
+                              {item.status === 'Stash' && (
+                                <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                  <Star size={10} /> Stash
+                                </span>
+                              )}
+                              {item.status === 'Hold' && (
+                                <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Hold</span>
+                              )}
+                              {item.ebayListingId && (
+                                <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                  <ExternalLink size={10} /> eBay
+                                </span>
+                              )}
+                              {item.status === 'Available' && (
+                                <span className={`text-xs px-1.5 py-0.5 rounded flex items-center gap-1 ${
+                                  holdStatus.status === 'hold' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                                }`}>
+                                  {holdStatus.status === 'hold' ? <><Lock size={10} /> {holdStatus.daysLeft}d</> : <><Unlock size={10} /> Ready</>}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold text-amber-700">${currentMelt.toFixed(0)}</div>
+                          <div className="text-xs text-gray-400">Cost: ${item.purchasePrice}</div>
+                          <div className={`text-xs font-bold ${equity >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {equity >= 0 ? '+' : ''}${equity.toFixed(0)} equity
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             
             {filteredInventory.length === 0 && (
               <div className="text-center py-8 text-gray-500">
