@@ -32,6 +32,74 @@ const CONFIG = {
   }
 };
 
+// ============ UNIVERSAL PURITY PARSER ============
+// Converts any purity format to a decimal (0-1)
+// Handles: 9999, 999, 925, 900, 800, 90, 50, 99, 0.999, 90%, 50%, 14K, 24K, etc.
+const parsePurity = (purity) => {
+  if (!purity) return 1;
+  
+  const p = purity.toString().trim().toUpperCase();
+  
+  // Handle karat gold (24K, 18K, 14K, 10K, etc.)
+  if (p.includes('K')) {
+    const karat = parseInt(p.replace('K', ''));
+    return karat / 24;
+  }
+  
+  // Handle percentage format (90%, 50%, 92.5%)
+  if (p.includes('%')) {
+    return parseFloat(p.replace('%', '')) / 100;
+  }
+  
+  // Handle numeric values
+  const num = parseFloat(p);
+  if (isNaN(num)) return 1;
+  
+  // Already a decimal (0.999, 0.925, 0.90, etc.)
+  if (num <= 1) {
+    return num;
+  }
+  
+  // 4-digit millesimal (9999 → 0.9999, 9995 → 0.9995)
+  if (num >= 1000) {
+    return num / 10000;
+  }
+  
+  // 3-digit millesimal (999, 925, 900, 800, 500, etc.)
+  if (num >= 100) {
+    return num / 1000;
+  }
+  
+  // 2-digit percentage (90 → 0.90, 50 → 0.50, 99 → 0.99)
+  // This catches common formats like "90" for 90% silver
+  if (num >= 10 && num <= 99) {
+    return num / 100;
+  }
+  
+  // Single digit - assume it's a fraction already or invalid
+  // (rare case, default to treating as-is if small)
+  return num > 1 ? num / 100 : num;
+};
+
+// Test the parser (uncomment to debug):
+// console.log('Purity tests:', {
+//   '9999': parsePurity('9999'),   // 0.9999
+//   '999': parsePurity('999'),     // 0.999
+//   '925': parsePurity('925'),     // 0.925
+//   '900': parsePurity('900'),     // 0.9
+//   '800': parsePurity('800'),     // 0.8
+//   '90': parsePurity('90'),       // 0.9
+//   '50': parsePurity('50'),       // 0.5
+//   '99': parsePurity('99'),       // 0.99
+//   '0.999': parsePurity('0.999'), // 0.999
+//   '0.90': parsePurity('0.90'),   // 0.9
+//   '90%': parsePurity('90%'),     // 0.9
+//   '50%': parsePurity('50%'),     // 0.5
+//   '14K': parsePurity('14K'),     // 0.583
+//   '24K': parsePurity('24K'),     // 1.0
+//   '18K': parsePurity('18K'),     // 0.75
+// });
+
 // ============ FIREBASE SERVICE ============
 // Import Firebase at top level
 import { initializeApp } from 'firebase/app';
@@ -123,89 +191,22 @@ const FirebaseService = {
       const { doc, setDoc } = this.firestore;
       const startTime = Date.now();
       
-      // Handle photos - upload large ones to Storage, keep small ones inline
+      // Photos are already compressed during capture, so just handle URLs vs base64
       let photoToSave = item.photo || null;
       let photoBackToSave = item.photoBack || null;
       
-      // Helper to compress base64 image (with timeout)
-      const compressPhoto = (base64Data, maxSize = 300000) => {
-        return new Promise((resolve) => {
-          // Timeout after 5 seconds
-          const timeout = setTimeout(() => {
-            console.log('Compression timeout, using original');
-            resolve(base64Data.length > 500000 ? null : base64Data); // Skip if too large
-          }, 5000);
-          
-          const img = new Image();
-          img.onload = () => {
-            clearTimeout(timeout);
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
-            
-            // Scale down aggressively for faster processing
-            const maxDim = 800;
-            if (width > maxDim || height > maxDim) {
-              if (width > height) {
-                height = Math.round(height * maxDim / width);
-                width = maxDim;
-              } else {
-                width = Math.round(width * maxDim / height);
-                height = maxDim;
-              }
-            }
-            
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            // Single compression pass at fixed quality for speed
-            const result = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
-            console.log(`Compressed photo: ${Math.round(result.length/1000)}KB`);
-            resolve(result);
-          };
-          img.onerror = () => {
-            clearTimeout(timeout);
-            console.error('Failed to load image for compression');
-            resolve(null);
-          };
-          img.src = base64Data.startsWith('data:') ? base64Data : `data:image/jpeg;base64,${base64Data}`;
-        });
-      };
-      
-      // Process front photo
-      if (item.photo && !item.photo.startsWith('http')) {
-        const photoSize = item.photo.length;
-        console.log(`Photo for ${item.id}: ${Math.round(photoSize/1000)}KB base64`);
-        
-        if (photoSize > 800000) {
-          // Very large - upload to Storage
-          console.log(`Uploading large photo to Storage for ${item.id}...`);
-          photoToSave = await this.uploadPhoto(`${item.id}_photo`, item.photo);
-        } else if (photoSize > 350000) {
-          // Medium - compress
-          console.log(`Compressing photo for ${item.id}...`);
-          photoToSave = await compressPhoto(item.photo);
-        } else {
-          photoToSave = item.photo;
-        }
+      // Only upload to Storage if photo is very large (>500KB after capture compression)
+      // Otherwise save inline to Firestore for faster access
+      if (photoToSave && !photoToSave.startsWith('http') && photoToSave.length > 500000) {
+        console.log(`Photo too large (${Math.round(photoToSave.length/1000)}KB), uploading to Storage...`);
+        const url = await this.uploadPhoto(`${item.id}_photo`, photoToSave);
+        if (url) photoToSave = url;
       }
       
-      // Process back photo
-      if (item.photoBack && !item.photoBack.startsWith('http')) {
-        const photoSize = item.photoBack.length;
-        console.log(`Back photo for ${item.id}: ${Math.round(photoSize/1000)}KB base64`);
-        
-        if (photoSize > 800000) {
-          console.log(`Uploading large back photo to Storage for ${item.id}...`);
-          photoBackToSave = await this.uploadPhoto(`${item.id}_photoBack`, item.photoBack);
-        } else if (photoSize > 350000) {
-          console.log(`Compressing back photo for ${item.id}...`);
-          photoBackToSave = await compressPhoto(item.photoBack);
-        } else {
-          photoBackToSave = item.photoBack;
-        }
+      if (photoBackToSave && !photoBackToSave.startsWith('http') && photoBackToSave.length > 500000) {
+        console.log(`Back photo too large (${Math.round(photoBackToSave.length/1000)}KB), uploading to Storage...`);
+        const url = await this.uploadPhoto(`${item.id}_photoBack`, photoBackToSave);
+        if (url) photoBackToSave = url;
       }
       
       const itemData = this.cleanObject({ 
@@ -1578,15 +1579,8 @@ function calculateSpotValues(inventory, spotPrices) {
     const weight = parseFloat(item.weightOz) || 0;
     
     // Calculate pure metal weight based on purity
-    let purityDecimal = 1;
     const purity = item.purity || '';
-    if (purity.includes('K')) purityDecimal = parseInt(purity) / 24;
-    else if (purity.includes('%')) purityDecimal = parseInt(purity) / 100;
-    else if (purity === '925') purityDecimal = 0.925;
-    else if (purity === '999') purityDecimal = 0.999;
-    else if (purity === '950') purityDecimal = 0.95;
-    else if (purity === '900') purityDecimal = 0.90;
-    else if (purity === 'Plated' || purity === 'plated') purityDecimal = 0;
+    const purityDecimal = purity.toLowerCase() === 'plated' ? 0 : parsePurity(purity);
     
     const pureWeight = weight * purityDecimal;
     const spotPrice = spotPrices[metal.toLowerCase()] || 0;
@@ -2487,11 +2481,7 @@ function PersonalStashView({ inventory, spotPrices, onBack, onSelectItem, onMove
   // Calculate stash totals
   const calculateMetalValue = (item) => {
     const weight = parseFloat(item.weightOz) || 0;
-    let purityDecimal = 1;
-    if (item.purity?.includes('K')) purityDecimal = parseInt(item.purity) / 24;
-    else if (item.purity?.includes('%')) purityDecimal = parseInt(item.purity) / 100;
-    else if (item.purity === '925') purityDecimal = 0.925;
-    else if (item.purity === '999' || item.purity === '9999') purityDecimal = 0.999;
+    const purityDecimal = parsePurity(item.purity);
     const spot = spotPrices[item.metalType?.toLowerCase()] || 0;
     return weight * purityDecimal * spot;
   };
@@ -7583,18 +7573,7 @@ function DashboardView({ inventory, spotPrices, onBack, onOpenTax }) {
     const spot = spotPrices?.[item.metalType?.toLowerCase()] || 0;
     if (!spot) return parseFloat(item.meltValue) || 0;
     
-    // Parse purity
-    let purityDecimal = 1;
-    const p = item.purity?.toString().toUpperCase() || '';
-    if (p.includes('K')) {
-      purityDecimal = parseInt(p.replace('K', '')) / 24;
-    } else if (p.includes('%')) {
-      purityDecimal = parseFloat(p.replace('%', '')) / 100;
-    } else if (p) {
-      const num = parseFloat(p);
-      purityDecimal = num > 1 ? num / 1000 : num;
-    }
-    
+    const purityDecimal = parsePurity(item.purity);
     return (parseFloat(item.weightOz) || 0) * spot * purityDecimal;
   };
   
@@ -8724,26 +8703,7 @@ function AddItemView({ onSave, onCancel, calculateMelt, clients, liveSpotPrices 
     const spot = liveSpotPrices?.[metalType?.toLowerCase()] || 0;
     if (!spot) return 0;
     
-    // Parse purity
-    let purityDecimal = 1;
-    if (purity) {
-      const p = purity.toString().toUpperCase();
-      if (p.includes('K')) {
-        // Karat gold: 24K = 1.0, 18K = 0.75, 14K = 0.583, 10K = 0.417
-        const karat = parseInt(p.replace('K', ''));
-        purityDecimal = karat / 24;
-      } else if (p.includes('%')) {
-        purityDecimal = parseFloat(p.replace('%', '')) / 100;
-      } else {
-        const num = parseFloat(p);
-        if (num > 1) {
-          purityDecimal = num / 1000; // 925 -> 0.925, 999 -> 0.999
-        } else {
-          purityDecimal = num;
-        }
-      }
-    }
-    
+    const purityDecimal = parsePurity(purity);
     return (weightOz * spot * purityDecimal).toFixed(2);
   };
   
@@ -9418,8 +9378,7 @@ Return ONLY the JSON object.`
                   const taxAmount = form.taxable ? calculateSalesTax(form.purchasePrice, form.taxRate, true) : 0;
                   const totalPurchasePrice = basePurchasePrice + taxAmount;
                   
-                  // Wrap save in timeout
-                  const savePromise = onSave({ 
+                  await onSave({ 
                     ...form, 
                     weightOz: weightInOz, 
                     purchasePrice: totalPurchasePrice,
@@ -9436,16 +9395,9 @@ Return ONLY the JSON object.`
                       date: new Date().toISOString()
                     }
                   });
-                  
-                  // 30 second timeout
-                  const timeoutPromise = new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('Save timeout')), 30000)
-                  );
-                  
-                  await Promise.race([savePromise, timeoutPromise]);
                 } catch (error) {
                   console.error('Save error:', error);
-                  alert('Save timed out or failed. The item may have saved - check your inventory.');
+                  alert('Save failed: ' + error.message);
                 } finally {
                   setIsSaving(false);
                 }
@@ -10318,18 +10270,7 @@ Ships fast and packed well. Questions? Just ask.`;
                 <div className="text-2xl font-bold text-green-700">
                   ${(() => {
                     const spot = liveSpotPrices?.[item.metalType?.toLowerCase()] || 0;
-                    let purityDecimal = 1;
-                    if (item.purity) {
-                      const p = item.purity.toString().toUpperCase();
-                      if (p.includes('K')) {
-                        purityDecimal = parseInt(p.replace('K', '')) / 24;
-                      } else if (p.includes('%')) {
-                        purityDecimal = parseFloat(p.replace('%', '')) / 100;
-                      } else {
-                        const num = parseFloat(p);
-                        purityDecimal = num > 1 ? num / 1000 : num;
-                      }
-                    }
+                    const purityDecimal = parsePurity(item.purity);
                     return ((item.weightOz || 0) * spot * purityDecimal).toFixed(2);
                   })()}
                 </div>
@@ -10342,18 +10283,7 @@ Ships fast and packed well. Questions? Just ask.`;
             {/* Show profit vs cost */}
             {(() => {
               const spot = liveSpotPrices?.[item.metalType?.toLowerCase()] || 0;
-              let purityDecimal = 1;
-              if (item.purity) {
-                const p = item.purity.toString().toUpperCase();
-                if (p.includes('K')) {
-                  purityDecimal = parseInt(p.replace('K', '')) / 24;
-                } else if (p.includes('%')) {
-                  purityDecimal = parseFloat(p.replace('%', '')) / 100;
-                } else {
-                  const num = parseFloat(p);
-                  purityDecimal = num > 1 ? num / 1000 : num;
-                }
-              }
+              const purityDecimal = parsePurity(item.purity);
               const currentMelt = (item.weightOz || 0) * spot * purityDecimal;
               const currentProfit = currentMelt - (item.purchasePrice || 0);
               return (
@@ -11132,7 +11062,7 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
             <HardDrive size={18} /> App Information
           </h3>
           <div className="text-sm text-gray-600 space-y-1">
-            <p><strong>Version:</strong> 112</p>
+            <p><strong>Version:</strong> 115</p>
             <p><strong>Firebase Project:</strong> ses-inventory</p>
             <p><strong>Last Updated:</strong> January 2026</p>
           </div>
@@ -13033,11 +12963,7 @@ export default function SESInventoryApp() {
 
   const calculateMelt = (metalType, purity, weightOz) => {
     const weight = parseFloat(weightOz) || 0;
-    let purityDecimal = 1;
-    if (purity?.includes('K')) purityDecimal = parseInt(purity) / 24;
-    else if (purity?.includes('%')) purityDecimal = parseInt(purity) / 100;
-    else if (purity === '925') purityDecimal = 0.925;
-    else if (purity === '999') purityDecimal = 0.999;
+    const purityDecimal = parsePurity(purity);
     return (weight * purityDecimal * (liveSpotPrices[metalType?.toLowerCase()] || 0)).toFixed(2);
   };
   
@@ -13395,36 +13321,21 @@ export default function SESInventoryApp() {
     const newItem = { ...item, id: getNextId('SES') };
     const currentInv = inventory || [];
     
-    // Show saving indicator
-    showToast(`⏳ Saving ${newItem.id}...`, 'success');
-    
-    // Save to Firebase FIRST, wait for confirmation
+    // Save to Firebase
     try {
       const success = await FirebaseService.saveItem(newItem);
       if (success) {
-        // Verify it's actually there
-        const verification = await FirebaseService.loadInventory();
-        const verified = verification?.find(i => i.id === newItem.id);
-        
-        if (verified) {
-          setInventory([...currentInv, newItem]); 
-          setView('list'); 
-          showToast(`✓ ${newItem.id} SAVED & VERIFIED`, 'success');
-        } else {
-          // Saved but can't verify - add locally anyway but warn
-          setInventory([...currentInv, newItem]); 
-          setView('list'); 
-          showToast(`⚠ ${newItem.id} saved but couldn't verify`, 'error');
-        }
+        // Trust Firebase - add locally and navigate away
+        setInventory([...currentInv, newItem]); 
+        setView('list'); 
+        showToast(`✓ ${newItem.id} saved`, 'success');
       } else {
-        // Save failed - DON'T add to inventory, DON'T leave add screen
+        // Save returned false - DON'T add to inventory, DON'T leave add screen
         showToast(`❌ ${newItem.id} FAILED TO SAVE - Try again!`, 'error');
-        // Stay on add screen so user can retry
       }
     } catch (err) {
       console.error('Save error:', err);
       showToast(`❌ SAVE FAILED: ${err.message}`, 'error');
-      // Stay on add screen so user can retry
     }
   }} onCancel={() => setView('list')} calculateMelt={calculateMelt} />;
   if (view === 'detail' && selectedItem) return <DetailView 
@@ -13556,11 +13467,7 @@ export default function SESInventoryApp() {
     // Helper to calculate spot value
     const calcSpotValue = (items) => items.reduce((sum, item) => {
       const weight = parseFloat(item.weightOz) || 0;
-      let purityDecimal = 1;
-      if (item.purity?.includes('K')) purityDecimal = parseInt(item.purity) / 24;
-      else if (item.purity?.includes('%')) purityDecimal = parseInt(item.purity) / 100;
-      else if (item.purity === '925') purityDecimal = 0.925;
-      else if (item.purity === '999' || item.purity === '9999') purityDecimal = 0.999;
+      const purityDecimal = parsePurity(item.purity);
       return sum + (weight * purityDecimal * (liveSpotPrices[item.metalType?.toLowerCase()] || 0));
     }, 0);
     
