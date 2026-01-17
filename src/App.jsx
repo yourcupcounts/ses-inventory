@@ -121,22 +121,30 @@ const FirebaseService = {
     
     try {
       const { doc, setDoc } = this.firestore;
+      const startTime = Date.now();
       
-      // Handle photos - compress if needed and save directly to Firestore
-      let photoToSave = null;
-      let photoBackToSave = null;
+      // Handle photos - upload large ones to Storage, keep small ones inline
+      let photoToSave = item.photo || null;
+      let photoBackToSave = item.photoBack || null;
       
-      // Helper to compress base64 image
-      const compressPhoto = async (base64Data, maxSize = 300000) => {
+      // Helper to compress base64 image (with timeout)
+      const compressPhoto = (base64Data, maxSize = 300000) => {
         return new Promise((resolve) => {
+          // Timeout after 5 seconds
+          const timeout = setTimeout(() => {
+            console.log('Compression timeout, using original');
+            resolve(base64Data.length > 500000 ? null : base64Data); // Skip if too large
+          }, 5000);
+          
           const img = new Image();
           img.onload = () => {
+            clearTimeout(timeout);
             const canvas = document.createElement('canvas');
             let width = img.width;
             let height = img.height;
             
-            // Scale down if too large
-            const maxDim = 1200;
+            // Scale down aggressively for faster processing
+            const maxDim = 800;
             if (width > maxDim || height > maxDim) {
               if (width > height) {
                 height = Math.round(height * maxDim / width);
@@ -152,63 +160,51 @@ const FirebaseService = {
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, width, height);
             
-            // Try different quality levels
-            let quality = 0.7;
-            let result = canvas.toDataURL('image/jpeg', quality).split(',')[1];
-            
-            while (result.length > maxSize && quality > 0.3) {
-              quality -= 0.1;
-              result = canvas.toDataURL('image/jpeg', quality).split(',')[1];
-            }
-            
-            console.log(`Compressed photo: ${Math.round(result.length/1000)}KB at quality ${quality.toFixed(1)}`);
+            // Single compression pass at fixed quality for speed
+            const result = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+            console.log(`Compressed photo: ${Math.round(result.length/1000)}KB`);
             resolve(result);
           };
           img.onerror = () => {
+            clearTimeout(timeout);
             console.error('Failed to load image for compression');
-            resolve(base64Data); // Return original if compression fails
+            resolve(null);
           };
-          // Handle both with and without data URL prefix
           img.src = base64Data.startsWith('data:') ? base64Data : `data:image/jpeg;base64,${base64Data}`;
         });
       };
       
       // Process front photo
-      if (item.photo) {
-        if (item.photo.startsWith('http')) {
-          // Already a URL
-          photoToSave = item.photo;
-          console.log(`Photo for ${item.id}: using existing URL`);
+      if (item.photo && !item.photo.startsWith('http')) {
+        const photoSize = item.photo.length;
+        console.log(`Photo for ${item.id}: ${Math.round(photoSize/1000)}KB base64`);
+        
+        if (photoSize > 800000) {
+          // Very large - upload to Storage
+          console.log(`Uploading large photo to Storage for ${item.id}...`);
+          photoToSave = await this.uploadPhoto(`${item.id}_photo`, item.photo);
+        } else if (photoSize > 350000) {
+          // Medium - compress
+          console.log(`Compressing photo for ${item.id}...`);
+          photoToSave = await compressPhoto(item.photo);
         } else {
-          // Base64 data - compress if needed
-          const photoSize = item.photo.length;
-          console.log(`Photo for ${item.id}: ${Math.round(photoSize/1000)}KB base64`);
-          
-          if (photoSize > 350000) {
-            // Compress large photos
-            console.log(`Compressing photo for ${item.id}...`);
-            photoToSave = await compressPhoto(item.photo);
-          } else {
-            photoToSave = item.photo;
-          }
+          photoToSave = item.photo;
         }
       }
       
       // Process back photo
-      if (item.photoBack) {
-        if (item.photoBack.startsWith('http')) {
-          photoBackToSave = item.photoBack;
-          console.log(`Back photo for ${item.id}: using existing URL`);
+      if (item.photoBack && !item.photoBack.startsWith('http')) {
+        const photoSize = item.photoBack.length;
+        console.log(`Back photo for ${item.id}: ${Math.round(photoSize/1000)}KB base64`);
+        
+        if (photoSize > 800000) {
+          console.log(`Uploading large back photo to Storage for ${item.id}...`);
+          photoBackToSave = await this.uploadPhoto(`${item.id}_photoBack`, item.photoBack);
+        } else if (photoSize > 350000) {
+          console.log(`Compressing back photo for ${item.id}...`);
+          photoBackToSave = await compressPhoto(item.photoBack);
         } else {
-          const photoSize = item.photoBack.length;
-          console.log(`Back photo for ${item.id}: ${Math.round(photoSize/1000)}KB base64`);
-          
-          if (photoSize > 350000) {
-            console.log(`Compressing back photo for ${item.id}...`);
-            photoBackToSave = await compressPhoto(item.photoBack);
-          } else {
-            photoBackToSave = item.photoBack;
-          }
+          photoBackToSave = item.photoBack;
         }
       }
       
@@ -218,9 +214,13 @@ const FirebaseService = {
         photoBack: photoBackToSave
       });
       
-      console.log(`SAVING item: ${item.id} (photo: ${photoToSave ? Math.round(photoToSave.length/1000) + 'KB' : 'none'}, photoBack: ${photoBackToSave ? Math.round(photoBackToSave.length/1000) + 'KB' : 'none'})`);
+      const photoInfo = photoToSave ? (photoToSave.startsWith('http') ? 'URL' : `${Math.round(photoToSave.length/1000)}KB`) : 'none';
+      console.log(`SAVING item: ${item.id} (photo: ${photoInfo})`);
+      
       await setDoc(doc(this.db, this.getCollectionName('inventory'), item.id), itemData);
-      console.log(`SAVED item: ${item.id} - SUCCESS`);
+      
+      const elapsed = Date.now() - startTime;
+      console.log(`SAVED item: ${item.id} - SUCCESS in ${elapsed}ms`);
       return true;
     } catch (error) {
       console.error(`SAVE FAILED for ${item.id}:`, error);
@@ -386,7 +386,7 @@ const FirebaseService = {
     }
   },
   
-  // Save a SINGLE receipt to Firestore
+  // Save a SINGLE receipt to Firestore (with file in Storage)
   async saveReceipt(receipt) {
     if (!this.initialized) {
       console.error('SAVE BLOCKED: Firebase not initialized');
@@ -394,7 +394,24 @@ const FirebaseService = {
     }
     try {
       const { doc, setDoc } = this.firestore;
-      const receiptData = this.cleanObject(receipt);
+      
+      // If receipt has large fileData, upload to Storage first
+      let fileUrl = receipt.fileUrl || null;
+      if (receipt.fileData && receipt.fileData.length > 1000 && !receipt.fileData.startsWith('http')) {
+        console.log(`Uploading receipt file ${receipt.id} to Storage (${Math.round(receipt.fileData.length/1000)}KB)...`);
+        fileUrl = await this.uploadReceiptFile(receipt.id, receipt.fileData, receipt.fileType);
+        if (!fileUrl) {
+          console.error(`Failed to upload receipt file for ${receipt.id}`);
+          // Continue anyway, but file won't be saved
+        }
+      }
+      
+      // Save receipt metadata to Firestore (WITHOUT the large fileData)
+      const receiptData = this.cleanObject({
+        ...receipt,
+        fileData: null, // Don't save base64 to Firestore
+        fileUrl: fileUrl // Save the Storage URL instead
+      });
       
       console.log(`SAVING receipt: ${receipt.id}`);
       await setDoc(doc(this.db, this.getCollectionName('receipts'), receipt.id), receiptData);
@@ -403,6 +420,30 @@ const FirebaseService = {
     } catch (error) {
       console.error(`SAVE FAILED for receipt ${receipt.id}:`, error);
       return false;
+    }
+  },
+  
+  // Upload receipt file to Firebase Storage
+  async uploadReceiptFile(id, base64Data, mimeType = 'application/pdf') {
+    if (!this.initialized || !this.storage) {
+      console.error('Cannot upload receipt - Storage not initialized');
+      return null;
+    }
+    try {
+      const { ref, uploadString, getDownloadURL } = this.storageHelpers;
+      // Determine file extension from mime type
+      const ext = mimeType.includes('pdf') ? 'pdf' : mimeType.includes('png') ? 'png' : 'jpg';
+      const filePath = this.demoMode ? `demo_receipts/${id}.${ext}` : `receipts/${id}.${ext}`;
+      const storageRef = ref(this.storage, filePath);
+      
+      // Upload as base64
+      await uploadString(storageRef, base64Data, 'base64', { contentType: mimeType });
+      const downloadUrl = await getDownloadURL(storageRef);
+      console.log(`Receipt file uploaded: ${filePath}`);
+      return downloadUrl;
+    } catch (error) {
+      console.error('Error uploading receipt file:', error);
+      return null;
     }
   },
   
@@ -9368,30 +9409,46 @@ Return ONLY the JSON object.`
                   return;
                 }
                 setIsSaving(true);
-                const weightInOz = getWeightInOz();
-                const meltAtPurchase = parseFloat(form.meltValue || calculateMelt(form.metalType, form.purity, weightInOz)) || 0;
-                // Calculate total cost including tax if applicable
-                const basePurchasePrice = parseFloat(form.purchasePrice) || 0;
-                const taxAmount = form.taxable ? calculateSalesTax(form.purchasePrice, form.taxRate, true) : 0;
-                const totalPurchasePrice = basePurchasePrice + taxAmount;
-                await onSave({ 
-                  ...form, 
-                  weightOz: weightInOz, 
-                  purchasePrice: totalPurchasePrice, // Total including tax
-                  priceBeforeTax: basePurchasePrice,
-                  salesTax: taxAmount,
-                  taxRate: form.taxable ? parseFloat(form.taxRate) : null,
-                  taxable: form.taxable,
-                  meltValue: meltAtPurchase,
-                  spotAtPurchase: {
-                    gold: liveSpotPrices?.gold || 0,
-                    silver: liveSpotPrices?.silver || 0,
-                    platinum: liveSpotPrices?.platinum || 0,
-                    palladium: liveSpotPrices?.palladium || 0,
-                    date: new Date().toISOString()
-                  }
-                }); 
-                setIsSaving(false);
+                
+                try {
+                  const weightInOz = getWeightInOz();
+                  const meltAtPurchase = parseFloat(form.meltValue || calculateMelt(form.metalType, form.purity, weightInOz)) || 0;
+                  // Calculate total cost including tax if applicable
+                  const basePurchasePrice = parseFloat(form.purchasePrice) || 0;
+                  const taxAmount = form.taxable ? calculateSalesTax(form.purchasePrice, form.taxRate, true) : 0;
+                  const totalPurchasePrice = basePurchasePrice + taxAmount;
+                  
+                  // Wrap save in timeout
+                  const savePromise = onSave({ 
+                    ...form, 
+                    weightOz: weightInOz, 
+                    purchasePrice: totalPurchasePrice,
+                    priceBeforeTax: basePurchasePrice,
+                    salesTax: taxAmount,
+                    taxRate: form.taxable ? parseFloat(form.taxRate) : null,
+                    taxable: form.taxable,
+                    meltValue: meltAtPurchase,
+                    spotAtPurchase: {
+                      gold: liveSpotPrices?.gold || 0,
+                      silver: liveSpotPrices?.silver || 0,
+                      platinum: liveSpotPrices?.platinum || 0,
+                      palladium: liveSpotPrices?.palladium || 0,
+                      date: new Date().toISOString()
+                    }
+                  });
+                  
+                  // 30 second timeout
+                  const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Save timeout')), 30000)
+                  );
+                  
+                  await Promise.race([savePromise, timeoutPromise]);
+                } catch (error) {
+                  console.error('Save error:', error);
+                  alert('Save timed out or failed. The item may have saved - check your inventory.');
+                } finally {
+                  setIsSaving(false);
+                }
               }} 
               className={`flex-1 py-2 rounded text-white font-medium ${isSaving ? 'bg-gray-400' : 'bg-amber-600'}`}
             >
@@ -11075,7 +11132,7 @@ function AdminPanelView({ onBack, inventory, clients, lots, onClearCollection, f
             <HardDrive size={18} /> App Information
           </h3>
           <div className="text-sm text-gray-600 space-y-1">
-            <p><strong>Version:</strong> 111</p>
+            <p><strong>Version:</strong> 112</p>
             <p><strong>Firebase Project:</strong> ses-inventory</p>
             <p><strong>Last Updated:</strong> January 2026</p>
           </div>
@@ -11902,10 +11959,23 @@ Be thorough - extract every line item you can identify.`
               <h3 className="font-medium mb-3">Original Document</h3>
               {selectedReceipt.fileType?.startsWith('image/') ? (
                 <img 
-                  src={`data:${selectedReceipt.fileType};base64,${selectedReceipt.fileData}`}
+                  src={selectedReceipt.fileUrl || `data:${selectedReceipt.fileType};base64,${selectedReceipt.fileData}`}
                   alt="Receipt"
                   className="w-full rounded border"
                 />
+              ) : selectedReceipt.fileUrl ? (
+                <div className="bg-gray-100 p-4 rounded text-center">
+                  <FileText size={48} className="mx-auto text-gray-400 mb-2" />
+                  <p className="text-sm text-gray-600">{selectedReceipt.fileName}</p>
+                  <a 
+                    href={selectedReceipt.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 text-blue-600 text-sm underline block"
+                  >
+                    Open PDF
+                  </a>
+                </div>
               ) : (
                 <div className="bg-gray-100 p-4 rounded text-center">
                   <FileText size={48} className="mx-auto text-gray-400 mb-2" />
